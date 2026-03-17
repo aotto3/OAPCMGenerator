@@ -1,0 +1,10 @@
+# Ignore everything by default
+*
+
+# Un-ignore the files we want to track
+!.gitignore
+!_Templates/
+!_Templates/OAP Contest Setup.html
+!output/
+!output/context.md
+!output/build_guide.py
