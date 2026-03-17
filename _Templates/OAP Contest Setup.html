@@ -819,8 +819,8 @@ function renderSnapshotList() {
         '<div class="snap-card-meta">' + meta + '</div>' +
       '</div>' +
       '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px">' +
-        '<button class="snap-load-btn" onclick="loadSnapshot(' + JSON.stringify(name) + ')">📂 Load</button>' +
-        '<button class="snap-del-btn" onclick="deleteSnapshot(' + JSON.stringify(name) + ')">🗑</button>' +
+        '<button class="snap-load-btn" onclick="loadSnapshot(' + JSON.stringify(name).replace(/"/g,'&quot;') + ')">📂 Load</button>' +
+        '<button class="snap-del-btn" onclick="deleteSnapshot(' + JSON.stringify(name).replace(/"/g,'&quot;') + ')">🗑</button>' +
       '</div>' +
     '</div>';
   }).join('');
