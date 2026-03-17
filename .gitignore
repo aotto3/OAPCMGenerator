@@ -8,3 +8,5 @@
 !output/
 !output/context.md
 !output/build_guide.py
+!Adjudicator Packet Templates/
+!Adjudicator Packet Templates/*.pdf
