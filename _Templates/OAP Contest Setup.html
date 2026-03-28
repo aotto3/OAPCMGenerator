@@ -1367,7 +1367,7 @@ function calculateSchedule(vars) {
   const FIRST_SLOT = 50;  // setup(7) + performance(40) + buffer(3)
   const PERF_ONLY  = 40;
   const EACH_TRANS = 25;  // strike + critique + next setup (after_each)
-  const ALL_TRANS  = 14;  // strike + next setup only (after_all)
+  const ALL_TRANS  = 15;  // strike + next setup only (after_all)
   const TABULATION = 30;
   const AWARDS     = 30;
   const n  = vars.num_schools;
@@ -1375,6 +1375,7 @@ function calculateSchedule(vars) {
   const events = [];
   let t = startMin;
   if (vars.critique_format === 'after_each') {
+    // after_each: critique immediately follows each show's strike
     for (let i = 0; i < n; i++) {
       const s = vars.schools[i] || {name: 'School ' + (i+1)};
       const dur = i === 0 ? FIRST_SLOT : PERF_ONLY;
@@ -1387,8 +1388,11 @@ function calculateSchedule(vars) {
       events.push({start:t, end:t+EACH_TRANS, dur:EACH_TRANS, label:tLbl, play:'', school:'', type:'trans', colorIdx:i});
       t += EACH_TRANS;
     }
+    events.push({start:t, end:t+TABULATION, dur:TABULATION, label:"Judge's Tabulation", play:'', school:'', type:'admin', colorIdx:-1});
+    t += TABULATION;
+    events.push({start:t, end:t+AWARDS, dur:AWARDS, label:'Awards Ceremony', play:'', school:'', type:'awards', colorIdx:-1});
   } else {
-    // after_all
+    // after_all: shows → last show strike → tabulation → critiques → awards
     for (let i = 0; i < n; i++) {
       const s = vars.schools[i] || {name: 'School ' + (i+1)};
       const dur = i === 0 ? FIRST_SLOT : PERF_ONLY;
@@ -1401,6 +1405,14 @@ function calculateSchedule(vars) {
         t += ALL_TRANS;
       }
     }
+    // Last show strike (no next setup — just clear the stage)
+    const lastS = vars.schools[n-1] || {name: 'School ' + n};
+    events.push({start:t, end:t+ALL_TRANS, dur:ALL_TRANS, label:'School ' + n + ' Strike', play:'', school:'', type:'trans', colorIdx:n-1});
+    t += ALL_TRANS;
+    // Judges tabulate while strike is completing / directors wait
+    events.push({start:t, end:t+TABULATION, dur:TABULATION, label:"Judge's Tabulation", play:'', school:'', type:'admin', colorIdx:-1});
+    t += TABULATION;
+    // Critiques after tabulation, before awards
     const showsPerJudge = Math.ceil(n / nj);
     const critBlock = showsPerJudge * CRIT_MINS_PER_SHOW;  // minutes per critique per judge
     const critLbl = nj > 1
@@ -1408,10 +1420,8 @@ function calculateSchedule(vars) {
       : 'Critiques \u2014 ' + n + ' Shows Sequential';
     events.push({start:t, end:t+critBlock, dur:critBlock, label:critLbl, play:'', school:'', type:'crit', colorIdx:-1});
     t += critBlock;
+    events.push({start:t, end:t+AWARDS, dur:AWARDS, label:'Awards Ceremony', play:'', school:'', type:'awards', colorIdx:-1});
   }
-  events.push({start:t, end:t+TABULATION, dur:TABULATION, label:"Judge's Tabulation", play:'', school:'', type:'admin', colorIdx:-1});
-  t += TABULATION;
-  events.push({start:t, end:t+AWARDS, dur:AWARDS, label:'Awards Ceremony', play:'', school:'', type:'awards', colorIdx:-1});
   return events;
 }
 

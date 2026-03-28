@@ -31,7 +31,9 @@ Status: v11. All v10 doc generators intact. Code-health / hardening pass — no 
 - **docx** = raw OOXML via JSZip. **xlsx** = SheetJS `cellStyles:true`.
 - **Checklist DV removed**: JSZip 3.x bug #403 corrupts non-ASCII XML on round-trip. Done? col blank — users fill manually.
 - **No Word SDT checkboxes** — don't render in Google Drive.
-- **Schedule timing**: School 1 = 50 min (setup7+perf40+buffer3). Schools 2+ = 40 min (perf only). after_each transitions = 25 min. after_all transitions = 14 min. Critique block (after_all) = ceil(N/judges)×15 min.
+- **Schedule timing**: School 1 = 50 min (setup7+perf40+buffer3). Schools 2+ = 40 min (perf only). after_each transitions = 25 min. after_all transitions = 15 min.
+  - **after_each order**: shows (critique after each) → tabulation → awards.
+  - **after_all order**: shows → last-show strike (15 min) → tabulation (30 min) → critiques (ceil(N/judges)×15 min) → awards (30 min). Critique block comes *after* tabulation, *before* awards.
 - **No phone fields** for directors. Email only.
 - **Snapshot scope** = stable year-over-year data: Tier 1 fields + num_schools + schools/directors/play-titles + directors_meeting_time + first_show_time + **sw_username + sw_password** (added v10). Excludes: contest dates, judge details, deadlines, doc checkboxes, critique format.
 - **Adjudicator packets**: official UIL PDFs embedded as base64; filled with pdf-lib; form.flatten() before page-copy merge. Only admin/header fields pre-filled; all rating/comment fields left blank for judges to complete on paper.
