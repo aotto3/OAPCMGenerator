@@ -48,6 +48,8 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #eef2f7; color: #
 .snap-load-btn:hover { background:#4A148C; }
 .snap-del-btn { background:#fff; color:#C00000; border:1.5px solid #C00000; border-radius:5px; padding:5px 10px; font-size:0.82rem; font-weight:700; cursor:pointer; }
 .snap-del-btn:hover { background:#FFEBEE; }
+.snap-note-btn { background:#fff; color:#555; border:1.5px solid #ccc; border-radius:5px; padding:5px 8px; font-size:0.82rem; cursor:pointer; }
+.snap-note-btn:hover { background:#f5f5f5; border-color:#aaa; }
 .school-ac-dropdown { position:absolute; z-index:999; background:#fff; border:1.5px solid #C5B3E6; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); max-height:180px; overflow-y:auto; min-width:100%; top:100%; left:0; margin-top:2px; }
 .school-ac-item { padding:7px 12px; cursor:pointer; font-size:0.88rem; color:#222; }
 .school-ac-item:hover { background:#F3EEF9; }
@@ -118,6 +120,10 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 .critique-unlock-btn { background:#fff;border:1.5px solid #C00000;color:#C00000;border-radius:6px;padding:6px 18px;font-size:0.82rem;font-weight:700;cursor:pointer; }
 .critique-unlock-btn:hover { background:#FFEBEE; }
 .critique-locked-notice { display:inline-flex;align-items:center;gap:8px;background:#E8F5E9;border:1.5px solid #A5D6A7;border-radius:6px;padding:5px 14px;font-size:0.85rem;font-weight:700;color:#2E7D32; }
+
+/* Unsaved-changes indicator on Save Snapshot button */
+#save_snapshot_btn.form-dirty { box-shadow: 0 0 0 3px #F59E0B; }
+#save_snapshot_btn.form-dirty::after { content: ' \25CF'; color: #FCD34D; font-size: 0.65em; vertical-align: super; }
 
 /* Quick-link anchors (Quick Links panel) */
 .quick-link { display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none; }
@@ -192,9 +198,12 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
   </div>
   <div class="section-body">
     <p style="font-size:0.83rem;color:#555;margin-bottom:14px;line-height:1.5">Save the current form as a named snapshot to reload next year. Use Export/Import to move snapshots between computers or browsers.</p>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
       <input type="text" id="snapshot_name_input" placeholder="e.g. 2025 District 20 5A" style="flex:1;border:1.5px solid #ccd;border-radius:5px;padding:8px 10px;font-size:0.93rem;font-family:inherit">
       <button id="save_snapshot_btn" onclick="saveSnapshot()" style="background:#6A1B9A;color:#fff;border:none;border-radius:5px;padding:9px 18px;font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap">💾 Save Snapshot</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <input type="text" id="snapshot_notes_input" placeholder="Optional note — e.g. &quot;Before judge change&quot;, &quot;Final version&quot;" style="width:100%;border:1.5px solid #dde;border-radius:5px;padding:6px 10px;font-size:0.82rem;font-family:inherit;color:#555">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <button onclick="exportSnapshots()" style="background:#fff;border:1.5px solid #C5B3E6;color:#4A148C;border-radius:5px;padding:6px 14px;font-size:0.82rem;font-weight:700;cursor:pointer">⬇ Export All (.json)</button>
@@ -745,6 +754,7 @@ function migrateSnapshot(data) {
 
 function restoreState(data) {
   data = migrateSnapshot(data);
+  clearDirty(); // loading a snapshot counts as a clean state
   // 1. num_schools first — triggers DOM rebuild
   const nsSel = document.getElementById('num_schools');
   if (nsSel) { nsSel.value = data.num_schools || '6'; updateSchoolFields(); }
@@ -891,16 +901,36 @@ function attachSchoolAutocomplete(idx) {
   });
   inp.addEventListener('blur', function() { setTimeout(() => { dd.style.display = 'none'; }, 150); });
 }
+/** Marks the form as having unsaved changes — called by the global input listener. */
+function markDirty() {
+  if (_formDirty) return;
+  _formDirty = true;
+  const btn = document.getElementById('save_snapshot_btn');
+  if (btn) btn.classList.add('form-dirty');
+}
+/** Clears the unsaved-changes indicator — called after a successful snapshot save or load. */
+function clearDirty() {
+  _formDirty = false;
+  const btn = document.getElementById('save_snapshot_btn');
+  if (btn) btn.classList.remove('form-dirty');
+}
+
 function saveSnapshot() {
-  const nameEl = document.getElementById('snapshot_name_input');
+  const nameEl  = document.getElementById('snapshot_name_input');
+  const notesEl = document.getElementById('snapshot_notes_input');
   const name = nameEl ? nameEl.value.trim() : '';
   if (!name) { nameEl && nameEl.focus(); nameEl && (nameEl.style.border = '1.5px solid #C00000'); return; }
   nameEl.style.border = '';
   const snaps = getSnapshots();
+  // Preserve existing notes if the user left the notes field blank on re-save
+  const existingNotes = (snaps[name] && snaps[name].notes) ? snaps[name].notes : '';
   snaps[name] = serializeState();
   snaps[name].label = name;
+  snaps[name].notes = notesEl ? notesEl.value.trim() || existingNotes : existingNotes;
   safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
   nameEl.value = '';
+  if (notesEl) notesEl.value = '';
+  clearDirty();
   renderSnapshotList();
   const btn = document.getElementById('save_snapshot_btn');
   if (btn) { btn.textContent = '✓ Saved!'; setTimeout(() => { btn.textContent = '💾 Save Snapshot'; }, 2000); }
@@ -921,6 +951,17 @@ function deleteSnapshot(name) {
   renderSnapshotList();
 }
 
+function editSnapshotNote(name) {
+  const snaps = getSnapshots();
+  if (!snaps[name]) return;
+  const current = snaps[name].notes || '';
+  const newNote = prompt('Note for "' + name + '":\n(Leave blank to clear)', current);
+  if (newNote === null) return; // cancelled
+  snaps[name].notes = newNote.trim();
+  safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
+  renderSnapshotList();
+}
+
 function renderSnapshotList() {
   const con = document.getElementById('snapshot_list');
   if (!con) return;
@@ -937,14 +978,18 @@ function renderSnapshotList() {
     const year = (s.fields && s.fields.contest_year) ? s.fields.contest_year : '';
     const level = (s.fields && s.fields.contest_level) ? s.fields.contest_level : '';
     const meta = [year ? year + (level ? ' ' + level : '') : '', date ? 'Saved ' + date : '', s.num_schools + ' schools', schools].filter(Boolean).join(' · ');
+    const notes = s.notes ? s.notes : '';
+    const safeNameAttr = JSON.stringify(name).replace(/"/g,'&quot;');
     return '<div class="snap-card">' +
       '<div class="snap-card-info">' +
-        '<div class="snap-card-name">' + name + '</div>' +
-        '<div class="snap-card-meta">' + meta + '</div>' +
+        '<div class="snap-card-name">' + xe(name) + '</div>' +
+        '<div class="snap-card-meta">' + xe(meta) + '</div>' +
+        (notes ? '<div style="font-size:0.78rem;color:#777;font-style:italic;margin-top:2px">📝 ' + xe(notes) + '</div>' : '') +
       '</div>' +
-      '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px">' +
-        '<button class="snap-load-btn" onclick="loadSnapshot(' + JSON.stringify(name).replace(/"/g,'&quot;') + ')">📂 Load</button>' +
-        '<button class="snap-del-btn" onclick="deleteSnapshot(' + JSON.stringify(name).replace(/"/g,'&quot;') + ')">🗑</button>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px;align-items:flex-start">' +
+        '<button class="snap-load-btn" onclick="loadSnapshot(' + safeNameAttr + ')">📂 Load</button>' +
+        '<button class="snap-note-btn" onclick="editSnapshotNote(' + safeNameAttr + ')" title="Edit note">📝</button>' +
+        '<button class="snap-del-btn" onclick="deleteSnapshot(' + safeNameAttr + ')">🗑</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -1177,6 +1222,23 @@ function updateSchoolFields() {
 // need to block the initial render.
 updateJudgeFields(); updateSchoolFields(); updateContestName();
 requestAnimationFrame(renderSnapshotList);
+
+// Mark the form dirty whenever the user changes any input or select.
+// Snapshot name and notes inputs are excluded so typing a name doesn't itself
+// trigger a "you have unsaved changes" warning on close.
+document.addEventListener('input', function(e) {
+  if (e.target.id === 'snapshot_name_input' || e.target.id === 'snapshot_notes_input') return;
+  markDirty();
+});
+document.addEventListener('change', function(e) {
+  if (e.target.id === 'snapshot_name_input' || e.target.id === 'snapshot_notes_input') return;
+  markDirty();
+});
+
+// Warn before closing/navigating away if there are unsaved changes.
+window.addEventListener('beforeunload', function(e) {
+  if (_formDirty) { e.preventDefault(); }
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  UTILITIES
@@ -1445,6 +1507,15 @@ function updateSchedulePreview() {
     box.innerHTML = '<p style="color:#888;font-style:italic;padding:10px 0">Enter a First Show / Setup Time to see schedule preview.</p>';
     return;
   }
+  // Prepend Directors Meeting row if time is set and falls before first show
+  const dmMins = parseTime(vars.directors_meeting_time);
+  if (dmMins != null && !isNaN(dmMins) && vars.first_show_minutes != null && dmMins < vars.first_show_minutes) {
+    events.unshift({
+      start: dmMins, end: vars.first_show_minutes,
+      dur: vars.first_show_minutes - dmMins,
+      label: 'Directors\u2019 Meeting', play: '', school: '', type: 'dm', colorIdx: 0
+    });
+  }
   let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">' +
     '<thead><tr>' +
     '<th style="background:#222;color:#fff;padding:5px 8px;text-align:left;width:80px">START</th>' +
@@ -1455,6 +1526,7 @@ function updateSchedulePreview() {
   events.forEach(ev => {
     let bg = '#DADADA';
     if (ev.type === 'show') bg = SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
+    if (ev.type === 'dm')   bg = SCHOOL_COLORS_HEX[0]; // matches Excel output color for DM row
     const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' \u2014 ' + xe(ev.play) : '') : '';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.start) + '</td>' +
@@ -3031,6 +3103,7 @@ function jumpTo(id) {
 // ═══════════════════════════════════════════════════════════════
 var _critiqueAssignments = null;
 var _critiqueLocked = false;
+var _formDirty = false; // true when form has been changed since last snapshot save
 
 function runCritiqueRandomizer() {
   if (_critiqueLocked) {
