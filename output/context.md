@@ -1,9 +1,9 @@
-# OAP_CTX v9 | 2026-03-17
+# OAP_CTX v10 | 2026-03-28
 
 ## PROJECT
 UIL One-Act Play Contest Manager. Single HTML generator (`OAP Contest Setup.html`) collects contest data → outputs ZIP of pre-filled docs. Browser-only, no server. Owner: Allen Otto (CM).
 
-Status: v9. All doc generators built. Full UX suite complete. Adjudicator packet PDF generation added. Pre-Rehearsal Company Meeting form added (DOC 14). File is now ~1.31 MB (base64 PDFs embedded). ~2760+ lines JS.
+Status: v10. All v9 doc generators intact. Six targeted fixes + feature additions: Speechwire credentials, critique lock/reorder, director remove button, school autocomplete with play title, snapshot year display, play-title persistence. File is now ~1.31 MB (base64 PDFs embedded). ~2850+ lines JS.
 
 ---
 
@@ -14,7 +14,7 @@ Status: v9. All doc generators built. Full UX suite complete. Adjudicator packet
 - **No Word SDT checkboxes** — don't render in Google Drive.
 - **Schedule timing**: School 1 = 50 min (setup7+perf40+buffer3). Schools 2+ = 40 min (perf only). after_each transitions = 25 min. after_all transitions = 14 min. Critique block (after_all) = ceil(N/judges)×15 min.
 - **No phone fields** for directors. Email only.
-- **Snapshot scope** = stable year-over-year data only: Tier 1 fields + num_schools + schools/directors + directors_meeting_time + first_show_time. Excludes: dates, judges, play titles, deadlines, doc checkboxes, critique format.
+- **Snapshot scope** = stable year-over-year data: Tier 1 fields + num_schools + schools/directors/play-titles + directors_meeting_time + first_show_time + **sw_username + sw_password** (added v10). Excludes: contest dates, judge details, deadlines, doc checkboxes, critique format.
 - **Adjudicator packets**: official UIL PDFs embedded as base64; filled with pdf-lib; form.flatten() before page-copy merge. Only admin/header fields pre-filled; all rating/comment fields left blank for judges to complete on paper.
 - **Adjudicator packet output**: single merged PDF (all judges in order: J1 evals+ranking+awards, J2 evals+ranking, J3 evals+ranking). Filename: `Adjudicator Packets.pdf` in ZIP subfolder.
 - **Panelist field on Ranking Ballot**: dropdown only accepts A/B/C. J1=A, J2=B, J3=C.
@@ -25,18 +25,20 @@ Status: v9. All doc generators built. Full UX suite complete. Adjudicator packet
 - **Entry deadline default** = contest_date − 10 days. **Light cue time default** = 5:00 PM.
 - **Director letter** = exact 2026 Allen real letter language, var substitution only.
 - **ZIP folder name** = `{year} — {cls} {level} {num} OAP` (em-dash \u2014).
+- **Director restoration** (v10): `serializeFormState()` uses position-based `director_data[][]` array (not element IDs) to avoid ID-gap bugs from mid-row removes. `director_counts[]` kept for backwards compat but not used for restore.
+- **Critique lock** (v10): `_critiqueLocked` flag gates all reordering/re-randomize. Locked state serialized into regenerate HTML state blob.
 
 ---
 
 ## STATE
 
 ### Primary file
-`C:\Users\Allen\Desktop\Claude CoWork\OAP Documents\_Templates\OAP Contest Setup.html`
-- Size: ~1.30 MB
+`C:\Users\Allen\OneDrive\Documents\GitHub\OAPCMGenerator\_Templates\OAP Contest Setup.html`
+- Size: ~1.31 MB
 - CDNs (in `<head>`): xlsx/0.18.5, jszip/3.10.1, **pdf-lib/1.17.1** (unpkg)
 
 ### PDF template files (source, already embedded as base64)
-`C:\Users\Allen\Desktop\Claude CoWork\OAP Documents\Adjudicator Packet Templates\`
+`C:\Users\Allen\OneDrive\Documents\GitHub\OAPCMGenerator\Adjudicator Packet Templates\`
 - `Interactive_Play-Evaluation-20181.pdf` — Evaluation Ballot (multi-page per school)
 - `Adjudicator_Ballot_-_Ranking_Plays_for_Panel_use_Only_-_Writable_Form.pdf` — Panel Ranking Ballot
 - `Awards_Acting_Ballot_updated_05.18.2023.pdf` — Acting Awards Ballot (Judge 1 only, sent blank)
@@ -63,7 +65,7 @@ All-Director Email List (always visible box)
 
 ### Section header labels (no tier prefixes)
 - `sec-t1`: 📋 Contest Identity
-- `sec-t2`: 📅 Contest Details  ← subsection order: Dates & Times → Competition Format → Rehearsals → Fees & Deadlines
+- `sec-t2`: 📅 Contest Details  ← subsection order: Dates & Times → Competition Format → Rehearsals → Fees & Deadlines → **Speechwire Access** (v10)
 - `sec-t3`: ⚖️ Adjudicators
 
 ### Shortcut bar labels → target IDs
@@ -89,7 +91,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 **Base64 PDF constants** (at very top of script, 3 huge var lines):
 `EVAL_PDF_B64`, `RANK_PDF_B64`, `AWARDS_PDF_B64`
 
-**UI Helpers**: `toggle`, `toggleDocCheck`, `setAllDocs(checked)`, `updateBidcField`, `updateJudgeFields`, `toggleHotelNights`, `updateRehearsalDay2UI/Count`, `updateContestName`, `autoCalcDeadlines`, `updateEmailList`, `copyEmails`, `copyContestName`, `addDirectorRow`, `removeDirRow`, `updateSchoolNameInPlay`, `updateSchoolFields`
+**UI Helpers**: `toggle`, `toggleDocCheck`, `setAllDocs(checked)`, `updateBidcField`, `updateJudgeFields`, `toggleHotelNights`, `updateRehearsalDay2UI/Count`, `updateContestName`, `autoCalcDeadlines`, `updateEmailList`, `copyEmails`, `copyContestName`, `toggleSwPassword` (v10), `updateDirRemoveButtons(schoolIdx)` (v10), `addDirectorRow`, `removeDirRow`, `updateSchoolNameInPlay`, `updateSchoolFields`
 
 **Snapshots**: `OAP_SNAP_KEY/FIELDS/SELECTS`, `serializeState()`, `restoreState(data)`, `getSnapshots()`, `exportSnapshots()`, `importSnapshots(input)`, `getSnapshotSchools()`, `applySchoolSuggestion(idx,name)`, `attachSchoolAutocomplete(idx)`, `saveSnapshot()`, `loadSnapshot(name)`, `deleteSnapshot(name)`, `renderSnapshotList()`
 
@@ -107,9 +109,11 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 **ZIP builder**: `generateAll()` — validation → wantXxx flags (incl. `wantAdjPackets`, `wantPreRehearsalMeeting`) → per-doc conditionals → adj packets block (gated on `wantAdjPackets && typeof PDFLib !== 'undefined'`) → count===0 check → ZIP packaging
 
+**Regenerate serializer**: `serializeFormState()` — captures `director_data[][]` (position-based, not ID-based) + `critique_assignment` + `critique_locked` into state blob; prefill script resets button/status, restores all non-director fields by ID, restores directors by position, restores locked critique if present.
+
 **Section jump**: `jumpTo(id)` — scrollIntoView + auto-opens collapsed section
 
-**Critique randomizer**: `_critiqueAssignments` (module var), `runCritiqueRandomizer()`, `generateCritiqueAssignments()`, `renderCritiqueAssignments()`
+**Critique randomizer**: `_critiqueAssignments` (module var), `_critiqueLocked` (v10), `runCritiqueRandomizer()`, `generateCritiqueAssignments()`, `renderCritiqueAssignments()`, `lockCritiqueAssignment()` (v10), `unlockCritiqueAssignment()` (v10), `moveCritiqueRow(idx, dir)` (v10)
 
 **PDF helpers**: `_b64ToBytes(b64)`, `genAdjudicatorPackets(vars)`
 
@@ -119,8 +123,20 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 - J1 gets `floor(N/J)` schools (fewer if not evenly divisible)
 - Remainder distributed randomly among J2+ (some get baseOther, some baseOther+1)
 - `after_each` constraint: last school (schools[N-1] in performance order) must be assigned to J2+. Pre-assigned to random eligible judge before shuffle.
-- Output table: # | School | Play Title | Judge Assigned (colored by judge index). Summary row below.
-- Confirm guard if `_critiqueAssignments` already set. Regenerates fully each click.
+- Output table: # | School | Play Title | Judge Assigned | Move (↑↓ when unlocked). Summary row + lock controls below.
+- **v10 lock/reorder**: ↑↓ buttons swap judge assignments between adjacent performance slots. "Lock & Save" sets `_critiqueLocked=true`, hides move buttons, serializes assignment into regenerate HTML. "Unlock & Re-randomize" reverts. Confirm guard if locked or already assigned.
+
+### Speechwire Access (v10)
+- Fields: `sw_username` (text), `sw_password` (password with show/hide toggle via `toggleSwPassword()`)
+- Location: bottom of sec-t2 (Contest Details), under "Speechwire Access" divider
+- Saved in: snapshots (`OAP_SNAP_FIELDS`) + regenerate HTML (automatic via `serializeFormState()`)
+- Purpose: per-contest credentials provided by state theatre director; CM-only
+
+### School Autocomplete (v10 changes)
+- `getSnapshotSchools()` now returns `{ directors: [...], play: '' }` per school (was bare directors array)
+- `applySchoolSuggestion()` now also fills `play_N_play` from saved `entry.play`; resets to exactly 1 director row before re-populating (prevents stale extra rows)
+- Dropdown shows `School Name — Play Title` if play title is saved
+- `serializeState()` now saves `play` in each school object (was missing)
 
 ### PDF form field mapping
 **Evaluation Ballot** fields filled:
@@ -144,6 +160,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 `.shortcut-bar`, `.shortcut-bar-label`, `.shortcut-bar-btns`, `.sc-btn` (pill nav buttons)
 `body.dark-mode .container { filter:invert(1) hue-rotate(180deg); }` (dark mode on container, not body)
 `#darkModeBtn` — fixed position bottom-right, persists via localStorage
+**v10 additions**: `.critique-move-btn`, `.critique-lock-btn`, `.critique-unlock-btn`, `.critique-locked-notice`
 
 ### Existing design details (unchanged)
 **Schedule colors** (school idx 0–7): `['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF']`. Header: `000000`. Admin/grey: `DADADA`.
@@ -193,6 +210,8 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 - **cellStyles:true** = SheetJS CE write option for fill/font styles
 - **pdf-lib** = PDFLib global (from unpkg CDN); used for adjudicator packet PDF filling/merging
 - **AP stream / flatten** = pdf-lib: flatten() embeds filled field values into page content for print-safe merged PDF
+- **director_data** (v10) = position-indexed array of `{name, email}` per school; used in regenerate HTML state blob instead of element IDs
+- **critique lock** (v10) = `_critiqueLocked` bool; gates reorder/re-randomize and serializes assignment into regenerate HTML
 
 ---
 

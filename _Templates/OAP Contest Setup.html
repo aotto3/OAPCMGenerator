@@ -100,6 +100,15 @@ body.dark-mode .container { filter:invert(1) hue-rotate(180deg); }
 body.dark-mode .container img, body.dark-mode .container [style*="background:linear-gradient"] { filter:invert(1) hue-rotate(180deg); }
 #darkModeBtn { position:fixed; bottom:18px; right:18px; z-index:9999; background:#1F4E79; color:#fff; border:none; border-radius:50px; padding:9px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.35); transition:background 0.15s; }
 #darkModeBtn:hover { background:#2E75B6; }
+/* Critique assignment reorder / lock controls */
+.critique-move-btn { background:#F3E5F5;border:1.5px solid #CE93D8;color:#4A148C;border-radius:4px;padding:1px 7px;font-size:0.82rem;cursor:pointer;line-height:1.5; }
+.critique-move-btn:hover:not(:disabled) { background:#E1BEE7; }
+.critique-move-btn:disabled { background:#f0f0f0;border-color:#ddd;color:#bbb;cursor:default; }
+.critique-lock-btn { background:linear-gradient(135deg,#1B5E20,#2E7D32);color:#fff;border:none;border-radius:6px;padding:8px 26px;font-size:0.88rem;font-weight:700;cursor:pointer; }
+.critique-lock-btn:hover { filter:brightness(1.1); }
+.critique-unlock-btn { background:#fff;border:1.5px solid #C00000;color:#C00000;border-radius:6px;padding:6px 18px;font-size:0.82rem;font-weight:700;cursor:pointer; }
+.critique-unlock-btn:hover { background:#FFEBEE; }
+.critique-locked-notice { display:inline-flex;align-items:center;gap:8px;background:#E8F5E9;border:1.5px solid #A5D6A7;border-radius:6px;padding:5px 14px;font-size:0.85rem;font-weight:700;color:#2E7D32; }
 
 </style>
 </head>
@@ -324,6 +333,21 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
         <label>BiDistrict Contest Date</label>
         <input type="date" id="bidc_contest_date">
         <span class="hint">Date of the advancing BiDistrict contest</span>
+      </div>
+    </div>
+    <div class="divider">Speechwire Access</div>
+    <div class="field-grid" style="max-width:560px">
+      <div class="field">
+        <label>Speechwire Username</label>
+        <input type="text" id="sw_username" placeholder="e.g. district20-5a" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Speechwire Password</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="password" id="sw_password" placeholder="Provided by state theatre director" style="flex:1" autocomplete="off">
+          <button type="button" id="sw_pw_toggle" onclick="toggleSwPassword()" style="background:#E3F2FD;border:1.5px solid #90CAF9;color:#1565C0;border-radius:5px;padding:6px 11px;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap">Show</button>
+        </div>
+        <span class="hint">Per-contest credentials — saved with this contest's snapshot and regenerate backup.</span>
       </div>
     </div>
   </div>
@@ -630,6 +654,7 @@ const OAP_SNAP_FIELDS = [
   'contest_year','district_number',
   'host_school_name','host_venue_name','host_school_address',
   'directors_meeting_time','first_show_time',
+  'sw_username','sw_password',
 ];
 const OAP_SNAP_SELECTS = ['contest_level','classification'];
 
@@ -649,7 +674,7 @@ function serializeState() {
       dirs.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
     });
     if (!dirs.length) dirs.push({ name: '', email: '' });
-    schools.push({ name: gv('school_' + i + '_name') || '', directors: dirs });
+    schools.push({ name: gv('school_' + i + '_name') || '', directors: dirs, play: gv('play_' + i + '_play') || '' });
   }
   return {
     v: 1, saved_at: new Date().toISOString(),
@@ -725,7 +750,10 @@ function importSnapshots(input) {
 function getSnapshotSchools() {
   const map = {};
   Object.values(getSnapshots()).forEach(snap => {
-    (snap.schools || []).forEach(s => { if (s.name && s.name.trim()) map[s.name.trim()] = s.directors || []; });
+    (snap.schools || []).forEach(s => {
+      if (s.name && s.name.trim())
+        map[s.name.trim()] = { directors: s.directors || [], play: s.play || '' };
+    });
   });
   return map;
 }
@@ -733,19 +761,26 @@ function applySchoolSuggestion(idx, name) {
   const schoolMap = getSnapshotSchools();
   const nameEl = document.getElementById('school_' + idx + '_name');
   if (nameEl) nameEl.value = name;
-  const dirs = schoolMap[name] || [];
+  const entry = schoolMap[name] || {};
+  const dirs = entry.directors || [];
   const con = document.getElementById('school_' + idx + '_directors');
-  if (con && dirs.length) {
-    const existing = con.querySelectorAll('.director-row').length;
-    for (let d = existing; d < dirs.length; d++) addDirectorRow(idx);
+  if (con) {
+    // Reset to exactly 1 director row, then add extras as needed
+    const existingRows = con.querySelectorAll('.director-row');
+    for (let r = existingRows.length - 1; r >= 1; r--) existingRows[r].remove();
+    for (let d = 1; d < dirs.length; d++) addDirectorRow(idx);
     dirs.forEach((dir, di) => {
       const ni = document.getElementById('school_' + idx + '_dir_' + (di+1) + '_name');
       const ei = document.getElementById('school_' + idx + '_dir_' + (di+1) + '_email');
       if (ni) ni.value = dir.name || '';
       if (ei) ei.value = dir.email || '';
     });
+    updateDirRemoveButtons(idx);
     updateEmailList();
   }
+  // Fill play title if saved
+  const playEl = document.getElementById('play_' + idx + '_play');
+  if (playEl && entry.play) playEl.value = entry.play;
   updateSchoolNameInPlay(idx);
   const dd = document.getElementById('school_ac_' + idx);
   if (dd) dd.style.display = 'none';
@@ -764,7 +799,12 @@ function attachSchoolAutocomplete(idx) {
     const q = this.value.toLowerCase().trim();
     const matches = q ? names.filter(n => n.toLowerCase().includes(q)) : [];
     if (!matches.length) { dd.style.display = 'none'; return; }
-    dd.innerHTML = matches.map(n => '<div class="school-ac-item" onmousedown="applySchoolSuggestion(' + idx + ',' + JSON.stringify(n) + ')">' + n + '</div>').join('');
+    dd.innerHTML = matches.map(n => {
+      const play = schoolMap[n] ? (schoolMap[n].play || '') : '';
+      return '<div class="school-ac-item" onmousedown="applySchoolSuggestion(' + idx + ',' + JSON.stringify(n) + ')">' +
+        xe(n) + (play ? '<span style="color:#888;font-size:0.8em;margin-left:6px">— ' + xe(play) + '</span>' : '') +
+        '</div>';
+    }).join('');
     dd.style.display = 'block';
   });
   inp.addEventListener('blur', function() { setTimeout(() => { dd.style.display = 'none'; }, 150); });
@@ -812,7 +852,9 @@ function renderSnapshotList() {
     const s = snaps[name];
     const date = s.saved_at ? new Date(s.saved_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
     const schools = (s.schools || []).map(x => x.name).filter(Boolean).join(', ') || '—';
-    const meta = [date ? 'Saved ' + date : '', s.num_schools + ' schools', schools].filter(Boolean).join(' · ');
+    const year = (s.fields && s.fields.contest_year) ? s.fields.contest_year : '';
+    const level = (s.fields && s.fields.contest_level) ? s.fields.contest_level : '';
+    const meta = [year ? year + (level ? ' ' + level : '') : '', date ? 'Saved ' + date : '', s.num_schools + ' schools', schools].filter(Boolean).join(' · ');
     return '<div class="snap-card">' +
       '<div class="snap-card-info">' +
         '<div class="snap-card-name">' + name + '</div>' +
@@ -933,6 +975,15 @@ function copyContestName() {
   const btn = document.getElementById('copyNameBtn'); btn.textContent = '✓ Copied!';
   setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
 }
+function updateDirRemoveButtons(schoolIdx) {
+  const con = document.getElementById('school_' + schoolIdx + '_directors');
+  if (!con) return;
+  const rows = con.querySelectorAll('.director-row');
+  rows.forEach(function(row) {
+    const btn = row.querySelector('.remove-dir-btn');
+    if (btn) btn.style.display = rows.length > 1 ? '' : 'none';
+  });
+}
 function addDirectorRow(schoolIdx) {
   const con = document.getElementById('school_' + schoolIdx + '_directors');
   const existing = con.querySelectorAll('.director-row').length;
@@ -946,10 +997,15 @@ function addDirectorRow(schoolIdx) {
     '<input type="email" id="school_' + schoolIdx + '_dir_' + rowNum + '_email" placeholder="email@district.org" oninput="updateEmailList()">' +
     '<button class="remove-dir-btn" onclick="removeDirRow(this)">Remove</button></div>';
   con.appendChild(div);
+  updateDirRemoveButtons(schoolIdx);
   updateEmailList();
 }
 function removeDirRow(btn) {
+  const con = btn.closest('.director-row').parentElement;
+  if (con && con.querySelectorAll('.director-row').length <= 1) return;
   btn.closest('.director-row').remove();
+  const match = con.id && con.id.match(/school_(\d+)_directors/);
+  if (match) updateDirRemoveButtons(parseInt(match[1]));
   updateEmailList();
 }
 function updateSchoolNameInPlay(schoolIdx) {
@@ -961,21 +1017,32 @@ function updateSchoolFields() {
   const n = parseInt(document.getElementById('num_schools').value);
   const schoolCon = document.getElementById('school_entries');
   const playCon   = document.getElementById('play_entries');
-  // Preserve existing values
+  // Preserve existing values — including directors
   const saved = {};
+  const savedDirs = {};
   for (let i = 1; i <= 8; i++) {
-    ['name','play','order'].forEach(f => {
-      const el = document.getElementById('school_' + i + '_' + f);
-      if (el) saved['s' + i + '_' + f] = el.value;
-    });
+    const nameEl = document.getElementById('school_' + i + '_name');
+    if (nameEl) saved['s' + i + '_name'] = nameEl.value;
+    const pPlay = document.getElementById('play_' + i + '_play');
+    if (pPlay) saved['p' + i + '_play'] = pPlay.value;
     const pOrd = document.getElementById('play_' + i + '_order');
     if (pOrd) saved['p' + i + '_order'] = pOrd.value;
+    const con = document.getElementById('school_' + i + '_directors');
+    if (con) {
+      const dirs = [];
+      con.querySelectorAll('.director-row').forEach(row => {
+        const ni = row.querySelector('input[type="text"]');
+        const ei = row.querySelector('input[type="email"]');
+        dirs.push({ name: ni ? ni.value : '', email: ei ? ei.value : '' });
+      });
+      savedDirs[i] = dirs;
+    }
   }
   schoolCon.innerHTML = '';
   playCon.innerHTML   = '';
   for (let i = 1; i <= n; i++) {
-    const sName = saved['s' + i + '_name'] || '';
-    // School block
+    const sName = (saved['s' + i + '_name'] || '').replace(/"/g, '&quot;');
+    // School block — director 1 row has a Remove button (hidden until a 2nd row exists)
     schoolCon.innerHTML +=
       '<div class="school-block">' +
       '<h3>School ' + i + '</h3>' +
@@ -987,13 +1054,14 @@ function updateSchoolFields() {
       '<div class="field"><label>Director 1 \u2014 Name</label>' +
       '<input type="text" id="school_' + i + '_dir_1_name" placeholder="First Last"></div>' +
       '<div class="field"><label>Director 1 \u2014 Email</label>' +
-      '<input type="email" id="school_' + i + '_dir_1_email" placeholder="email@district.org" oninput="updateEmailList()"></div>' +
+      '<input type="email" id="school_' + i + '_dir_1_email" placeholder="email@district.org" oninput="updateEmailList()">' +
+      '<button class="remove-dir-btn" onclick="removeDirRow(this)" style="display:none">Remove</button></div>' +
       '</div></div>' +
       '<button class="add-dir-btn" onclick="addDirectorRow(' + i + ')">+ Add Another Director</button>' +
       '</div>';
     // Play block
     const ordVal = saved['p' + i + '_order'] || i;
-    const playVal = saved['s' + i + '_play'] || '';
+    const playVal = (saved['p' + i + '_play'] || '').replace(/"/g, '&quot;');
     playCon.innerHTML +=
       '<div class="play-block">' +
       '<div class="school-lbl" id="play_' + i + '_schoollbl">School ' + i + (sName ? ': ' + sName : '') + '</div>' +
@@ -1003,6 +1071,20 @@ function updateSchoolFields() {
       '<div class="field"><label>Play Title</label>' +
       '<input type="text" id="play_' + i + '_play" placeholder="Title of Play" value="' + playVal + '"></div>' +
       '</div></div>';
+  }
+  // Restore director data after rebuild
+  for (let i = 1; i <= n; i++) {
+    const dirs = savedDirs[i] || [];
+    if (dirs.length > 1) {
+      for (let d = 1; d < dirs.length; d++) addDirectorRow(i);
+    }
+    dirs.forEach((dir, di) => {
+      const ni = document.getElementById('school_' + i + '_dir_' + (di+1) + '_name');
+      const ei = document.getElementById('school_' + i + '_dir_' + (di+1) + '_email');
+      if (ni) ni.value = dir.name || '';
+      if (ei) ei.value = dir.email || '';
+    });
+    updateDirRemoveButtons(i);
   }
   updateEmailList();
   for (let i = 1; i <= n; i++) attachSchoolAutocomplete(i);
@@ -1848,15 +1930,28 @@ function serializeFormState() {
   const state = {
     num_schools: gv('num_schools'),
     num_judges:  gv('num_judges'),
-    director_counts: [],
+    director_counts: [],  // kept for backwards-compat; director_data is authoritative
+    director_data: [],
     fields: [],
+    critique_assignment: _critiqueLocked ? JSON.parse(JSON.stringify(_critiqueAssignments)) : null,
+    critique_locked: _critiqueLocked,
   };
   for (let i = 1; i <= numSchools; i++) {
     const con = document.getElementById('school_' + i + '_directors');
-    state.director_counts.push(con ? con.querySelectorAll('.director-row').length : 1);
+    const rows = con ? con.querySelectorAll('.director-row') : [];
+    state.director_counts.push(rows.length);
+    const dirs = [];
+    rows.forEach(function(row) {
+      const ni = row.querySelector('input[type="text"]');
+      const ei = row.querySelector('input[type="email"]');
+      dirs.push({ name: ni ? ni.value : '', email: ei ? ei.value : '' });
+    });
+    state.director_data.push(dirs);
   }
   document.querySelectorAll('input, select, textarea').forEach(function(el) {
     if (!el.id) return;
+    // Directors captured in director_data (position-based); skip to avoid ID-mismatch on restore
+    if (/_dir_\d+_(name|email)$/.test(el.id)) return;
     if (el.type === 'radio' || el.type === 'checkbox') {
       state.fields.push({id: el.id, type: el.type, checked: el.checked, value: el.value});
     } else {
@@ -1867,22 +1962,44 @@ function serializeFormState() {
   const prefillScript =
     '<script id="_oap_prefill">\n(function(){\nvar S=' + stateJson + ';\n' +
     'function ap(){\n' +
+    // Reset generate button and status frozen by the serialize snapshot
+    '  var gb=document.getElementById("generateBtn");if(gb)gb.disabled=false;\n' +
+    '  var st=document.getElementById("status");if(st){st.textContent="";st.style.color="";}\n' +
     '  var ns=document.getElementById("num_schools");\n' +
     '  if(ns&&S.num_schools){ns.value=S.num_schools;if(typeof updateSchoolFields==="function")updateSchoolFields();}\n' +
     '  var nj=document.getElementById("num_judges");\n' +
     '  if(nj&&S.num_judges){nj.value=S.num_judges;if(typeof updateJudgeFields==="function")updateJudgeFields();}\n' +
-    '  if(S.director_counts){S.director_counts.forEach(function(cnt,i){\n' +
-    '    for(var r=1;r<cnt;r++){if(typeof addDirectorRow==="function")addDirectorRow(i+1);}\n' +
-    '  });}\n' +
+    // Restore all non-director fields first
     '  S.fields.forEach(function(f){\n' +
     '    var el=document.getElementById(f.id);if(!el)return;\n' +
     '    if(f.type==="checkbox"){el.checked=!!f.checked;}\n' +
     '    else if(f.type==="radio"){if(f.checked)el.checked=true;}\n' +
     '    else{el.value=f.value||"";}\n' +
     '  });\n' +
+    // Restore directors by position to avoid ID-gap issues from mid-row removals
+    '  if(S.director_data){S.director_data.forEach(function(dirs,si){\n' +
+    '    var idx=si+1;\n' +
+    '    var con=document.getElementById("school_"+idx+"_directors");\n' +
+    '    if(!con)return;\n' +
+    '    var existing=con.querySelectorAll(".director-row").length;\n' +
+    '    for(var d=existing;d<dirs.length;d++){if(typeof addDirectorRow==="function")addDirectorRow(idx);}\n' +
+    '    dirs.forEach(function(dir,di){\n' +
+    '      var ni=document.getElementById("school_"+idx+"_dir_"+(di+1)+"_name");\n' +
+    '      var ei=document.getElementById("school_"+idx+"_dir_"+(di+1)+"_email");\n' +
+    '      if(ni)ni.value=dir.name||"";\n' +
+    '      if(ei)ei.value=dir.email||"";\n' +
+    '    });\n' +
+    '    if(typeof updateDirRemoveButtons==="function")updateDirRemoveButtons(idx);\n' +
+    '  });}\n' +
     '  if(typeof updateContestName==="function")updateContestName();\n' +
     '  if(typeof updateEmailList==="function")updateEmailList();\n' +
     '  for(var j=1;j<=3;j++){if(typeof toggleHotelNights==="function")toggleHotelNights(j);}\n' +
+    // Restore locked critique assignment
+    '  if(S.critique_assignment&&S.critique_locked){\n' +
+    '    if(typeof _critiqueAssignments!=="undefined")_critiqueAssignments=S.critique_assignment;\n' +
+    '    if(typeof _critiqueLocked!=="undefined")_critiqueLocked=true;\n' +
+    '    if(typeof renderCritiqueAssignments==="function")renderCritiqueAssignments();\n' +
+    '  }\n' +
     '}\n' +
     'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){setTimeout(ap,50);});}' +
     'else{setTimeout(ap,50);}\n' +
@@ -2740,9 +2857,13 @@ function jumpTo(id) {
 //  CRITIQUE ASSIGNMENT RANDOMIZER
 // ═══════════════════════════════════════════════════════════════
 var _critiqueAssignments = null;
+var _critiqueLocked = false;
 
 function runCritiqueRandomizer() {
-  if (_critiqueAssignments) {
+  if (_critiqueLocked) {
+    if (!confirm('This assignment is locked. Unlock and re-randomize?')) return;
+    _critiqueLocked = false;
+  } else if (_critiqueAssignments) {
     if (!confirm('Are you sure you want to regenerate critique assignments?')) return;
   }
   _critiqueAssignments = generateCritiqueAssignments();
@@ -2830,7 +2951,10 @@ function renderCritiqueAssignments() {
   var N = schools.length;
 
   var judgeColors = ['#D6E4F0', '#D8EDDA', '#FFF3CD', '#FCE4EC'];
-  var judgeBorder = ['#9BB8D4', '#9BCBA0', '#F0D080', '#F4ABBD'];
+
+  var moveCol = !_critiqueLocked
+    ? '<th style="background:#4A148C;color:#fff;padding:6px 4px;text-align:center;width:58px">Move</th>'
+    : '';
 
   var html = '<table style="width:100%;border-collapse:collapse;font-size:0.87rem;margin-top:4px">' +
     '<thead><tr>' +
@@ -2838,6 +2962,7 @@ function renderCritiqueAssignments() {
     '<th style="background:#4A148C;color:#fff;padding:6px 10px;text-align:left">School</th>' +
     '<th style="background:#4A148C;color:#fff;padding:6px 10px;text-align:left">Play Title</th>' +
     '<th style="background:#4A148C;color:#fff;padding:6px 10px;text-align:left">Judge Assigned</th>' +
+    moveCol +
     '</tr></thead><tbody>';
 
   for (var i = 0; i < N; i++) {
@@ -2849,12 +2974,18 @@ function renderCritiqueAssignments() {
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd;text-align:center;font-weight:700;color:#555">' + (i + 1) + '</td>' +
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd">' + xe(schools[i].name) + '</td>' +
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd;font-style:italic;color:#555">' + xe(schools[i].play || '\u2014') + '</td>' +
-      '<td style="padding:5px 10px;border-bottom:1px solid #ddd;font-weight:700">' + label + '</td>' +
-      '</tr>';
+      '<td style="padding:5px 10px;border-bottom:1px solid #ddd;font-weight:700">' + label + '</td>';
+    if (!_critiqueLocked) {
+      html += '<td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:center;white-space:nowrap">' +
+        '<button class="critique-move-btn" onclick="moveCritiqueRow(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + ' title="Move up">\u2191</button> ' +
+        '<button class="critique-move-btn" onclick="moveCritiqueRow(' + i + ',1)"' + (i === N - 1 ? ' disabled' : '') + ' title="Move down">\u2193</button>' +
+        '</td>';
+    }
+    html += '</tr>';
   }
   html += '</tbody></table>';
 
-  // Summary row
+  // Summary
   html += '<div style="margin-top:12px;font-size:0.81rem;color:#444;display:flex;flex-wrap:wrap;gap:14px">';
   for (var jj = 1; jj <= J; jj++) {
     var cnt = result.filter(function(x) { return x === jj; }).length;
@@ -2869,7 +3000,48 @@ function renderCritiqueAssignments() {
     html += '<p style="margin-top:10px;font-size:0.78rem;color:#888;font-style:italic">\u26a0\ufe0f After-Each mode: Judge 1 is not assigned the last school.</p>';
   }
 
+  // Lock / unlock controls
+  if (_critiqueLocked) {
+    html += '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">' +
+      '<span class="critique-locked-notice">\uD83D\uDD12 Assignment locked \u2014 saved with this contest</span>' +
+      '<button class="critique-unlock-btn" onclick="unlockCritiqueAssignment()">\uD83D\uDD13 Unlock &amp; Re-randomize</button>' +
+      '</div>';
+  } else {
+    html += '<div style="margin-top:14px;text-align:center">' +
+      '<button class="critique-lock-btn" onclick="lockCritiqueAssignment()">\uD83D\uDD12 Lock &amp; Save This Assignment</button>' +
+      '<p style="margin-top:6px;font-size:0.78rem;color:#888">Use \u2191\u2193 to adjust order first, then lock to persist through generate/regenerate.</p>' +
+      '</div>';
+  }
+
   out.innerHTML = html;
+}
+
+function lockCritiqueAssignment() {
+  if (!_critiqueAssignments) return;
+  _critiqueLocked = true;
+  renderCritiqueAssignments();
+}
+
+function unlockCritiqueAssignment() {
+  _critiqueLocked = false;
+  renderCritiqueAssignments();
+}
+
+function moveCritiqueRow(idx, dir) {
+  if (!_critiqueAssignments) return;
+  var result = _critiqueAssignments.result;
+  var newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= result.length) return;
+  var tmp = result[idx]; result[idx] = result[newIdx]; result[newIdx] = tmp;
+  renderCritiqueAssignments();
+}
+
+function toggleSwPassword() {
+  var inp = document.getElementById('sw_password');
+  var btn = document.getElementById('sw_pw_toggle');
+  if (!inp || !btn) return;
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; }
+  else { inp.type = 'password'; btn.textContent = 'Show'; }
 }
 
 // =================================================================
