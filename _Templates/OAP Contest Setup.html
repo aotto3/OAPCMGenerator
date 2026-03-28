@@ -5,22 +5,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>UIL OAP Contest Setup Generator</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<!-- Preload hints: browser starts downloading these immediately but doesn't block rendering.
+     The actual <script> tags are at the bottom of <body> so they don't block DOM parsing. -->
+<link rel="preload" as="script" href="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+<link rel="preload" as="script" href="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
+<link rel="preload" as="script" href="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js">
 <style>
 
-/* ── Brand colour tokens ───────────────────────────────────────
-   Change once here to update the whole tool's palette.         */
+/* Brand colour tokens — change here to update the whole palette */
 :root {
-  --c-blue:     #1F4E79;  /* primary heading / action blue      */
-  --c-purple:   #6A1B9A;  /* critique / accent purple           */
-  --c-green:    #2E7D32;  /* success / locked green             */
-  --c-red:      #C62828;  /* error / danger red                 */
-  --c-amber:    #B45309;  /* warning amber                      */
-  --c-bg-blue:  #E3F2FD;  /* light blue tint background         */
-  --c-bg-green: #E8F5E9;  /* light green tint background        */
-  --c-bg-red:   #FFEBEE;  /* light red tint background          */
+  --c-blue:#1F4E79; --c-purple:#6A1B9A; --c-green:#2E7D32; --c-red:#C62828; --c-amber:#B45309;
+  --c-bg-blue:#E3F2FD; --c-bg-green:#E8F5E9; --c-bg-red:#FFEBEE;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -124,8 +119,11 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 .critique-unlock-btn:hover { background:#FFEBEE; }
 .critique-locked-notice { display:inline-flex;align-items:center;gap:8px;background:#E8F5E9;border:1.5px solid #A5D6A7;border-radius:6px;padding:5px 14px;font-size:0.85rem;font-weight:700;color:#2E7D32; }
 
-/* ── Semantic button classes ───────────────────────────────────
-   Use these on new buttons instead of repeating inline styles. */
+/* Quick-link anchors (Quick Links panel) */
+.quick-link { display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none; }
+.quick-link:hover { background:#D6E8F7; }
+
+/* Semantic button classes — use on new buttons instead of repeating inline styles */
 .btn-primary  { background:var(--c-blue);color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:0.88rem;font-weight:700;cursor:pointer; }
 .btn-primary:hover  { filter:brightness(1.12); }
 .btn-success  { background:linear-gradient(135deg,#1B5E20,var(--c-green));color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:0.88rem;font-weight:700;cursor:pointer; }
@@ -171,16 +169,16 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 <div class="email-list-box" style="margin-bottom:10px">
   <h3>🔗 Quick Links</h3>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-    <a href="https://www.uiltexas.org/theatre/resources-forms" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://www.uiltexas.org/theatre/resources-forms" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">📄</span> Resources &amp; Forms
     </a>
-    <a href="https://www.uiltexas.org/theatre/oap-handbook" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://www.uiltexas.org/theatre/oap-handbook" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">📖</span> UIL OAP Handbook
     </a>
-    <a href="https://manage.speechwire.com/tabroom/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://manage.speechwire.com/tabroom/" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">🗳️</span> Speechwire
     </a>
-    <a href="https://www.uiltexas.org/theatre/high-school-one-act/tabulation" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://www.uiltexas.org/theatre/high-school-one-act/tabulation" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">🧮</span> Tabulation Tool
     </a>
   </div>
@@ -571,6 +569,10 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 </div>
 
 </div>
+<!-- CDN libraries loaded here (end of body) so they don't block initial page render. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 
 // =================================================================
@@ -1170,8 +1172,11 @@ function updateSchoolFields() {
   updateEmailList();
   for (let i = 1; i <= n; i++) attachSchoolAutocomplete(i);
 }
-// Init
-updateJudgeFields(); updateSchoolFields(); updateContestName(); renderSnapshotList();
+// Init — critical layout work runs synchronously so the form renders correctly on first paint.
+// renderSnapshotList is deferred one frame: it populates a collapsed section and doesn't
+// need to block the initial render.
+updateJudgeFields(); updateSchoolFields(); updateContestName();
+requestAnimationFrame(renderSnapshotList);
 
 // ═══════════════════════════════════════════════════════════════
 //  UTILITIES
@@ -1428,7 +1433,9 @@ function calculateSchedule(vars) {
 // ═══════════════════════════════════════════════════════════════
 //  SCHEDULE PREVIEW
 // ═══════════════════════════════════════════════════════════════
-const SCHOOL_COLORS_HEX = ['#FEF2CB','#B4C6E7','#F4B083','#C5E0B3','#FFFF00','#FFC000','#E06666','#CCA3FF'];
+const SCHOOL_COLORS_HEX  = ['#FEF2CB','#B4C6E7','#F4B083','#C5E0B3','#FFFF00','#FFC000','#E06666','#CCA3FF'];
+// Same palette without '#' prefix — used by SheetJS cell-fill (fgColor.rgb expects bare hex)
+const SCHOOL_COLORS_XLSX = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
 function updateSchedulePreview() {
   const box = document.getElementById('schedule_preview_box');
   if (!box) return;
@@ -1680,7 +1687,7 @@ function setCellStyled(ws, addr, cell) {
 function minToFrac(mins) { return mins / 1440; }
 function genContestSchedule(vars) {
   const events = calculateSchedule(vars);
-  const SCHOOL_COLORS = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
+  const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
   const GREY = 'DADADA';
   const BLACK = '000000';
   const wb = XLSX.utils.book_new();
@@ -1741,7 +1748,7 @@ function genContestSchedule(vars) {
 //  DOC 3: REHEARSAL SCHEDULE (.xlsx)
 // ═══════════════════════════════════════════════════════════════
 function genRehearsalSchedule(vars) {
-  const SCHOOL_COLORS = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
+  const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
   const BLACK = '000000';
   const GREY  = 'DADADA';
   const slotLen = vars.rehearsal_length_minutes + 10; // rehearsal time + 10-min transition
