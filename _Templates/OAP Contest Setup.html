@@ -1,3 +1,4 @@
+<!-- OAP Contest Manager v11 | 2026-03-28 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +9,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <style>
+
+/* ── Brand colour tokens ───────────────────────────────────────
+   Change once here to update the whole tool's palette.         */
+:root {
+  --c-blue:     #1F4E79;  /* primary heading / action blue      */
+  --c-purple:   #6A1B9A;  /* critique / accent purple           */
+  --c-green:    #2E7D32;  /* success / locked green             */
+  --c-red:      #C62828;  /* error / danger red                 */
+  --c-amber:    #B45309;  /* warning amber                      */
+  --c-bg-blue:  #E3F2FD;  /* light blue tint background         */
+  --c-bg-green: #E8F5E9;  /* light green tint background        */
+  --c-bg-red:   #FFEBEE;  /* light red tint background          */
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #eef2f7; color: #222; min-height: 100vh; }
@@ -110,6 +124,19 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 .critique-unlock-btn:hover { background:#FFEBEE; }
 .critique-locked-notice { display:inline-flex;align-items:center;gap:8px;background:#E8F5E9;border:1.5px solid #A5D6A7;border-radius:6px;padding:5px 14px;font-size:0.85rem;font-weight:700;color:#2E7D32; }
 
+/* ── Semantic button classes ───────────────────────────────────
+   Use these on new buttons instead of repeating inline styles. */
+.btn-primary  { background:var(--c-blue);color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:0.88rem;font-weight:700;cursor:pointer; }
+.btn-primary:hover  { filter:brightness(1.12); }
+.btn-success  { background:linear-gradient(135deg,#1B5E20,var(--c-green));color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:0.88rem;font-weight:700;cursor:pointer; }
+.btn-success:hover  { filter:brightness(1.1); }
+.btn-danger   { background:#fff;border:1.5px solid var(--c-red);color:var(--c-red);border-radius:6px;padding:6px 18px;font-size:0.82rem;font-weight:700;cursor:pointer; }
+.btn-danger:hover   { background:var(--c-bg-red); }
+.btn-ghost    { background:#fff;border:1.5px solid #B0BEC5;color:#444;border-radius:6px;padding:6px 16px;font-size:0.82rem;font-weight:600;cursor:pointer; }
+.btn-ghost:hover    { background:#F5F5F5; }
+.btn-util     { background:var(--c-bg-blue);border:1.5px solid #B3C5EF;color:var(--c-blue);border-radius:6px;padding:6px 16px;font-size:0.82rem;font-weight:600;cursor:pointer; }
+.btn-util:hover     { background:#D6E4F7; }
+
 </style>
 </head>
 <body>
@@ -136,6 +163,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
     <button class="sc-btn" onclick="jumpTo('sec-generate')">⬇ Generate</button>
     <button class="sc-btn" onclick="jumpTo('sec-email-composer')">✉️ Email Draft</button>
     <button class="sc-btn" onclick="jumpTo('sec-critique')">🎲 Critiques</button>
+    <button class="sc-btn" onclick="jumpTo('sec-schedule-preview')">📋 Schedule Preview</button>
   </div>
 </div>
 
@@ -160,7 +188,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ SNAPSHOTS ══════════════════════════════════════════════════ -->
 <div class="section sec-snap" id="sec-snapshots">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📂 Saved Snapshots</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Year-over-year reuse</span><span class="chevron">▼</span></div>
   </div>
@@ -181,7 +209,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ CM INFO ═══════════════════════════════════════════════════ -->
 <div class="section sec-cm" id="sec-cm">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>👤 Contest Manager Information</h2>
     <span class="chevron" style="transform:rotate(180deg)">▼</span>
   </div>
@@ -201,7 +229,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ TIER 1 ════════════════════════════════════════════════════ -->
 <div class="section sec-t1" id="sec-t1">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📋 Contest Identity</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Upon Appointment</span><span class="chevron" style="transform:rotate(180deg)">▼</span></div>
   </div>
@@ -247,7 +275,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ TIER 2 ════════════════════════════════════════════════════ -->
 <div class="section sec-t2" id="sec-t2">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📅 Contest Details</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">After Planning Meeting</span><span class="chevron">▼</span></div>
   </div>
@@ -261,11 +289,13 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
     <div class="divider">Competition Format</div>
     <div class="field-grid g3">
       <div class="field">
-        <label>Critique Format</label>
-        <div class="radio-group">
-          <label><input type="radio" name="critique_format" value="after_each" id="cf_each" onchange="updateSchedulePreview()"> After Each Show</label>
-          <label><input type="radio" name="critique_format" value="after_all" id="cf_all" checked onchange="updateSchedulePreview()"> After All Shows</label>
-        </div>
+        <fieldset style="border:none;padding:0;margin:0">
+          <legend style="font-weight:600;font-size:0.82rem;color:#555;margin-bottom:4px">Critique Format</legend>
+          <div class="radio-group">
+            <label><input type="radio" name="critique_format" value="after_each" id="cf_each" onchange="updateSchedulePreview()"> After Each Show</label>
+            <label><input type="radio" name="critique_format" value="after_all" id="cf_all" checked onchange="updateSchedulePreview()"> After All Shows</label>
+          </div>
+        </fieldset>
       </div>
       <div class="field">
         <label>Number of Judges</label>
@@ -345,7 +375,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
         <label>Speechwire Password</label>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="password" id="sw_password" placeholder="Provided by state theatre director" style="flex:1" autocomplete="off">
-          <button type="button" id="sw_pw_toggle" onclick="toggleSwPassword()" style="background:#E3F2FD;border:1.5px solid #90CAF9;color:#1565C0;border-radius:5px;padding:6px 11px;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap">Show</button>
+          <button type="button" id="sw_pw_toggle" onclick="toggleSwPassword()" aria-label="Show password" aria-pressed="false" style="background:#E3F2FD;border:1.5px solid #90CAF9;color:#1565C0;border-radius:5px;padding:6px 11px;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap">Show</button>
         </div>
         <span class="hint">Per-contest credentials — saved with this contest's snapshot and regenerate backup.</span>
       </div>
@@ -355,7 +385,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ TIER 3 ════════════════════════════════════════════════════ -->
 <div class="section sec-t3" id="sec-t3">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>⚖️ Adjudicators</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">After Contracting</span><span class="chevron">▼</span></div>
   </div>
@@ -397,7 +427,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ SCHOOLS & DIRECTORS ══════════════════════════════════════ -->
 <div class="section sec-t4" id="sec-schools">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>🏫 Schools &amp; Directors</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Enter As Known</span><span class="chevron" style="transform:rotate(180deg)">▼</span></div>
   </div>
@@ -409,7 +439,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ PLAY TITLES & ORDER ═══════════════════════════════════════ -->
 <div class="section sec-t4b" id="sec-plays">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>🎭 Play Titles &amp; Performance Order</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">After Entry Deadline</span><span class="chevron">▼</span></div>
   </div>
@@ -421,7 +451,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ DOCUMENTS TO GENERATE ════════════════════════════════════ -->
 <div class="section sec-docs" id="sec-docs">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📦 Documents to Generate</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Select All That Apply</span><span class="chevron" style="transform:rotate(180deg)">▼</span></div>
   </div>
@@ -492,7 +522,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ EMAIL DRAFT COMPOSER ══════════════════════════════════════ -->
 <div class="section sec-email" id="sec-email-composer" style="margin-top:10px">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>✉️ Email Draft Composer</h2>
     <span class="chevron">▼</span>
   </div>
@@ -515,7 +545,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ SCHEDULE PREVIEW ══════════════════════════════════════════ -->
 <div class="section sec-sched" id="sec-schedule-preview" style="margin-top:10px">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📋 Contest Day Schedule Preview</h2>
     <span class="chevron">▼</span>
   </div>
@@ -527,7 +557,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ CRITIQUE ASSIGNMENT RANDOMIZER ═══════════════════════════ -->
 <div class="section sec-critique" id="sec-critique" style="margin-top:10px">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>🎲 Critique Assignment Randomizer</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">CM Eyes Only</span><span class="chevron">▼</span></div>
   </div>
@@ -552,6 +582,16 @@ var AWARDS_PDF_B64 = 'JVBERi0xLjYNJeLjz9MNCjU5IDAgb2JqDTw8L0xpbmVhcml6ZWQgMS9MID
 
 
 // ═══════════════════════════════════════════════════════════════
+//  APP-WIDE CONSTANTS
+//  Centralised so any future capacity change is a one-line edit.
+// ═══════════════════════════════════════════════════════════════
+const MAX_SCHOOLS        = 8;   // Maximum number of competing schools supported
+const MAX_JUDGES         = 3;   // Maximum number of adjudicators supported
+const DEFAULT_SCHOOLS    = 6;   // Default num_schools when no value is present
+const DEFAULT_JUDGES     = 3;   // Default num_judges when no value is present
+const CRIT_MINS_PER_SHOW = 15;  // Minutes allocated per critique slot in the schedule
+
+// ═══════════════════════════════════════════════════════════════
 //  UI HELPERS
 // ═══════════════════════════════════════════════════════════════
 function toggle(header) {
@@ -559,6 +599,7 @@ function toggle(header) {
   const chev = header.querySelector('.chevron');
   const open = body.classList.toggle('open');
   chev.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+  header.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 function toggleDocCheck(lbl) {
   lbl.classList.toggle('checked');
@@ -592,7 +633,7 @@ function updateRehearsalDay2UI() {
 function updateRehearsalDay1CountOptions() {
   const sel = document.getElementById('rehearsal_day_1_count');
   if (!sel) return;
-  const n   = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+  const n   = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
   const cur = parseInt(sel.value) || 0;
   const def = cur || Math.floor(n / 2) || 1;
   sel.innerHTML = '';
@@ -605,7 +646,7 @@ function updateRehearsalDay1CountOptions() {
   updateRehearsalDay2Count();
 }
 function updateRehearsalDay2Count() {
-  const n    = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+  const n    = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
   const d1   = parseInt((document.getElementById('rehearsal_day_1_count') || {}).value) || Math.floor(n / 2);
   const disp = document.getElementById('rehearsal_day_2_display');
   if (disp) { const d2 = n - d1; disp.value = d2 + (d2 === 1 ? ' school' : ' schools'); }
@@ -634,7 +675,7 @@ function autoCalcDeadlines() {
   }
 }
 function updateEmailList() {
-  const n = parseInt(document.getElementById('num_schools').value) || 6;
+  const n = parseInt(document.getElementById('num_schools').value) || DEFAULT_SCHOOLS;
   const emails = [];
   for (let i = 1; i <= n; i++) {
     const con = document.getElementById('school_' + i + '_directors');
@@ -659,7 +700,7 @@ const OAP_SNAP_FIELDS = [
 const OAP_SNAP_SELECTS = ['contest_level','classification'];
 
 function serializeState() {
-  const numSchools = parseInt(gv('num_schools')) || 6;
+  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
   const fields = {};
   [...OAP_SNAP_FIELDS, ...OAP_SNAP_SELECTS].forEach(id => {
     const el = document.getElementById(id); if (el) fields[id] = el.value;
@@ -683,7 +724,25 @@ function serializeState() {
   };
 }
 
+/**
+ * Applies forward-only migrations to snapshot data so that snapshots saved
+ * under an older schema continue to load correctly as the schema evolves.
+ * Always returns the (possibly mutated) data object.
+ * INCREMENT data.v and add a migration block here whenever the schema changes.
+ * Current schema version: 2
+ */
+function migrateSnapshot(data) {
+  if (!data) return data;
+  // v1 → v2: school objects now include a `play` field
+  if (!data.v || data.v < 2) {
+    (data.schools || []).forEach(function(s) { if (s.play === undefined) s.play = ''; });
+    data.v = 2;
+  }
+  return data;
+}
+
 function restoreState(data) {
+  data = migrateSnapshot(data);
   // 1. num_schools first — triggers DOM rebuild
   const nsSel = document.getElementById('num_schools');
   if (nsSel) { nsSel.value = data.num_schools || '6'; updateSchoolFields(); }
@@ -692,7 +751,7 @@ function restoreState(data) {
     const el = document.getElementById(id); if (el) el.value = val;
   });
   // 3. Schools & directors
-  const numS = parseInt(data.num_schools) || 6;
+  const numS = parseInt(data.num_schools) || DEFAULT_SCHOOLS;
   (data.schools || []).slice(0, numS).forEach((s, i) => {
     const idx = i + 1;
     const nameEl = document.getElementById('school_' + idx + '_name');
@@ -716,6 +775,27 @@ function restoreState(data) {
   updateSchedulePreview();
 }
 
+/**
+ * localStorage.setItem wrapper that catches QuotaExceededError and alerts the user
+ * with actionable guidance instead of silently failing.
+ * @param {string} key
+ * @param {string} value
+ * @returns {boolean} true if the write succeeded, false if quota was exceeded.
+ */
+function safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch(e) {
+    if (e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (e.code && e.code === 22))) {
+      alert('⚠️ Storage quota exceeded — your snapshot could not be saved.\n\nTry exporting and deleting old snapshots to free space.');
+    } else {
+      alert('⚠️ Could not save to local storage: ' + (e && e.message ? e.message : 'Unknown error'));
+    }
+    return false;
+  }
+}
+
 function getSnapshots() {
   try { return JSON.parse(localStorage.getItem(OAP_SNAP_KEY) || '{}'); } catch(e) { return {}; }
 }
@@ -737,7 +817,7 @@ function importSnapshots(input) {
       const imported = JSON.parse(e.target.result);
       if (typeof imported !== 'object' || Array.isArray(imported)) throw new Error();
       const merged = Object.assign({}, getSnapshots(), imported);
-      localStorage.setItem(OAP_SNAP_KEY, JSON.stringify(merged));
+      safeStorageSet(OAP_SNAP_KEY, JSON.stringify(merged));
       renderSnapshotList();
       const n = Object.keys(imported).length;
       alert('✅ Imported ' + n + ' snapshot' + (n === 1 ? '' : 's') + '.');
@@ -817,7 +897,7 @@ function saveSnapshot() {
   const snaps = getSnapshots();
   snaps[name] = serializeState();
   snaps[name].label = name;
-  localStorage.setItem(OAP_SNAP_KEY, JSON.stringify(snaps));
+  safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
   nameEl.value = '';
   renderSnapshotList();
   const btn = document.getElementById('save_snapshot_btn');
@@ -835,7 +915,7 @@ function deleteSnapshot(name) {
   if (!confirm('Delete snapshot "' + name + '"?')) return;
   const snaps = getSnapshots();
   delete snaps[name];
-  localStorage.setItem(OAP_SNAP_KEY, JSON.stringify(snaps));
+  safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
   renderSnapshotList();
 }
 
@@ -929,7 +1009,7 @@ const EMAIL_TEMPLATES = {
       const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors\u2019 Meeting]';
       const cfEl = document.querySelector('input[name="critique_format"]:checked');
       const cfText = (cfEl && cfEl.value === 'after_each') ? 'after each show' : 'after all shows';
-      const numS = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+      const numS = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
       const shows = [];
       for (let i = 1; i <= numS; i++) {
         const ord  = parseInt(gv('play_' + i + '_order')) || i;
@@ -1017,10 +1097,11 @@ function updateSchoolFields() {
   const n = parseInt(document.getElementById('num_schools').value);
   const schoolCon = document.getElementById('school_entries');
   const playCon   = document.getElementById('play_entries');
+  if (!schoolCon || !playCon) return;
   // Preserve existing values — including directors
   const saved = {};
   const savedDirs = {};
-  for (let i = 1; i <= 8; i++) {
+  for (let i = 1; i <= MAX_SCHOOLS; i++) {
     const nameEl = document.getElementById('school_' + i + '_name');
     if (nameEl) saved['s' + i + '_name'] = nameEl.value;
     const pPlay = document.getElementById('play_' + i + '_play');
@@ -1041,7 +1122,7 @@ function updateSchoolFields() {
   schoolCon.innerHTML = '';
   playCon.innerHTML   = '';
   for (let i = 1; i <= n; i++) {
-    const sName = (saved['s' + i + '_name'] || '').replace(/"/g, '&quot;');
+    const sName = xe(saved['s' + i + '_name'] || '');
     // School block — director 1 row has a Remove button (hidden until a 2nd row exists)
     schoolCon.innerHTML +=
       '<div class="school-block">' +
@@ -1061,7 +1142,7 @@ function updateSchoolFields() {
       '</div>';
     // Play block
     const ordVal = saved['p' + i + '_order'] || i;
-    const playVal = (saved['p' + i + '_play'] || '').replace(/"/g, '&quot;');
+    const playVal = xe(saved['p' + i + '_play'] || '');
     playCon.innerHTML +=
       '<div class="play-block">' +
       '<div class="school-lbl" id="play_' + i + '_schoollbl">School ' + i + (sName ? ': ' + sName : '') + '</div>' +
@@ -1095,7 +1176,20 @@ updateJudgeFields(); updateSchoolFields(); updateContestName(); renderSnapshotLi
 // ═══════════════════════════════════════════════════════════════
 //  UTILITIES
 // ═══════════════════════════════════════════════════════════════
+
+/** Returns the trimmed value of a form element by id, or '' if the element
+ *  does not exist. Shorthand used throughout the app.
+ * @param {string} id - DOM element id
+ * @returns {string}
+ */
 function gv(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+/**
+ * Parses a 12-hour time string such as "8:30 AM" or "2 PM" into
+ * minutes-since-midnight (integer). Returns null for empty / unparseable input.
+ * @param {string} str
+ * @returns {number|null}
+ */
 function parseTime(str) {
   if (!str) return null;
   str = str.trim();
@@ -1109,6 +1203,13 @@ function parseTime(str) {
   if (ap === 'AM' && h === 12) h = 0;
   return h * 60 + mn;
 }
+
+/**
+ * Formats minutes-since-midnight as a 12-hour clock string ("8:30 AM").
+ * Returns '' for null / NaN inputs.
+ * @param {number|null} mins
+ * @returns {string}
+ */
 function fmtTime(mins) {
   if (mins == null || isNaN(mins)) return '';
   const h = Math.floor(mins / 60) % 24; const m = mins % 60;
@@ -1128,6 +1229,13 @@ function fmtDateNumeric(ds) {
   const d = new Date(ds + 'T12:00:00');
   return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
 }
+/**
+ * HTML-escapes a value for safe insertion into innerHTML or attribute values.
+ * Escapes &, <, >, and " — always call this on any user-supplied string
+ * before building HTML with string concatenation.
+ * @param {*} s - Value to escape (coerced to string)
+ * @returns {string} HTML-safe string
+ */
 function xe(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1135,9 +1243,21 @@ function xe(s) {
 // ═══════════════════════════════════════════════════════════════
 //  COLLECT VARIABLES
 // ═══════════════════════════════════════════════════════════════
+/**
+ * Reads the entire form and returns a single flat object containing every
+ * value needed by the document generators. This is the canonical source of
+ * truth passed to all generate* functions — add new form fields here first.
+ *
+ * Key properties returned:
+ *   num_schools, num_judges, schools[] (sorted by performance order),
+ *   first_show_minutes (null when not set/unparseable),
+ *   contest_title, folder_name, classification, contest_level, …
+ *
+ * @returns {Object}
+ */
 function collectVars() {
-  const numSchools = parseInt(gv('num_schools')) || 6;
-  const numJudges  = parseInt(gv('num_judges'))  || 3;
+  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
+  const numJudges  = parseInt(gv('num_judges'))  || DEFAULT_JUDGES;
   const yr  = gv('contest_year')  || String(new Date().getFullYear());
   const lv  = gv('contest_level') || 'District';
   const cls = gv('classification') || '5A';
@@ -1193,7 +1313,7 @@ function collectVars() {
     contest_date_numeric:     fmtDateNumeric(gv('contest_date')),
     directors_meeting_time:   gv('directors_meeting_time') || 'TBD',
     first_show_time:          gv('first_show_time') || '',
-    first_show_minutes:       parseTime(gv('first_show_time')),
+    first_show_minutes:       (function(){ const t = parseTime(gv('first_show_time')); return (t != null && !isNaN(t)) ? t : null; })(),
     rehearsal_date_1:         gv('rehearsal_date_1'),
     rehearsal_date_1_display: fmtDate(gv('rehearsal_date_1')),
     rehearsal_date_2:         gv('rehearsal_date_2'),
@@ -1282,7 +1402,7 @@ function calculateSchedule(vars) {
       }
     }
     const showsPerJudge = Math.ceil(n / nj);
-    const critBlock = showsPerJudge * 15;  // 15 min per critique per judge
+    const critBlock = showsPerJudge * CRIT_MINS_PER_SHOW;  // minutes per critique per judge
     const critLbl = nj > 1
       ? 'Critiques \u2014 ' + nj + ' Judges Concurrent'
       : 'Critiques \u2014 ' + n + ' Shows Sequential';
@@ -1318,11 +1438,11 @@ function updateSchedulePreview() {
   events.forEach(ev => {
     let bg = '#DADADA';
     if (ev.type === 'show') bg = SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
-    const school = ev.type === 'show' ? ev.school + (ev.play ? ' \u2014 ' + ev.play : '') : '';
+    const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' \u2014 ' + xe(ev.play) : '') : '';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.start) + '</td>' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.end) + '</td>' +
-      '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + ev.label + '</td>' +
+      '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + xe(ev.label) + '</td>' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + school + '</td>' +
       '</tr>';
   });
@@ -1926,7 +2046,7 @@ async function genChecklist(vars) {
 //  FORM STATE SERIALIZER (pre-filled HTML backup in ZIP)
 // ═══════════════════════════════════════════════════════════════
 function serializeFormState() {
-  const numSchools = parseInt(gv('num_schools')) || 6;
+  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
   const state = {
     num_schools: gv('num_schools'),
     num_judges:  gv('num_judges'),
@@ -2701,12 +2821,36 @@ async function genPreRehearsalMeeting(vars) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  DEPENDENCY CHECK — called at start of generateAll()
+// ═══════════════════════════════════════════════════════════════
+/**
+ * Checks that all CDN libraries loaded successfully.
+ * @returns {string[]} Array of human-readable missing-library messages.
+ *                     Empty array means all dependencies are present.
+ */
+function checkDependencies() {
+  const missing = [];
+  if (typeof XLSX === 'undefined')  missing.push('SheetJS (XLSX) — required for Excel files');
+  if (typeof JSZip === 'undefined') missing.push('JSZip — required for ZIP download');
+  return missing;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  MAIN: GENERATE ALL → ZIP
 // ═══════════════════════════════════════════════════════════════
 async function generateAll() {
   const btn = document.getElementById('generateBtn');
   const statusEl = document.getElementById('status');
+  if (!btn || !statusEl) return;
   btn.disabled = true; statusEl.style.color = '#555';
+
+  const missingLibs = checkDependencies();
+  if (missingLibs.length) {
+    statusEl.textContent = '❌ Cannot generate — missing libraries: ' + missingLibs.join('; ') + '. Check your internet connection and reload the page.';
+    statusEl.style.color = '#C62828';
+    btn.disabled = false;
+    return;
+  }
   try {
     const vars = collectVars();
 
@@ -2798,13 +2942,25 @@ async function generateAll() {
     if (wantAdjPackets && typeof PDFLib !== 'undefined') {
       try {
         statusEl.textContent = '📝 Building Adjudicator Packets…';
-        var packetsBytes = await genAdjudicatorPackets(vars);
-        fold.file('Adjudicator Packets.pdf', packetsBytes); count++;
+        var packetsResult = await genAdjudicatorPackets(vars);
+        fold.file('Adjudicator Packets.pdf', packetsResult.bytes); count++;
+        if (packetsResult.fieldErrors && packetsResult.fieldErrors.length) {
+          console.warn('PDF field fill warnings:', packetsResult.fieldErrors);
+          statusEl.textContent = '⚠️ Adjudicator Packets generated with ' + packetsResult.fieldErrors.length + ' field warning(s) — some fields may be blank. See browser console for details.';
+          statusEl.style.color = '#B45309';
+          await new Promise(function(r) { setTimeout(r, 3000); });
+        }
       } catch(pdfErr) {
         console.error('Adjudicator packet error:', pdfErr);
+        statusEl.textContent = '⚠️ Adjudicator Packets could not be generated: ' + pdfErr.message;
+        statusEl.style.color = '#C62828';
+        await new Promise(function(r) { setTimeout(r, 3000); });
       }
     } else if (wantAdjPackets) {
       console.warn('pdf-lib not loaded - adjudicator packets skipped');
+      statusEl.textContent = '⚠️ pdf-lib library not loaded — Adjudicator Packets skipped. Check your internet connection and reload.';
+      statusEl.style.color = '#B45309';
+      await new Promise(function(r) { setTimeout(r, 3000); });
     }
 
     if (count === 0) { statusEl.style.color='#c62828'; statusEl.textContent='No documents selected.'; btn.disabled=false; return; }
@@ -2831,7 +2987,7 @@ async function generateAll() {
 function toggleDarkMode() {
   const dark = document.body.classList.toggle('dark-mode');
   document.getElementById('darkModeBtn').textContent = dark ? '☀️ Light' : '🌙 Dark';
-  localStorage.setItem('oap_dark', dark ? '1' : '0');
+  safeStorageSet('oap_dark', dark ? '1' : '0');
 }
 // Restore dark mode preference on load
 (function() {
@@ -2968,7 +3124,7 @@ function renderCritiqueAssignments() {
   for (var i = 0; i < N; i++) {
     var jNum = result[i];
     var jName = jNum ? (judgeNames[jNum - 1] || '') : '';
-    var label = jNum ? ('Judge ' + jNum + (jName ? ' \u2014 ' + jName : '')) : '?';
+    var label = jNum ? ('Judge ' + jNum + (jName ? ' \u2014 ' + xe(jName) : '')) : '?';
     var bg = jNum ? judgeColors[(jNum - 1) % judgeColors.length] : '#f5f5f5';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd;text-align:center;font-weight:700;color:#555">' + (i + 1) + '</td>' +
@@ -2992,7 +3148,7 @@ function renderCritiqueAssignments() {
     var jn = judgeNames[jj - 1] || '';
     var bg2 = judgeColors[(jj - 1) % judgeColors.length];
     html += '<span style="background:' + bg2 + ';border-radius:4px;padding:3px 10px">' +
-      'Judge ' + jj + (jn ? ' (' + jn + ')' : '') + ': <strong>' + cnt + ' critique' + (cnt !== 1 ? 's' : '') + '</strong></span>';
+      'Judge ' + jj + (jn ? ' (' + xe(jn) + ')' : '') + ': <strong>' + cnt + ' critique' + (cnt !== 1 ? 's' : '') + '</strong></span>';
   }
   html += '</div>';
 
@@ -3040,8 +3196,8 @@ function toggleSwPassword() {
   var inp = document.getElementById('sw_password');
   var btn = document.getElementById('sw_pw_toggle');
   if (!inp || !btn) return;
-  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; }
-  else { inp.type = 'password'; btn.textContent = 'Show'; }
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; btn.setAttribute('aria-label','Hide password'); btn.setAttribute('aria-pressed','true'); }
+  else { inp.type = 'password'; btn.textContent = 'Show'; btn.setAttribute('aria-label','Show password'); btn.setAttribute('aria-pressed','false'); }
 }
 
 // =================================================================
@@ -3057,6 +3213,7 @@ function _b64ToBytes(b64) {
 async function genAdjudicatorPackets(vars) {
   var PDFDocument = PDFLib.PDFDocument;
   var merged = await PDFDocument.create();
+  var _pdfFieldErrors = [];
 
   // Level checkbox map: contest_level -> field name on Evaluation form
   var levelCheckMap = {
@@ -3092,14 +3249,14 @@ async function genAdjudicatorPackets(vars) {
       var form = evalDoc.getForm();
 
       // Fill header/admin fields only; ratings and comments left blank for judge
-      try { form.getTextField('Title').setText((school.name ? school.name + ' \u2014 ' : '') + (school.play || '')); } catch(e) {}
-      try { form.getTextField('Date').setText(vars.contest_date_short || ''); } catch(e) {}
-      try { form.getTextField('Performance Order').setText(String(school.order)); } catch(e) {}
-      try { form.getTextField('Conference').setText(vars.classification || ''); } catch(e) {}
-      try { form.getTextField('Contest Site').setText(vars.host_venue_name || ''); } catch(e) {}
-      try { form.getTextField('Judge').setText(judgeName); } catch(e) {}
+      try { form.getTextField('Title').setText((school.name ? school.name + ' \u2014 ' : '') + (school.play || '')); } catch(e) { _pdfFieldErrors.push('Eval Title'); }
+      try { form.getTextField('Date').setText(vars.contest_date_short || ''); } catch(e) { _pdfFieldErrors.push('Eval Date'); }
+      try { form.getTextField('Performance Order').setText(String(school.order)); } catch(e) { _pdfFieldErrors.push('Eval Performance Order'); }
+      try { form.getTextField('Conference').setText(vars.classification || ''); } catch(e) { _pdfFieldErrors.push('Eval Conference'); }
+      try { form.getTextField('Contest Site').setText(vars.host_venue_name || ''); } catch(e) { _pdfFieldErrors.push('Eval Contest Site'); }
+      try { form.getTextField('Judge').setText(judgeName); } catch(e) { _pdfFieldErrors.push('Eval Judge'); }
       var cbName = levelCheckMap[vars.contest_level];
-      if (cbName) { try { form.getCheckBox(cbName).check(); } catch(e) {} }
+      if (cbName) { try { form.getCheckBox(cbName).check(); } catch(e) { _pdfFieldErrors.push('Eval level checkbox (' + cbName + ')'); } }
 
       form.flatten();
       var evPages = await merged.copyPages(evalDoc, evalDoc.getPageIndices());
@@ -3110,17 +3267,17 @@ async function genAdjudicatorPackets(vars) {
     var rankDoc = await PDFDocument.load(_b64ToBytes(RANK_PDF_B64));
     var rForm = rankDoc.getForm();
 
-    try { rForm.getDropdown('Panelist').select(panelistLetters[jIdx] || 'A'); } catch(e) {}
-    try { rForm.getDropdown('Conference').select(vars.classification || '5A'); } catch(e) {}
+    try { rForm.getDropdown('Panelist').select(panelistLetters[jIdx] || 'A'); } catch(e) { _pdfFieldErrors.push('Rank Panelist'); }
+    try { rForm.getDropdown('Conference').select(vars.classification || '5A'); } catch(e) { _pdfFieldErrors.push('Rank Conference'); }
     var lvl = levelDropMap[vars.contest_level] || 'District';
-    try { rForm.getDropdown('Level/Zone').select(lvl); } catch(e) {}
+    try { rForm.getDropdown('Level/Zone').select(lvl); } catch(e) { _pdfFieldErrors.push('Rank Level/Zone'); }
 
-    for (var ri = 0; ri < schools.length && ri < 8; ri++) {
+    for (var ri = 0; ri < schools.length && ri < MAX_SCHOOLS; ri++) {
       var rs = schools[ri];
       var playfld = 'Play ' + (ri + 1);
       var sclfld  = ri === 0 ? 'School' : 'School_' + (ri + 1);
-      try { rForm.getTextField(playfld).setText(rs.play || ''); } catch(e) {}
-      try { rForm.getTextField(sclfld).setText(rs.name  || ''); } catch(e) {}
+      try { rForm.getTextField(playfld).setText(rs.play || ''); } catch(e) { _pdfFieldErrors.push('Rank ' + playfld); }
+      try { rForm.getTextField(sclfld).setText(rs.name  || ''); } catch(e) { _pdfFieldErrors.push('Rank ' + sclfld); }
     }
 
     rForm.flatten();
@@ -3136,7 +3293,7 @@ async function genAdjudicatorPackets(vars) {
     }
   }
 
-  return merged.save();
+  return { bytes: await merged.save(), fieldErrors: _pdfFieldErrors };
 }
 
 

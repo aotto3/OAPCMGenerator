@@ -1,13 +1,32 @@
-# OAP_CTX v10 | 2026-03-28
+# OAP_CTX v11 | 2026-03-28
 
 ## PROJECT
 UIL One-Act Play Contest Manager. Single HTML generator (`OAP Contest Setup.html`) collects contest data → outputs ZIP of pre-filled docs. Browser-only, no server. Owner: Allen Otto (CM).
 
-Status: v10. All v9 doc generators intact. Six targeted fixes + feature additions: Speechwire credentials, critique lock/reorder, director remove button, school autocomplete with play title, snapshot year display, play-title persistence. File is now ~1.31 MB (base64 PDFs embedded). ~2850+ lines JS.
+Status: v11. All v10 doc generators intact. Code-health / hardening pass — no functionality changes. See v11 decisions below for all changes. File is now ~1.31 MB (base64 PDFs embedded). ~3200+ lines JS.
 
 ---
 
 ## DECISIONS [do not revisit]
+
+### v11 code-health changes (2026-03-28)
+- **HTML version comment**: `<!-- OAP Contest Manager v11 | 2026-03-28 -->` on line 1 for field debugging.
+- **XSS**: All user-supplied strings now pass through `xe()` before `innerHTML` insertion — `sName`, `playVal` in `updateSchoolFields()`; `ev.label`, `ev.school`, `ev.play` in `updateSchedulePreview()`; `jName`/`jn` in `renderCritiqueAssignments()`.
+- **Null guards**: `if (!schoolCon || !playCon) return` in `updateSchoolFields()`; `if (!btn || !statusEl) return` in `generateAll()`. `renderCritiqueAssignments()` already had a guard.
+- **CDN check**: `checkDependencies()` called at top of `generateAll()` — checks XLSX and JSZip; shows friendly error with reload guidance if either is absent. (pdf-lib already had a typeof guard.)
+- **PDF field error surfacing**: `genAdjudicatorPackets()` now accumulates field fill errors in `_pdfFieldErrors[]`, returns `{bytes, fieldErrors}`. Caller shows amber warning in statusEl with count; does not abort. Empty `catch(e){}` → `catch(e){ _pdfFieldErrors.push(...); }`.
+- **pdf-lib missing warning**: If pdf-lib not loaded and adj packets requested, user now sees a user-friendly amber message instead of silent skip.
+- **Schedule Preview shortcut**: Added "📋 Schedule Preview" pill button to shortcut bar targeting `sec-schedule-preview`.
+- **APP constants**: `MAX_SCHOOLS=8`, `MAX_JUDGES=3`, `DEFAULT_SCHOOLS=6`, `DEFAULT_JUDGES=3`, `CRIT_MINS_PER_SHOW=15` declared at top of script; all magic numbers replaced with named references.
+- **safeStorageSet(key, value)**: Wrapper around `localStorage.setItem` that catches `QuotaExceededError` and alerts user with actionable message. All three snapshot `setItem` calls + dark mode `setItem` now use it.
+- **NaN guard**: `first_show_minutes` in `collectVars()` wrapped in IIFE that returns `null` for unparseable / NaN time values (prevents NaN propagation into schedule arithmetic).
+- **migrateSnapshot(data)**: Called at start of `restoreState()`. Applies forward migrations: v<2 adds missing `play` field to school objects. Increments `data.v` to current (2). Add new blocks here when schema changes.
+- **CSS custom properties**: `:root` block defines `--c-blue`, `--c-purple`, `--c-green`, `--c-red`, `--c-amber`, `--c-bg-blue`, `--c-bg-green`, `--c-bg-red`. Use in new CSS rules instead of raw hex.
+- **Button CSS classes**: `.btn-primary`, `.btn-success`, `.btn-danger`, `.btn-ghost`, `.btn-util` defined in `<style>`. Use on new buttons instead of repeating inline styles.
+- **JSDoc**: Added JSDoc to `gv()`, `parseTime()`, `fmtTime()`, `xe()`, `collectVars()`, `safeStorageSet()`, `migrateSnapshot()`, `checkDependencies()`.
+- **ARIA**: `section-header` divs now have `role="button"`, `aria-expanded="false"` (updated by `toggle()`), `tabindex="0"`, and keyboard handler for Enter/Space. Speechwire password toggle has `aria-label` + `aria-pressed` (updated by `toggleSwPassword()`). Critique format radio group wrapped in `<fieldset>/<legend>`.
+
+### v10 decisions (preserved)
 - **Stack**: SheetJS 0.18.5 + JSZip 3.10.1 (cdnjs) + pdf-lib 1.17.1 (unpkg). No npm, no server.
 - **docx** = raw OOXML via JSZip. **xlsx** = SheetJS `cellStyles:true`.
 - **Checklist DV removed**: JSZip 3.x bug #403 corrupts non-ASCII XML on round-trip. Done? col blank — users fill manually.
@@ -69,7 +88,7 @@ All-Director Email List (always visible box)
 - `sec-t3`: ⚖️ Adjudicators
 
 ### Shortcut bar labels → target IDs
-Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Details→sec-t2, Adjudicators→sec-t3, Schools→sec-schools, Plays→sec-plays, Docs→sec-docs, Generate→sec-generate, Email Draft→sec-email-composer, Critiques→sec-critique
+Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Details→sec-t2, Adjudicators→sec-t3, Schools→sec-schools, Plays→sec-plays, Docs→sec-docs, Generate→sec-generate, Email Draft→sec-email-composer, Critiques→sec-critique, **Schedule Preview→sec-schedule-preview** (v11)
 
 ### Documents to Generate — UI order (all checked by default except noted)
 1. Year-Round Checklist
@@ -91,9 +110,11 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 **Base64 PDF constants** (at very top of script, 3 huge var lines):
 `EVAL_PDF_B64`, `RANK_PDF_B64`, `AWARDS_PDF_B64`
 
-**UI Helpers**: `toggle`, `toggleDocCheck`, `setAllDocs(checked)`, `updateBidcField`, `updateJudgeFields`, `toggleHotelNights`, `updateRehearsalDay2UI/Count`, `updateContestName`, `autoCalcDeadlines`, `updateEmailList`, `copyEmails`, `copyContestName`, `toggleSwPassword` (v10), `updateDirRemoveButtons(schoolIdx)` (v10), `addDirectorRow`, `removeDirRow`, `updateSchoolNameInPlay`, `updateSchoolFields`
+**App constants** (v11): `MAX_SCHOOLS=8`, `MAX_JUDGES=3`, `DEFAULT_SCHOOLS=6`, `DEFAULT_JUDGES=3`, `CRIT_MINS_PER_SHOW=15`
 
-**Snapshots**: `OAP_SNAP_KEY/FIELDS/SELECTS`, `serializeState()`, `restoreState(data)`, `getSnapshots()`, `exportSnapshots()`, `importSnapshots(input)`, `getSnapshotSchools()`, `applySchoolSuggestion(idx,name)`, `attachSchoolAutocomplete(idx)`, `saveSnapshot()`, `loadSnapshot(name)`, `deleteSnapshot(name)`, `renderSnapshotList()`
+**UI Helpers**: `toggle` (v11: sets aria-expanded), `toggleDocCheck`, `setAllDocs(checked)`, `updateBidcField`, `updateJudgeFields`, `toggleHotelNights`, `updateRehearsalDay2UI/Count`, `updateContestName`, `autoCalcDeadlines`, `updateEmailList`, `copyEmails`, `copyContestName`, `toggleSwPassword` (v10, v11: sets aria-pressed), `updateDirRemoveButtons(schoolIdx)` (v10), `addDirectorRow`, `removeDirRow`, `updateSchoolNameInPlay`, `updateSchoolFields`
+
+**Snapshots**: `OAP_SNAP_KEY/FIELDS/SELECTS`, `serializeState()`, `migrateSnapshot(data)` (v11), `restoreState(data)`, `safeStorageSet(key,value)` (v11), `getSnapshots()`, `exportSnapshots()`, `importSnapshots(input)`, `getSnapshotSchools()`, `applySchoolSuggestion(idx,name)`, `attachSchoolAutocomplete(idx)`, `saveSnapshot()`, `loadSnapshot(name)`, `deleteSnapshot(name)`, `renderSnapshotList()`
 
 **Email**: `EMAIL_TEMPLATES` (announcement/deadline/daybefore/judges), `loadEmailTemplate(key)`, `copyEmailSubject()`, `copyEmailBody()`
 
@@ -107,7 +128,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 **Doc generators** (DOC 1–14): `genDirectorLetter`, `genContestSchedule`, `genRehearsalSchedule`, `genContactList`, `genAdjudicatorInfo`, `genChecklist`, `genAwardsScript`, `genDirectorsMeetingScript`, `genTimerDoc`, `genFallAgenda`, `genHostChecklist`, `genAdvancingLetter`, `genPreRehearsalMeeting`
 
-**ZIP builder**: `generateAll()` — validation → wantXxx flags (incl. `wantAdjPackets`, `wantPreRehearsalMeeting`) → per-doc conditionals → adj packets block (gated on `wantAdjPackets && typeof PDFLib !== 'undefined'`) → count===0 check → ZIP packaging
+**ZIP builder**: `generateAll()` — `checkDependencies()` (v11) → validation → wantXxx flags (incl. `wantAdjPackets`, `wantPreRehearsalMeeting`) → per-doc conditionals → adj packets block (gated on `wantAdjPackets && typeof PDFLib !== 'undefined'`) → count===0 check → ZIP packaging. `checkDependencies()` (v11) checks XLSX+JSZip; aborts with user-visible error if missing.
 
 **Regenerate serializer**: `serializeFormState()` — captures `director_data[][]` (position-based, not ID-based) + `critique_assignment` + `critique_locked` into state blob; prefill script resets button/status, restores all non-director fields by ID, restores directors by position, restores locked critique if present.
 
@@ -115,7 +136,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 **Critique randomizer**: `_critiqueAssignments` (module var), `_critiqueLocked` (v10), `runCritiqueRandomizer()`, `generateCritiqueAssignments()`, `renderCritiqueAssignments()`, `lockCritiqueAssignment()` (v10), `unlockCritiqueAssignment()` (v10), `moveCritiqueRow(idx, dir)` (v10)
 
-**PDF helpers**: `_b64ToBytes(b64)`, `genAdjudicatorPackets(vars)`
+**PDF helpers**: `_b64ToBytes(b64)`, `genAdjudicatorPackets(vars)` — v11: returns `{bytes, fieldErrors[]}` instead of bare bytes. Caller surfaces non-zero fieldErrors as amber warning in statusEl.
 
 **Dark mode**: `toggleDarkMode()`, IIFE on load to restore from `localStorage('oap_dark')`. Filter applied to `.container`, not `body`, to avoid fixed-position stacking context bug.
 
@@ -161,6 +182,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 `body.dark-mode .container { filter:invert(1) hue-rotate(180deg); }` (dark mode on container, not body)
 `#darkModeBtn` — fixed position bottom-right, persists via localStorage
 **v10 additions**: `.critique-move-btn`, `.critique-lock-btn`, `.critique-unlock-btn`, `.critique-locked-notice`
+**v11 additions**: `:root` CSS custom properties (`--c-blue`, `--c-purple`, `--c-green`, `--c-red`, `--c-amber`, `--c-bg-blue`, `--c-bg-green`, `--c-bg-red`); semantic button classes `.btn-primary`, `.btn-success`, `.btn-danger`, `.btn-ghost`, `.btn-util`
 
 ### Existing design details (unchanged)
 **Schedule colors** (school idx 0–7): `['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF']`. Header: `000000`. Admin/grey: `DADADA`.
@@ -181,6 +203,10 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 ## TASKS [priority order]
 1. *(none pending)*
+
+### Future CSS migration (deferred, not urgent)
+- CSS custom properties (`:root` tokens) are declared but not yet wired into existing CSS rules — existing hex values remain. New rules should use `var(--c-blue)` etc.
+- Semantic button classes (`.btn-primary` etc.) are defined. Refactoring existing inline `style=` on buttons to use these classes is a future cleanup task (154 inline button styles exist).
 
 ---
 
