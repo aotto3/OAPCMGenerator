@@ -1,13 +1,23 @@
-# OAP_CTX v11 | 2026-03-28
+# OAP_CTX v12 | 2026-03-31
 
 ## PROJECT
 UIL One-Act Play Contest Manager. Single HTML generator (`OAP Contest Setup.html`) collects contest data → outputs ZIP of pre-filled docs. Browser-only, no server. Owner: Allen Otto (CM).
 
-Status: v11. All v10 doc generators intact. Code-health / hardening pass — no functionality changes. See v11 decisions below for all changes. File is now ~1.31 MB (base64 PDFs embedded). ~3200+ lines JS.
+Status: v12. All v11 features intact. Five user-facing changes: autocomplete click/keyboard fix, advancing schools email template, live schedule update on name/play changes, Speechwire copy-password button, version number in banner. See v12 decisions below.
 
 ---
 
 ## DECISIONS [do not revisit]
+
+### v12 changes (2026-03-31)
+- **Version comment**: bumped to `<!-- OAP Contest Manager v12 | 2026-03-31 -->` on line 1.
+- **Version display**: `v12 · 2026-03-31` shown in banner (small, low-opacity line below subtitle).
+- **Autocomplete click fix**: `attachSchoolAutocomplete()` rewrote dropdown item creation — items now attach `addEventListener('mousedown', e => { e.preventDefault(); applySchoolSuggestion(...) })` instead of inline `onmousedown`. `event.preventDefault()` keeps focus on the input so blur never fires before the value is committed. Items store the school name in a `data-name` attribute.
+- **Autocomplete keyboard nav**: added `keydown` listener on the input — ArrowDown/ArrowUp move a highlighted index, Enter applies the highlighted suggestion, Escape closes the dropdown. Active row styled via `.school-ac-active` (same background as `:hover`).
+- **Play titles restored from snapshots**: `restoreState()` previously skipped restoring `play_N_play` values (they were saved in `schools[i].play` but never written back to the DOM). Fixed by adding `playEl.value = s.play` loop inside the schools restore block.
+- **Live schedule preview**: school name inputs now call `updateSchedulePreview()` via `oninput` (previously only called `updateSchoolNameInPlay`). Play title inputs now have `oninput="updateSchedulePreview()"` (previously had none). Schedule timeline now updates on every keystroke.
+- **Speechwire copy-password button**: `📋 Copy` button (emoji later removed per user request — now plain "Copy") added next to Show/Hide on the `sw_password` field. Same padding/font/style as Show button. `copySwPassword(btn)` function uses `navigator.clipboard` with `execCommand` fallback; flashes "✓ Copied!" for 2 s.
+- **Advancing Schools email template**: new "🏆 Advancing Schools" button added to Email Draft Composer button row. Clicking toggles `#advancing_picker` panel (yellow/amber styling) which renders a checkbox per school (names pulled live from school entries). "Generate Email →" collects director emails for checked schools only, fills subject/body with post-contest evaluation template (body text provided by Allen), and shows a "To:" summary. Evaluation URL left as `[PASTE EVALUATION LINK HERE]` placeholder. Picker auto-hides after generating. Functions: `toggleAdvancingPicker()`, `generateAdvancingEmail()`.
 
 ### v11 code-health changes (2026-03-28)
 - **HTML version comment**: `<!-- OAP Contest Manager v11 | 2026-03-28 -->` on line 1 for field debugging.
@@ -114,11 +124,11 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 **App constants** (v11): `MAX_SCHOOLS=8`, `MAX_JUDGES=3`, `DEFAULT_SCHOOLS=6`, `DEFAULT_JUDGES=3`, `CRIT_MINS_PER_SHOW=15`
 
-**UI Helpers**: `toggle` (v11: sets aria-expanded), `toggleDocCheck`, `setAllDocs(checked)`, `updateBidcField`, `updateJudgeFields`, `toggleHotelNights`, `updateRehearsalDay2UI/Count`, `updateContestName`, `autoCalcDeadlines`, `updateEmailList`, `copyEmails`, `copyContestName`, `toggleSwPassword` (v10, v11: sets aria-pressed), `updateDirRemoveButtons(schoolIdx)` (v10), `addDirectorRow`, `removeDirRow`, `updateSchoolNameInPlay`, `updateSchoolFields`
+**UI Helpers**: `toggle` (v11: sets aria-expanded), `toggleDocCheck`, `setAllDocs(checked)`, `updateBidcField`, `updateJudgeFields`, `toggleHotelNights`, `updateRehearsalDay2UI/Count`, `updateContestName`, `autoCalcDeadlines`, `updateEmailList`, `copyEmails`, `copyContestName`, `toggleSwPassword` (v10, v11: sets aria-pressed), `copySwPassword(btn)` (v12), `updateDirRemoveButtons(schoolIdx)` (v10), `addDirectorRow`, `removeDirRow`, `updateSchoolNameInPlay`, `updateSchoolFields`
 
 **Snapshots**: `OAP_SNAP_KEY/FIELDS/SELECTS`, `serializeState()`, `migrateSnapshot(data)` (v11), `restoreState(data)`, `safeStorageSet(key,value)` (v11), `getSnapshots()`, `exportSnapshots()`, `importSnapshots(input)`, `getSnapshotSchools()`, `applySchoolSuggestion(idx,name)`, `attachSchoolAutocomplete(idx)`, `saveSnapshot()`, `loadSnapshot(name)`, `deleteSnapshot(name)`, `renderSnapshotList()`
 
-**Email**: `EMAIL_TEMPLATES` (announcement/deadline/daybefore/judges), `loadEmailTemplate(key)`, `copyEmailSubject()`, `copyEmailBody()`
+**Email**: `EMAIL_TEMPLATES` (announcement/deadline/daybefore/judges), `loadEmailTemplate(key)`, `copyEmailSubject()`, `copyEmailBody()`, `toggleAdvancingPicker()` (v12), `generateAdvancingEmail()` (v12)
 
 **Init line**: `updateJudgeFields(); updateSchoolFields(); updateContestName(); renderSnapshotList();`
 
@@ -149,11 +159,18 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 - Output table: # | School | Play Title | Judge Assigned | Move (↑↓ when unlocked). Summary row + lock controls below.
 - **v10 lock/reorder**: ↑↓ buttons swap judge assignments between adjacent performance slots. "Lock & Save" sets `_critiqueLocked=true`, hides move buttons, serializes assignment into regenerate HTML. "Unlock & Re-randomize" reverts. Confirm guard if locked or already assigned.
 
-### Speechwire Access (v10)
+### Speechwire Access (v10, v12)
 - Fields: `sw_username` (text), `sw_password` (password with show/hide toggle via `toggleSwPassword()`)
+- **v12**: "Copy" button added next to Show/Hide — `copySwPassword(btn)` copies password to clipboard; flashes "✓ Copied!" for 2 s
 - Location: bottom of sec-t2 (Contest Details), under "Speechwire Access" divider
 - Saved in: snapshots (`OAP_SNAP_FIELDS`) + regenerate HTML (automatic via `serializeFormState()`)
 - Purpose: per-contest credentials provided by state theatre director; CM-only
+
+### School Autocomplete (v12 changes)
+- Click now works: `mousedown` + `event.preventDefault()` keeps focus on input; value is reliably committed on click
+- Keyboard nav: ArrowDown/Up moves highlight, Enter selects, Escape closes
+- Active row class: `.school-ac-active` (same style as `:hover`)
+- Item HTML uses `data-name` attribute instead of inline `onmousedown` with JSON
 
 ### School Autocomplete (v10 changes)
 - `getSnapshotSchools()` now returns `{ directors: [...], play: '' }` per school (was bare directors array)
@@ -185,6 +202,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 `#darkModeBtn` — fixed position bottom-right, persists via localStorage
 **v10 additions**: `.critique-move-btn`, `.critique-lock-btn`, `.critique-unlock-btn`, `.critique-locked-notice`
 **v11 additions**: `:root` CSS custom properties (`--c-blue`, `--c-purple`, `--c-green`, `--c-red`, `--c-amber`, `--c-bg-blue`, `--c-bg-green`, `--c-bg-red`); semantic button classes `.btn-primary`, `.btn-success`, `.btn-danger`, `.btn-ghost`, `.btn-util`
+**v12 additions**: `.school-ac-item.school-ac-active` (keyboard highlight, same bg as `:hover`)
 
 ### Existing design details (unchanged)
 **Schedule colors** (school idx 0–7): `['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF']`. Header: `000000`. Admin/grey: `DADADA`.
@@ -199,7 +217,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 **Pre-Rehearsal Company Meeting** (`genPreRehearsalMeeting`): one-page .docx used by CM during each company's rehearsal slot. Strictly replicates the template — only variable substitutions: contest name (title line), rehearsal length (intro paragraph), school name + em-dash + play title (table School column). Layout: two centered title lines (13pt bold / 11pt bold) → Introduction paragraph (soft break + bold label + 9pt body with rehDisplay) → Stage Manager (bold 11pt label + 10pt fill-in, indented timing line) → Lights/Sound (bold 11pt header, 10pt fill-in lines) → Curtains (soft break + bold 11pt header, 10pt fill-in lines + two indented notes) → 4-column table (light gray #E7E6E6 header row, 8pt bold; School Name — Play Title bold | Spike Tape blank | Upstage Curtain ☐CYC/☐Back Black | Strike Lead blank) → empty para → Show Start Procedure (soft break + bold 10pt header, 9pt arrow-chain line) → After Your Show (soft break + bold 11pt header, two indented 10pt lines) → Full Disclosure (bold 11pt, body lines) → "No tobacco…" / "No cell phones." → empty para → "What questions do you have for me?" bold 10pt. Uses local helpers `rp()` (run props) and `pp()` (para props with line=240/auto). No checkboxes on section headers, no colors, no decorative lines. Checkbox `doc_pre_rehearsal_meeting` defaults checked; positioned after Director Information Letter in UI.
 
-**Email templates** (4): announcement (no entry fee), deadline (entry+light cue deadlines, no entry fee, name+phone sig), daybefore, judges (show list by perf order, critique format text, arrival=DM−20 min).
+**Email templates** (4+1): announcement (no entry fee), deadline (entry+light cue deadlines, no entry fee, name+phone sig), daybefore, judges (show list by perf order, critique format text, arrival=DM−20 min). **v12**: "🏆 Advancing Schools" button opens a school-picker panel; generates post-contest evaluation email addressed only to advancing directors. Evaluation URL is a manual placeholder.
 
 ---
 
@@ -238,10 +256,4 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 - **cellStyles:true** = SheetJS CE write option for fill/font styles
 - **pdf-lib** = PDFLib global (from unpkg CDN); used for adjudicator packet PDF filling/merging
 - **AP stream / flatten** = pdf-lib: flatten() embeds filled field values into page content for print-safe merged PDF
-- **director_data** (v10) = position-indexed array of `{name, email}` per school; used in regenerate HTML state blob instead of element IDs
-- **critique lock** (v10) = `_critiqueLocked` bool; gates reorder/re-randomize and serializes assignment into regenerate HTML
-
----
-
-## AMBIGUITIES / PENDING
-*(none)*
+- **director_data** (v10) = position-indexed array of `{name, emai
