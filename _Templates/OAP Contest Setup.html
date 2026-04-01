@@ -1,13 +1,22 @@
+<!-- OAP Contest Manager v12 | 2026-03-31 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>UIL OAP Contest Setup Generator</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<!-- Preload hints: browser starts downloading these immediately but doesn't block rendering.
+     The actual <script> tags are at the bottom of <body> so they don't block DOM parsing. -->
+<link rel="preload" as="script" href="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+<link rel="preload" as="script" href="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js">
+<link rel="preload" as="script" href="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js">
 <style>
+
+/* Brand colour tokens — change here to update the whole palette */
+:root {
+  --c-blue:#1F4E79; --c-purple:#6A1B9A; --c-green:#2E7D32; --c-red:#C62828; --c-amber:#B45309;
+  --c-bg-blue:#E3F2FD; --c-bg-green:#E8F5E9; --c-bg-red:#FFEBEE;
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #eef2f7; color: #222; min-height: 100vh; }
@@ -39,9 +48,11 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #eef2f7; color: #
 .snap-load-btn:hover { background:#4A148C; }
 .snap-del-btn { background:#fff; color:#C00000; border:1.5px solid #C00000; border-radius:5px; padding:5px 10px; font-size:0.82rem; font-weight:700; cursor:pointer; }
 .snap-del-btn:hover { background:#FFEBEE; }
+.snap-note-btn { background:#fff; color:#555; border:1.5px solid #ccc; border-radius:5px; padding:5px 8px; font-size:0.82rem; cursor:pointer; }
+.snap-note-btn:hover { background:#f5f5f5; border-color:#aaa; }
 .school-ac-dropdown { position:absolute; z-index:999; background:#fff; border:1.5px solid #C5B3E6; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); max-height:180px; overflow-y:auto; min-width:100%; top:100%; left:0; margin-top:2px; }
 .school-ac-item { padding:7px 12px; cursor:pointer; font-size:0.88rem; color:#222; }
-.school-ac-item:hover { background:#F3EEF9; }
+.school-ac-item:hover, .school-ac-item.school-ac-active { background:#F3EEF9; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .field-grid.g3 { grid-template-columns: 1fr 1fr 1fr; }
 .field-grid.g1 { grid-template-columns: 1fr; }
@@ -100,6 +111,35 @@ body.dark-mode .container { filter:invert(1) hue-rotate(180deg); }
 body.dark-mode .container img, body.dark-mode .container [style*="background:linear-gradient"] { filter:invert(1) hue-rotate(180deg); }
 #darkModeBtn { position:fixed; bottom:18px; right:18px; z-index:9999; background:#1F4E79; color:#fff; border:none; border-radius:50px; padding:9px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.35); transition:background 0.15s; }
 #darkModeBtn:hover { background:#2E75B6; }
+/* Critique assignment reorder / lock controls */
+.critique-move-btn { background:#F3E5F5;border:1.5px solid #CE93D8;color:#4A148C;border-radius:4px;padding:1px 7px;font-size:0.82rem;cursor:pointer;line-height:1.5; }
+.critique-move-btn:hover:not(:disabled) { background:#E1BEE7; }
+.critique-move-btn:disabled { background:#f0f0f0;border-color:#ddd;color:#bbb;cursor:default; }
+.critique-lock-btn { background:linear-gradient(135deg,#1B5E20,#2E7D32);color:#fff;border:none;border-radius:6px;padding:8px 26px;font-size:0.88rem;font-weight:700;cursor:pointer; }
+.critique-lock-btn:hover { filter:brightness(1.1); }
+.critique-unlock-btn { background:#fff;border:1.5px solid #C00000;color:#C00000;border-radius:6px;padding:6px 18px;font-size:0.82rem;font-weight:700;cursor:pointer; }
+.critique-unlock-btn:hover { background:#FFEBEE; }
+.critique-locked-notice { display:inline-flex;align-items:center;gap:8px;background:#E8F5E9;border:1.5px solid #A5D6A7;border-radius:6px;padding:5px 14px;font-size:0.85rem;font-weight:700;color:#2E7D32; }
+
+/* Unsaved-changes indicator on Save Snapshot button */
+#save_snapshot_btn.form-dirty { box-shadow: 0 0 0 3px #F59E0B; }
+#save_snapshot_btn.form-dirty::after { content: ' \25CF'; color: #FCD34D; font-size: 0.65em; vertical-align: super; }
+
+/* Quick-link anchors (Quick Links panel) */
+.quick-link { display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none; }
+.quick-link:hover { background:#D6E8F7; }
+
+/* Semantic button classes — use on new buttons instead of repeating inline styles */
+.btn-primary  { background:var(--c-blue);color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:0.88rem;font-weight:700;cursor:pointer; }
+.btn-primary:hover  { filter:brightness(1.12); }
+.btn-success  { background:linear-gradient(135deg,#1B5E20,var(--c-green));color:#fff;border:none;border-radius:6px;padding:8px 22px;font-size:0.88rem;font-weight:700;cursor:pointer; }
+.btn-success:hover  { filter:brightness(1.1); }
+.btn-danger   { background:#fff;border:1.5px solid var(--c-red);color:var(--c-red);border-radius:6px;padding:6px 18px;font-size:0.82rem;font-weight:700;cursor:pointer; }
+.btn-danger:hover   { background:var(--c-bg-red); }
+.btn-ghost    { background:#fff;border:1.5px solid #B0BEC5;color:#444;border-radius:6px;padding:6px 16px;font-size:0.82rem;font-weight:600;cursor:pointer; }
+.btn-ghost:hover    { background:#F5F5F5; }
+.btn-util     { background:var(--c-bg-blue);border:1.5px solid #B3C5EF;color:var(--c-blue);border-radius:6px;padding:6px 16px;font-size:0.82rem;font-weight:600;cursor:pointer; }
+.btn-util:hover     { background:#D6E4F7; }
 
 </style>
 </head>
@@ -110,6 +150,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 <div class="banner">
   <h1>🎭 UIL OAP Contest Setup Generator</h1>
   <p>Fill in information as it becomes available across all tiers, then click Generate to download a ZIP of your contest documents. Check off only the documents you need before generating.</p>
+  <p style="margin-top:8px;font-size:0.75rem;opacity:0.6;letter-spacing:0.03em">v12 &nbsp;·&nbsp; 2026-03-31</p>
 </div>
 
 <!-- ══ SECTION SHORTCUTS ════════════════════════════════════════ -->
@@ -127,6 +168,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
     <button class="sc-btn" onclick="jumpTo('sec-generate')">⬇ Generate</button>
     <button class="sc-btn" onclick="jumpTo('sec-email-composer')">✉️ Email Draft</button>
     <button class="sc-btn" onclick="jumpTo('sec-critique')">🎲 Critiques</button>
+    <button class="sc-btn" onclick="jumpTo('sec-schedule-preview')">📋 Schedule Preview</button>
   </div>
 </div>
 
@@ -134,16 +176,16 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 <div class="email-list-box" style="margin-bottom:10px">
   <h3>🔗 Quick Links</h3>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-    <a href="https://www.uiltexas.org/theatre/resources-forms" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://www.uiltexas.org/theatre/resources-forms" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">📄</span> Resources &amp; Forms
     </a>
-    <a href="https://www.uiltexas.org/theatre/oap-handbook" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://www.uiltexas.org/theatre/oap-handbook" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">📖</span> UIL OAP Handbook
     </a>
-    <a href="https://manage.speechwire.com/tabroom/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://manage.speechwire.com/tabroom/" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">🗳️</span> Speechwire
     </a>
-    <a href="https://www.uiltexas.org/theatre/high-school-one-act/tabulation" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#EEF4FB;border:1.5px solid #B3CDE8;border-radius:6px;font-size:0.87rem;font-weight:600;color:#1F4E79;text-decoration:none" onmouseover="this.style.background='#D6E8F7'" onmouseout="this.style.background='#EEF4FB'">
+    <a href="https://www.uiltexas.org/theatre/high-school-one-act/tabulation" target="_blank" rel="noopener" class="quick-link">
       <span style="font-size:1rem">🧮</span> Tabulation Tool
     </a>
   </div>
@@ -151,15 +193,18 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ SNAPSHOTS ══════════════════════════════════════════════════ -->
 <div class="section sec-snap" id="sec-snapshots">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📂 Saved Snapshots</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Year-over-year reuse</span><span class="chevron">▼</span></div>
   </div>
   <div class="section-body">
     <p style="font-size:0.83rem;color:#555;margin-bottom:14px;line-height:1.5">Save the current form as a named snapshot to reload next year. Use Export/Import to move snapshots between computers or browsers.</p>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
       <input type="text" id="snapshot_name_input" placeholder="e.g. 2025 District 20 5A" style="flex:1;border:1.5px solid #ccd;border-radius:5px;padding:8px 10px;font-size:0.93rem;font-family:inherit">
       <button id="save_snapshot_btn" onclick="saveSnapshot()" style="background:#6A1B9A;color:#fff;border:none;border-radius:5px;padding:9px 18px;font-size:0.88rem;font-weight:700;cursor:pointer;white-space:nowrap">💾 Save Snapshot</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <input type="text" id="snapshot_notes_input" placeholder="Optional note — e.g. &quot;Before judge change&quot;, &quot;Final version&quot;" style="width:100%;border:1.5px solid #dde;border-radius:5px;padding:6px 10px;font-size:0.82rem;font-family:inherit;color:#555">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <button onclick="exportSnapshots()" style="background:#fff;border:1.5px solid #C5B3E6;color:#4A148C;border-radius:5px;padding:6px 14px;font-size:0.82rem;font-weight:700;cursor:pointer">⬇ Export All (.json)</button>
@@ -172,7 +217,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ CM INFO ═══════════════════════════════════════════════════ -->
 <div class="section sec-cm" id="sec-cm">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>👤 Contest Manager Information</h2>
     <span class="chevron" style="transform:rotate(180deg)">▼</span>
   </div>
@@ -192,7 +237,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ TIER 1 ════════════════════════════════════════════════════ -->
 <div class="section sec-t1" id="sec-t1">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📋 Contest Identity</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Upon Appointment</span><span class="chevron" style="transform:rotate(180deg)">▼</span></div>
   </div>
@@ -238,7 +283,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ TIER 2 ════════════════════════════════════════════════════ -->
 <div class="section sec-t2" id="sec-t2">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📅 Contest Details</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">After Planning Meeting</span><span class="chevron">▼</span></div>
   </div>
@@ -252,11 +297,13 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
     <div class="divider">Competition Format</div>
     <div class="field-grid g3">
       <div class="field">
-        <label>Critique Format</label>
-        <div class="radio-group">
-          <label><input type="radio" name="critique_format" value="after_each" id="cf_each" onchange="updateSchedulePreview()"> After Each Show</label>
-          <label><input type="radio" name="critique_format" value="after_all" id="cf_all" checked onchange="updateSchedulePreview()"> After All Shows</label>
-        </div>
+        <fieldset style="border:none;padding:0;margin:0">
+          <legend style="font-weight:600;font-size:0.82rem;color:#555;margin-bottom:4px">Critique Format</legend>
+          <div class="radio-group">
+            <label><input type="radio" name="critique_format" value="after_each" id="cf_each" onchange="updateSchedulePreview()"> After Each Show</label>
+            <label><input type="radio" name="critique_format" value="after_all" id="cf_all" checked onchange="updateSchedulePreview()"> After All Shows</label>
+          </div>
+        </fieldset>
       </div>
       <div class="field">
         <label>Number of Judges</label>
@@ -326,12 +373,28 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
         <span class="hint">Date of the advancing BiDistrict contest</span>
       </div>
     </div>
+    <div class="divider">Speechwire Access</div>
+    <div class="field-grid" style="max-width:560px">
+      <div class="field">
+        <label>Speechwire Username</label>
+        <input type="text" id="sw_username" placeholder="e.g. district20-5a" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Speechwire Password</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="password" id="sw_password" placeholder="Provided by state theatre director" style="flex:1" autocomplete="off">
+          <button type="button" id="sw_pw_toggle" onclick="toggleSwPassword()" aria-label="Show password" aria-pressed="false" style="background:#E3F2FD;border:1.5px solid #90CAF9;color:#1565C0;border-radius:5px;padding:6px 11px;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap">Show</button>
+          <button type="button" id="sw_pw_copy" onclick="copySwPassword(this)" aria-label="Copy password" style="background:#E3F2FD;border:1.5px solid #90CAF9;color:#1565C0;border-radius:5px;padding:6px 11px;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap">Copy</button>
+        </div>
+        <span class="hint">Per-contest credentials — saved with this contest's snapshot and regenerate backup.</span>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- ══ TIER 3 ════════════════════════════════════════════════════ -->
 <div class="section sec-t3" id="sec-t3">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>⚖️ Adjudicators</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">After Contracting</span><span class="chevron">▼</span></div>
   </div>
@@ -373,7 +436,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ SCHOOLS & DIRECTORS ══════════════════════════════════════ -->
 <div class="section sec-t4" id="sec-schools">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>🏫 Schools &amp; Directors</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Enter As Known</span><span class="chevron" style="transform:rotate(180deg)">▼</span></div>
   </div>
@@ -385,7 +448,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ PLAY TITLES & ORDER ═══════════════════════════════════════ -->
 <div class="section sec-t4b" id="sec-plays">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>🎭 Play Titles &amp; Performance Order</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">After Entry Deadline</span><span class="chevron">▼</span></div>
   </div>
@@ -397,7 +460,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ DOCUMENTS TO GENERATE ════════════════════════════════════ -->
 <div class="section sec-docs" id="sec-docs">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📦 Documents to Generate</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">Select All That Apply</span><span class="chevron" style="transform:rotate(180deg)">▼</span></div>
   </div>
@@ -468,7 +531,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ EMAIL DRAFT COMPOSER ══════════════════════════════════════ -->
 <div class="section sec-email" id="sec-email-composer" style="margin-top:10px">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>✉️ Email Draft Composer</h2>
     <span class="chevron">▼</span>
   </div>
@@ -479,6 +542,13 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
       <button onclick="loadEmailTemplate('deadline')" style="background:#FFF3E0;border:1.5px solid #FFCC80;color:#E65100;border-radius:5px;padding:6px 13px;font-size:0.82rem;font-weight:700;cursor:pointer">⏰ Entry Deadline Reminder</button>
       <button onclick="loadEmailTemplate('daybefore')" style="background:#E8F5E9;border:1.5px solid #A5D6A7;color:#2E7D32;border-radius:5px;padding:6px 13px;font-size:0.82rem;font-weight:700;cursor:pointer">🌅 Day-Before Reminder</button>
       <button onclick="loadEmailTemplate('judges')" style="background:#FCE4EC;border:1.5px solid #F48FB1;color:#880E4F;border-radius:5px;padding:6px 13px;font-size:0.82rem;font-weight:700;cursor:pointer">⚖️ Judge Reminder</button>
+      <button onclick="toggleAdvancingPicker()" style="background:#FFF8E1;border:1.5px solid #FFD54F;color:#6D4C00;border-radius:5px;padding:6px 13px;font-size:0.82rem;font-weight:700;cursor:pointer">🏆 Advancing Schools</button>
+    </div>
+    <!-- Advancing Schools Picker (toggled) -->
+    <div id="advancing_picker" style="display:none;background:#FFFDE7;border:1.5px solid #FFD54F;border-radius:7px;padding:14px 16px;margin-bottom:14px">
+      <p style="font-size:0.82rem;font-weight:700;color:#6D4C00;margin-bottom:10px">Select the schools that are advancing. The email will go only to their directors.</p>
+      <div id="advancing_school_checks" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
+      <button onclick="generateAdvancingEmail()" style="background:#6D4C00;color:#fff;border:none;border-radius:5px;padding:7px 18px;font-size:0.85rem;font-weight:700;cursor:pointer">Generate Email →</button>
     </div>
     <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
       <input type="text" id="email_subject_display" placeholder="Subject will appear here..." style="flex:1;border:1.5px solid #ccd;border-radius:5px;padding:7px 10px;font-size:0.88rem;font-family:inherit;background:#fafafa">
@@ -491,7 +561,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ SCHEDULE PREVIEW ══════════════════════════════════════════ -->
 <div class="section sec-sched" id="sec-schedule-preview" style="margin-top:10px">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>📋 Contest Day Schedule Preview</h2>
     <span class="chevron">▼</span>
   </div>
@@ -503,7 +573,7 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 
 <!-- ══ CRITIQUE ASSIGNMENT RANDOMIZER ═══════════════════════════ -->
 <div class="section sec-critique" id="sec-critique" style="margin-top:10px">
-  <div class="section-header" onclick="toggle(this)">
+  <div class="section-header" role="button" aria-expanded="false" tabindex="0" onclick="toggle(this)" onkeydown="if(event.key==='Enter'||event.key===' '){toggle(this);event.preventDefault();}">
     <h2>🎲 Critique Assignment Randomizer</h2>
     <div style="display:flex;align-items:center;gap:6px"><span class="badge">CM Eyes Only</span><span class="chevron">▼</span></div>
   </div>
@@ -517,6 +587,10 @@ body.dark-mode .container img, body.dark-mode .container [style*="background:lin
 </div>
 
 </div>
+<!-- CDN libraries loaded here (end of body) so they don't block initial page render. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 
 // =================================================================
@@ -528,6 +602,16 @@ var AWARDS_PDF_B64 = 'JVBERi0xLjYNJeLjz9MNCjU5IDAgb2JqDTw8L0xpbmVhcml6ZWQgMS9MID
 
 
 // ═══════════════════════════════════════════════════════════════
+//  APP-WIDE CONSTANTS
+//  Centralised so any future capacity change is a one-line edit.
+// ═══════════════════════════════════════════════════════════════
+const MAX_SCHOOLS        = 8;   // Maximum number of competing schools supported
+const MAX_JUDGES         = 3;   // Maximum number of adjudicators supported
+const DEFAULT_SCHOOLS    = 6;   // Default num_schools when no value is present
+const DEFAULT_JUDGES     = 3;   // Default num_judges when no value is present
+const CRIT_MINS_PER_SHOW = 15;  // Minutes allocated per critique slot in the schedule
+
+// ═══════════════════════════════════════════════════════════════
 //  UI HELPERS
 // ═══════════════════════════════════════════════════════════════
 function toggle(header) {
@@ -535,6 +619,7 @@ function toggle(header) {
   const chev = header.querySelector('.chevron');
   const open = body.classList.toggle('open');
   chev.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+  header.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 function toggleDocCheck(lbl) {
   lbl.classList.toggle('checked');
@@ -568,7 +653,7 @@ function updateRehearsalDay2UI() {
 function updateRehearsalDay1CountOptions() {
   const sel = document.getElementById('rehearsal_day_1_count');
   if (!sel) return;
-  const n   = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+  const n   = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
   const cur = parseInt(sel.value) || 0;
   const def = cur || Math.floor(n / 2) || 1;
   sel.innerHTML = '';
@@ -581,7 +666,7 @@ function updateRehearsalDay1CountOptions() {
   updateRehearsalDay2Count();
 }
 function updateRehearsalDay2Count() {
-  const n    = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+  const n    = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
   const d1   = parseInt((document.getElementById('rehearsal_day_1_count') || {}).value) || Math.floor(n / 2);
   const disp = document.getElementById('rehearsal_day_2_display');
   if (disp) { const d2 = n - d1; disp.value = d2 + (d2 === 1 ? ' school' : ' schools'); }
@@ -610,7 +695,7 @@ function autoCalcDeadlines() {
   }
 }
 function updateEmailList() {
-  const n = parseInt(document.getElementById('num_schools').value) || 6;
+  const n = parseInt(document.getElementById('num_schools').value) || DEFAULT_SCHOOLS;
   const emails = [];
   for (let i = 1; i <= n; i++) {
     const con = document.getElementById('school_' + i + '_directors');
@@ -630,11 +715,12 @@ const OAP_SNAP_FIELDS = [
   'contest_year','district_number',
   'host_school_name','host_venue_name','host_school_address',
   'directors_meeting_time','first_show_time',
+  'sw_username','sw_password',
 ];
 const OAP_SNAP_SELECTS = ['contest_level','classification'];
 
 function serializeState() {
-  const numSchools = parseInt(gv('num_schools')) || 6;
+  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
   const fields = {};
   [...OAP_SNAP_FIELDS, ...OAP_SNAP_SELECTS].forEach(id => {
     const el = document.getElementById(id); if (el) fields[id] = el.value;
@@ -649,7 +735,7 @@ function serializeState() {
       dirs.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
     });
     if (!dirs.length) dirs.push({ name: '', email: '' });
-    schools.push({ name: gv('school_' + i + '_name') || '', directors: dirs });
+    schools.push({ name: gv('school_' + i + '_name') || '', directors: dirs, play: gv('play_' + i + '_play') || '' });
   }
   return {
     v: 1, saved_at: new Date().toISOString(),
@@ -658,7 +744,26 @@ function serializeState() {
   };
 }
 
+/**
+ * Applies forward-only migrations to snapshot data so that snapshots saved
+ * under an older schema continue to load correctly as the schema evolves.
+ * Always returns the (possibly mutated) data object.
+ * INCREMENT data.v and add a migration block here whenever the schema changes.
+ * Current schema version: 2
+ */
+function migrateSnapshot(data) {
+  if (!data) return data;
+  // v1 → v2: school objects now include a `play` field
+  if (!data.v || data.v < 2) {
+    (data.schools || []).forEach(function(s) { if (s.play === undefined) s.play = ''; });
+    data.v = 2;
+  }
+  return data;
+}
+
 function restoreState(data) {
+  data = migrateSnapshot(data);
+  clearDirty(); // loading a snapshot counts as a clean state
   // 1. num_schools first — triggers DOM rebuild
   const nsSel = document.getElementById('num_schools');
   if (nsSel) { nsSel.value = data.num_schools || '6'; updateSchoolFields(); }
@@ -666,8 +771,8 @@ function restoreState(data) {
   Object.entries(data.fields || {}).forEach(([id, val]) => {
     const el = document.getElementById(id); if (el) el.value = val;
   });
-  // 3. Schools & directors
-  const numS = parseInt(data.num_schools) || 6;
+  // 3. Schools & directors (including play titles)
+  const numS = parseInt(data.num_schools) || DEFAULT_SCHOOLS;
   (data.schools || []).slice(0, numS).forEach((s, i) => {
     const idx = i + 1;
     const nameEl = document.getElementById('school_' + idx + '_name');
@@ -683,12 +788,36 @@ function restoreState(data) {
         if (ei) ei.value = dir.email || '';
       });
     }
+    // Restore play title (was saved but not restored previously)
+    const playEl = document.getElementById('play_' + idx + '_play');
+    if (playEl && s.play !== undefined) playEl.value = s.play;
     updateSchoolNameInPlay(idx);
   });
   // 4. Recompute derived UI
   updateContestName();
   updateEmailList();
   updateSchedulePreview();
+}
+
+/**
+ * localStorage.setItem wrapper that catches QuotaExceededError and alerts the user
+ * with actionable guidance instead of silently failing.
+ * @param {string} key
+ * @param {string} value
+ * @returns {boolean} true if the write succeeded, false if quota was exceeded.
+ */
+function safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch(e) {
+    if (e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (e.code && e.code === 22))) {
+      alert('⚠️ Storage quota exceeded — your snapshot could not be saved.\n\nTry exporting and deleting old snapshots to free space.');
+    } else {
+      alert('⚠️ Could not save to local storage: ' + (e && e.message ? e.message : 'Unknown error'));
+    }
+    return false;
+  }
 }
 
 function getSnapshots() {
@@ -712,7 +841,7 @@ function importSnapshots(input) {
       const imported = JSON.parse(e.target.result);
       if (typeof imported !== 'object' || Array.isArray(imported)) throw new Error();
       const merged = Object.assign({}, getSnapshots(), imported);
-      localStorage.setItem(OAP_SNAP_KEY, JSON.stringify(merged));
+      safeStorageSet(OAP_SNAP_KEY, JSON.stringify(merged));
       renderSnapshotList();
       const n = Object.keys(imported).length;
       alert('✅ Imported ' + n + ' snapshot' + (n === 1 ? '' : 's') + '.');
@@ -725,7 +854,10 @@ function importSnapshots(input) {
 function getSnapshotSchools() {
   const map = {};
   Object.values(getSnapshots()).forEach(snap => {
-    (snap.schools || []).forEach(s => { if (s.name && s.name.trim()) map[s.name.trim()] = s.directors || []; });
+    (snap.schools || []).forEach(s => {
+      if (s.name && s.name.trim())
+        map[s.name.trim()] = { directors: s.directors || [], play: s.play || '' };
+    });
   });
   return map;
 }
@@ -733,19 +865,26 @@ function applySchoolSuggestion(idx, name) {
   const schoolMap = getSnapshotSchools();
   const nameEl = document.getElementById('school_' + idx + '_name');
   if (nameEl) nameEl.value = name;
-  const dirs = schoolMap[name] || [];
+  const entry = schoolMap[name] || {};
+  const dirs = entry.directors || [];
   const con = document.getElementById('school_' + idx + '_directors');
-  if (con && dirs.length) {
-    const existing = con.querySelectorAll('.director-row').length;
-    for (let d = existing; d < dirs.length; d++) addDirectorRow(idx);
+  if (con) {
+    // Reset to exactly 1 director row, then add extras as needed
+    const existingRows = con.querySelectorAll('.director-row');
+    for (let r = existingRows.length - 1; r >= 1; r--) existingRows[r].remove();
+    for (let d = 1; d < dirs.length; d++) addDirectorRow(idx);
     dirs.forEach((dir, di) => {
       const ni = document.getElementById('school_' + idx + '_dir_' + (di+1) + '_name');
       const ei = document.getElementById('school_' + idx + '_dir_' + (di+1) + '_email');
       if (ni) ni.value = dir.name || '';
       if (ei) ei.value = dir.email || '';
     });
+    updateDirRemoveButtons(idx);
     updateEmailList();
   }
+  // Fill play title if saved
+  const playEl = document.getElementById('play_' + idx + '_play');
+  if (playEl && entry.play) playEl.value = entry.play;
   updateSchoolNameInPlay(idx);
   const dd = document.getElementById('school_ac_' + idx);
   if (dd) dd.style.display = 'none';
@@ -760,25 +899,96 @@ function attachSchoolAutocomplete(idx) {
   wrap.style.position = 'relative';
   let dd = document.getElementById('school_ac_' + idx);
   if (!dd) { dd = document.createElement('div'); dd.id = 'school_ac_' + idx; dd.className = 'school-ac-dropdown'; dd.style.display = 'none'; wrap.appendChild(dd); }
+
+  let activeIdx = -1; // tracks keyboard-highlighted row
+
+  function getItems() { return dd.querySelectorAll('.school-ac-item'); }
+
+  function setActive(i) {
+    const items = getItems();
+    items.forEach(function(el, j) {
+      el.classList.toggle('school-ac-active', j === i);
+      if (j === i) el.scrollIntoView({ block: 'nearest' });
+    });
+    activeIdx = i;
+  }
+
+  function buildDropdown(matches) {
+    activeIdx = -1;
+    dd.innerHTML = matches.map(function(n) {
+      const play = schoolMap[n] ? (schoolMap[n].play || '') : '';
+      return '<div class="school-ac-item" data-name="' + xe(n) + '">' +
+        xe(n) + (play ? '<span style="color:#888;font-size:0.8em;margin-left:6px">— ' + xe(play) + '</span>' : '') +
+        '</div>';
+    }).join('');
+    // Use mousedown + preventDefault so the input never loses focus on click
+    dd.querySelectorAll('.school-ac-item').forEach(function(el) {
+      el.addEventListener('mousedown', function(e) {
+        e.preventDefault(); // keep focus on inp; prevents blur from hiding the dropdown first
+        applySchoolSuggestion(idx, el.getAttribute('data-name'));
+      });
+    });
+    dd.style.display = 'block';
+  }
+
   inp.addEventListener('input', function() {
     const q = this.value.toLowerCase().trim();
-    const matches = q ? names.filter(n => n.toLowerCase().includes(q)) : [];
-    if (!matches.length) { dd.style.display = 'none'; return; }
-    dd.innerHTML = matches.map(n => '<div class="school-ac-item" onmousedown="applySchoolSuggestion(' + idx + ',' + JSON.stringify(n) + ')">' + n + '</div>').join('');
-    dd.style.display = 'block';
+    const matches = q ? names.filter(function(n) { return n.toLowerCase().includes(q); }) : [];
+    if (!matches.length) { dd.style.display = 'none'; activeIdx = -1; return; }
+    buildDropdown(matches);
   });
-  inp.addEventListener('blur', function() { setTimeout(() => { dd.style.display = 'none'; }, 150); });
+
+  inp.addEventListener('keydown', function(e) {
+    const items = getItems();
+    if (!items.length || dd.style.display === 'none') return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive(Math.min(activeIdx + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive(Math.max(activeIdx - 1, 0));
+    } else if (e.key === 'Enter' && activeIdx >= 0) {
+      e.preventDefault();
+      applySchoolSuggestion(idx, items[activeIdx].getAttribute('data-name'));
+    } else if (e.key === 'Escape') {
+      dd.style.display = 'none'; activeIdx = -1;
+    }
+  });
+
+  inp.addEventListener('blur', function() {
+    setTimeout(function() { dd.style.display = 'none'; activeIdx = -1; }, 150);
+  });
 }
+/** Marks the form as having unsaved changes — called by the global input listener. */
+function markDirty() {
+  if (_formDirty) return;
+  _formDirty = true;
+  const btn = document.getElementById('save_snapshot_btn');
+  if (btn) btn.classList.add('form-dirty');
+}
+/** Clears the unsaved-changes indicator — called after a successful snapshot save or load. */
+function clearDirty() {
+  _formDirty = false;
+  const btn = document.getElementById('save_snapshot_btn');
+  if (btn) btn.classList.remove('form-dirty');
+}
+
 function saveSnapshot() {
-  const nameEl = document.getElementById('snapshot_name_input');
+  const nameEl  = document.getElementById('snapshot_name_input');
+  const notesEl = document.getElementById('snapshot_notes_input');
   const name = nameEl ? nameEl.value.trim() : '';
   if (!name) { nameEl && nameEl.focus(); nameEl && (nameEl.style.border = '1.5px solid #C00000'); return; }
   nameEl.style.border = '';
   const snaps = getSnapshots();
+  // Preserve existing notes if the user left the notes field blank on re-save
+  const existingNotes = (snaps[name] && snaps[name].notes) ? snaps[name].notes : '';
   snaps[name] = serializeState();
   snaps[name].label = name;
-  localStorage.setItem(OAP_SNAP_KEY, JSON.stringify(snaps));
+  snaps[name].notes = notesEl ? notesEl.value.trim() || existingNotes : existingNotes;
+  safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
   nameEl.value = '';
+  if (notesEl) notesEl.value = '';
+  clearDirty();
   renderSnapshotList();
   const btn = document.getElementById('save_snapshot_btn');
   if (btn) { btn.textContent = '✓ Saved!'; setTimeout(() => { btn.textContent = '💾 Save Snapshot'; }, 2000); }
@@ -795,7 +1005,18 @@ function deleteSnapshot(name) {
   if (!confirm('Delete snapshot "' + name + '"?')) return;
   const snaps = getSnapshots();
   delete snaps[name];
-  localStorage.setItem(OAP_SNAP_KEY, JSON.stringify(snaps));
+  safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
+  renderSnapshotList();
+}
+
+function editSnapshotNote(name) {
+  const snaps = getSnapshots();
+  if (!snaps[name]) return;
+  const current = snaps[name].notes || '';
+  const newNote = prompt('Note for "' + name + '":\n(Leave blank to clear)', current);
+  if (newNote === null) return; // cancelled
+  snaps[name].notes = newNote.trim();
+  safeStorageSet(OAP_SNAP_KEY, JSON.stringify(snaps));
   renderSnapshotList();
 }
 
@@ -812,15 +1033,21 @@ function renderSnapshotList() {
     const s = snaps[name];
     const date = s.saved_at ? new Date(s.saved_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
     const schools = (s.schools || []).map(x => x.name).filter(Boolean).join(', ') || '—';
-    const meta = [date ? 'Saved ' + date : '', s.num_schools + ' schools', schools].filter(Boolean).join(' · ');
+    const year = (s.fields && s.fields.contest_year) ? s.fields.contest_year : '';
+    const level = (s.fields && s.fields.contest_level) ? s.fields.contest_level : '';
+    const meta = [year ? year + (level ? ' ' + level : '') : '', date ? 'Saved ' + date : '', s.num_schools + ' schools', schools].filter(Boolean).join(' · ');
+    const notes = s.notes ? s.notes : '';
+    const safeNameAttr = JSON.stringify(name).replace(/"/g,'&quot;');
     return '<div class="snap-card">' +
       '<div class="snap-card-info">' +
-        '<div class="snap-card-name">' + name + '</div>' +
-        '<div class="snap-card-meta">' + meta + '</div>' +
+        '<div class="snap-card-name">' + xe(name) + '</div>' +
+        '<div class="snap-card-meta">' + xe(meta) + '</div>' +
+        (notes ? '<div style="font-size:0.78rem;color:#777;font-style:italic;margin-top:2px">📝 ' + xe(notes) + '</div>' : '') +
       '</div>' +
-      '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px">' +
-        '<button class="snap-load-btn" onclick="loadSnapshot(' + JSON.stringify(name).replace(/"/g,'&quot;') + ')">📂 Load</button>' +
-        '<button class="snap-del-btn" onclick="deleteSnapshot(' + JSON.stringify(name).replace(/"/g,'&quot;') + ')">🗑</button>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:12px;align-items:flex-start">' +
+        '<button class="snap-load-btn" onclick="loadSnapshot(' + safeNameAttr + ')">📂 Load</button>' +
+        '<button class="snap-note-btn" onclick="editSnapshotNote(' + safeNameAttr + ')" title="Edit note">📝</button>' +
+        '<button class="snap-del-btn" onclick="deleteSnapshot(' + safeNameAttr + ')">🗑</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -887,7 +1114,7 @@ const EMAIL_TEMPLATES = {
       const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors\u2019 Meeting]';
       const cfEl = document.querySelector('input[name="critique_format"]:checked');
       const cfText = (cfEl && cfEl.value === 'after_each') ? 'after each show' : 'after all shows';
-      const numS = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+      const numS = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
       const shows = [];
       for (let i = 1; i <= numS; i++) {
         const ord  = parseInt(gv('play_' + i + '_order')) || i;
@@ -908,6 +1135,83 @@ function loadEmailTemplate(key) {
   const tmpl = EMAIL_TEMPLATES[key]; if (!tmpl) return;
   document.getElementById('email_subject_display').value = tmpl.subject();
   document.getElementById('email_body_display').value = tmpl.body();
+}
+
+function toggleAdvancingPicker() {
+  const picker = document.getElementById('advancing_picker');
+  const checks = document.getElementById('advancing_school_checks');
+  if (!picker) return;
+  const isHidden = picker.style.display === 'none';
+  if (isHidden) {
+    // Rebuild school checkboxes from current school entries
+    const numS = parseInt((document.getElementById('num_schools') || {}).value) || 6;
+    checks.innerHTML = '';
+    for (let i = 1; i <= numS; i++) {
+      const name = (document.getElementById('school_' + i + '_name') || {}).value || ('School ' + i);
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #FFD54F;border-radius:5px;padding:5px 11px;font-size:0.87rem;font-weight:600;cursor:pointer;color:#4A3500';
+      lbl.innerHTML = '<input type="checkbox" data-idx="' + i + '" style="width:auto;cursor:pointer"> ' + xe(name);
+      checks.appendChild(lbl);
+    }
+    picker.style.display = 'block';
+  } else {
+    picker.style.display = 'none';
+  }
+}
+
+function generateAdvancingEmail() {
+  const checks = document.getElementById('advancing_school_checks');
+  if (!checks) return;
+  const selected = Array.from(checks.querySelectorAll('input[type=checkbox]:checked'));
+  if (!selected.length) { alert('Please check at least one advancing school.'); return; }
+
+  // Collect director emails for selected schools only
+  const toEmails = [];
+  selected.forEach(function(cb) {
+    const idx = cb.getAttribute('data-idx');
+    const con = document.getElementById('school_' + idx + '_directors');
+    if (con) {
+      con.querySelectorAll('input[type=email]').forEach(function(ei) {
+        if (ei.value.trim()) toEmails.push(ei.value.trim());
+      });
+    }
+  });
+
+  const cn   = gv('contest_name_preview') || '[Contest Name]';
+  const cmn  = gv('cm_name')   || 'Allen';
+  const cmp  = gv('cm_phone')  || '281-777-8672';
+  const cmw  = gv('cm_website')|| 'www.allenotto.com';
+
+  const subject = cn + ' \u2014 Post-Contest Evaluation';
+  const body =
+'Good morning, directors:\n\n' +
+'Thank you so much for an amazing contest yesterday.  It is always such a pleasure to work with you all.  ' +
+'I know you all appreciate the amazing work you do every year.\n\n' +
+'As promised, please take some time to fill out the contest evaluation.  It is truly helpful for our adjudicator ' +
+'process to get this kind of feedback.  It is also reviewed by TTAO when determining Area, Region, and State judges.  ' +
+'It takes about 5 minutes, but makes a WORLD of difference.  Thank you in advance.\n\n' +
+cn + ' Director\'s Evaluation\n[PASTE EVALUATION LINK HERE]\n\n' +
+'As always, do not hesitate to reach out if you have any questions or if there is anything I can do to make your ' +
+'season more enjoyable from here.\n\n' +
+'Play with love,\n' + cmn + '\n' + cmp + (cmw ? '\n' + cmw : '');
+
+  document.getElementById('email_subject_display').value = subject;
+  document.getElementById('email_body_display').value = body;
+
+  // Show the To: list in a small note below the picker
+  let toBox = document.getElementById('advancing_to_box');
+  if (!toBox) {
+    toBox = document.createElement('div');
+    toBox.id = 'advancing_to_box';
+    toBox.style.cssText = 'margin-top:10px;font-size:0.82rem;color:#555;background:#fff;border:1px solid #FFD54F;border-radius:5px;padding:8px 12px';
+    document.getElementById('advancing_picker').appendChild(toBox);
+  }
+  toBox.innerHTML = '<strong style="color:#4A3500">To:</strong> ' +
+    (toEmails.length ? xe(toEmails.join(', ')) : '<em>No director emails found for selected schools.</em>');
+
+  // Hide the picker and scroll to the email composer
+  document.getElementById('advancing_picker').style.display = 'none';
+  document.getElementById('sec-email-composer').querySelector('.section-body').classList.add('open');
 }
 function copyEmailSubject() {
   const el = document.getElementById('email_subject_display'); if (!el || !el.value) return;
@@ -933,6 +1237,15 @@ function copyContestName() {
   const btn = document.getElementById('copyNameBtn'); btn.textContent = '✓ Copied!';
   setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
 }
+function updateDirRemoveButtons(schoolIdx) {
+  const con = document.getElementById('school_' + schoolIdx + '_directors');
+  if (!con) return;
+  const rows = con.querySelectorAll('.director-row');
+  rows.forEach(function(row) {
+    const btn = row.querySelector('.remove-dir-btn');
+    if (btn) btn.style.display = rows.length > 1 ? '' : 'none';
+  });
+}
 function addDirectorRow(schoolIdx) {
   const con = document.getElementById('school_' + schoolIdx + '_directors');
   const existing = con.querySelectorAll('.director-row').length;
@@ -946,10 +1259,15 @@ function addDirectorRow(schoolIdx) {
     '<input type="email" id="school_' + schoolIdx + '_dir_' + rowNum + '_email" placeholder="email@district.org" oninput="updateEmailList()">' +
     '<button class="remove-dir-btn" onclick="removeDirRow(this)">Remove</button></div>';
   con.appendChild(div);
+  updateDirRemoveButtons(schoolIdx);
   updateEmailList();
 }
 function removeDirRow(btn) {
+  const con = btn.closest('.director-row').parentElement;
+  if (con && con.querySelectorAll('.director-row').length <= 1) return;
   btn.closest('.director-row').remove();
+  const match = con.id && con.id.match(/school_(\d+)_directors/);
+  if (match) updateDirRemoveButtons(parseInt(match[1]));
   updateEmailList();
 }
 function updateSchoolNameInPlay(schoolIdx) {
@@ -961,39 +1279,52 @@ function updateSchoolFields() {
   const n = parseInt(document.getElementById('num_schools').value);
   const schoolCon = document.getElementById('school_entries');
   const playCon   = document.getElementById('play_entries');
-  // Preserve existing values
+  if (!schoolCon || !playCon) return;
+  // Preserve existing values — including directors
   const saved = {};
-  for (let i = 1; i <= 8; i++) {
-    ['name','play','order'].forEach(f => {
-      const el = document.getElementById('school_' + i + '_' + f);
-      if (el) saved['s' + i + '_' + f] = el.value;
-    });
+  const savedDirs = {};
+  for (let i = 1; i <= MAX_SCHOOLS; i++) {
+    const nameEl = document.getElementById('school_' + i + '_name');
+    if (nameEl) saved['s' + i + '_name'] = nameEl.value;
+    const pPlay = document.getElementById('play_' + i + '_play');
+    if (pPlay) saved['p' + i + '_play'] = pPlay.value;
     const pOrd = document.getElementById('play_' + i + '_order');
     if (pOrd) saved['p' + i + '_order'] = pOrd.value;
+    const con = document.getElementById('school_' + i + '_directors');
+    if (con) {
+      const dirs = [];
+      con.querySelectorAll('.director-row').forEach(row => {
+        const ni = row.querySelector('input[type="text"]');
+        const ei = row.querySelector('input[type="email"]');
+        dirs.push({ name: ni ? ni.value : '', email: ei ? ei.value : '' });
+      });
+      savedDirs[i] = dirs;
+    }
   }
   schoolCon.innerHTML = '';
   playCon.innerHTML   = '';
   for (let i = 1; i <= n; i++) {
-    const sName = saved['s' + i + '_name'] || '';
-    // School block
+    const sName = xe(saved['s' + i + '_name'] || '');
+    // School block — director 1 row has a Remove button (hidden until a 2nd row exists)
     schoolCon.innerHTML +=
       '<div class="school-block">' +
       '<h3>School ' + i + '</h3>' +
       '<div class="field-grid g1"><div class="field"><label>School Name</label>' +
-      '<input type="text" id="school_' + i + '_name" placeholder="School Name" value="' + sName + '" oninput="updateSchoolNameInPlay(' + i + ')">' +
+      '<input type="text" id="school_' + i + '_name" placeholder="School Name" value="' + sName + '" oninput="updateSchoolNameInPlay(' + i + ');updateSchedulePreview()">' +
       '</div></div>' +
       '<div id="school_' + i + '_directors">' +
       '<div class="director-row field-grid" style="margin-top:10px;padding-top:10px;border-top:1px dashed #ddd">' +
       '<div class="field"><label>Director 1 \u2014 Name</label>' +
       '<input type="text" id="school_' + i + '_dir_1_name" placeholder="First Last"></div>' +
       '<div class="field"><label>Director 1 \u2014 Email</label>' +
-      '<input type="email" id="school_' + i + '_dir_1_email" placeholder="email@district.org" oninput="updateEmailList()"></div>' +
+      '<input type="email" id="school_' + i + '_dir_1_email" placeholder="email@district.org" oninput="updateEmailList()">' +
+      '<button class="remove-dir-btn" onclick="removeDirRow(this)" style="display:none">Remove</button></div>' +
       '</div></div>' +
       '<button class="add-dir-btn" onclick="addDirectorRow(' + i + ')">+ Add Another Director</button>' +
       '</div>';
     // Play block
     const ordVal = saved['p' + i + '_order'] || i;
-    const playVal = saved['s' + i + '_play'] || '';
+    const playVal = xe(saved['p' + i + '_play'] || '');
     playCon.innerHTML +=
       '<div class="play-block">' +
       '<div class="school-lbl" id="play_' + i + '_schoollbl">School ' + i + (sName ? ': ' + sName : '') + '</div>' +
@@ -1001,19 +1332,66 @@ function updateSchoolFields() {
       '<div class="field"><label>Performance Order</label>' +
       '<input type="number" id="play_' + i + '_order" value="' + ordVal + '" min="1" max="8"></div>' +
       '<div class="field"><label>Play Title</label>' +
-      '<input type="text" id="play_' + i + '_play" placeholder="Title of Play" value="' + playVal + '"></div>' +
+      '<input type="text" id="play_' + i + '_play" placeholder="Title of Play" value="' + playVal + '" oninput="updateSchedulePreview()"></div>' +
       '</div></div>';
+  }
+  // Restore director data after rebuild
+  for (let i = 1; i <= n; i++) {
+    const dirs = savedDirs[i] || [];
+    if (dirs.length > 1) {
+      for (let d = 1; d < dirs.length; d++) addDirectorRow(i);
+    }
+    dirs.forEach((dir, di) => {
+      const ni = document.getElementById('school_' + i + '_dir_' + (di+1) + '_name');
+      const ei = document.getElementById('school_' + i + '_dir_' + (di+1) + '_email');
+      if (ni) ni.value = dir.name || '';
+      if (ei) ei.value = dir.email || '';
+    });
+    updateDirRemoveButtons(i);
   }
   updateEmailList();
   for (let i = 1; i <= n; i++) attachSchoolAutocomplete(i);
 }
-// Init
-updateJudgeFields(); updateSchoolFields(); updateContestName(); renderSnapshotList();
+// Init — critical layout work runs synchronously so the form renders correctly on first paint.
+// renderSnapshotList is deferred one frame: it populates a collapsed section and doesn't
+// need to block the initial render.
+updateJudgeFields(); updateSchoolFields(); updateContestName();
+requestAnimationFrame(renderSnapshotList);
+
+// Mark the form dirty whenever the user changes any input or select.
+// Snapshot name and notes inputs are excluded so typing a name doesn't itself
+// trigger a "you have unsaved changes" warning on close.
+document.addEventListener('input', function(e) {
+  if (e.target.id === 'snapshot_name_input' || e.target.id === 'snapshot_notes_input') return;
+  markDirty();
+});
+document.addEventListener('change', function(e) {
+  if (e.target.id === 'snapshot_name_input' || e.target.id === 'snapshot_notes_input') return;
+  markDirty();
+});
+
+// Warn before closing/navigating away if there are unsaved changes.
+window.addEventListener('beforeunload', function(e) {
+  if (_formDirty) { e.preventDefault(); }
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  UTILITIES
 // ═══════════════════════════════════════════════════════════════
+
+/** Returns the trimmed value of a form element by id, or '' if the element
+ *  does not exist. Shorthand used throughout the app.
+ * @param {string} id - DOM element id
+ * @returns {string}
+ */
 function gv(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+/**
+ * Parses a 12-hour time string such as "8:30 AM" or "2 PM" into
+ * minutes-since-midnight (integer). Returns null for empty / unparseable input.
+ * @param {string} str
+ * @returns {number|null}
+ */
 function parseTime(str) {
   if (!str) return null;
   str = str.trim();
@@ -1027,6 +1405,13 @@ function parseTime(str) {
   if (ap === 'AM' && h === 12) h = 0;
   return h * 60 + mn;
 }
+
+/**
+ * Formats minutes-since-midnight as a 12-hour clock string ("8:30 AM").
+ * Returns '' for null / NaN inputs.
+ * @param {number|null} mins
+ * @returns {string}
+ */
 function fmtTime(mins) {
   if (mins == null || isNaN(mins)) return '';
   const h = Math.floor(mins / 60) % 24; const m = mins % 60;
@@ -1046,6 +1431,13 @@ function fmtDateNumeric(ds) {
   const d = new Date(ds + 'T12:00:00');
   return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
 }
+/**
+ * HTML-escapes a value for safe insertion into innerHTML or attribute values.
+ * Escapes &, <, >, and " — always call this on any user-supplied string
+ * before building HTML with string concatenation.
+ * @param {*} s - Value to escape (coerced to string)
+ * @returns {string} HTML-safe string
+ */
 function xe(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1053,9 +1445,21 @@ function xe(s) {
 // ═══════════════════════════════════════════════════════════════
 //  COLLECT VARIABLES
 // ═══════════════════════════════════════════════════════════════
+/**
+ * Reads the entire form and returns a single flat object containing every
+ * value needed by the document generators. This is the canonical source of
+ * truth passed to all generate* functions — add new form fields here first.
+ *
+ * Key properties returned:
+ *   num_schools, num_judges, schools[] (sorted by performance order),
+ *   first_show_minutes (null when not set/unparseable),
+ *   contest_title, folder_name, classification, contest_level, …
+ *
+ * @returns {Object}
+ */
 function collectVars() {
-  const numSchools = parseInt(gv('num_schools')) || 6;
-  const numJudges  = parseInt(gv('num_judges'))  || 3;
+  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
+  const numJudges  = parseInt(gv('num_judges'))  || DEFAULT_JUDGES;
   const yr  = gv('contest_year')  || String(new Date().getFullYear());
   const lv  = gv('contest_level') || 'District';
   const cls = gv('classification') || '5A';
@@ -1111,7 +1515,7 @@ function collectVars() {
     contest_date_numeric:     fmtDateNumeric(gv('contest_date')),
     directors_meeting_time:   gv('directors_meeting_time') || 'TBD',
     first_show_time:          gv('first_show_time') || '',
-    first_show_minutes:       parseTime(gv('first_show_time')),
+    first_show_minutes:       (function(){ const t = parseTime(gv('first_show_time')); return (t != null && !isNaN(t)) ? t : null; })(),
     rehearsal_date_1:         gv('rehearsal_date_1'),
     rehearsal_date_1_display: fmtDate(gv('rehearsal_date_1')),
     rehearsal_date_2:         gv('rehearsal_date_2'),
@@ -1165,7 +1569,7 @@ function calculateSchedule(vars) {
   const FIRST_SLOT = 50;  // setup(7) + performance(40) + buffer(3)
   const PERF_ONLY  = 40;
   const EACH_TRANS = 25;  // strike + critique + next setup (after_each)
-  const ALL_TRANS  = 14;  // strike + next setup only (after_all)
+  const ALL_TRANS  = 15;  // strike + next setup only (after_all)
   const TABULATION = 30;
   const AWARDS     = 30;
   const n  = vars.num_schools;
@@ -1173,6 +1577,7 @@ function calculateSchedule(vars) {
   const events = [];
   let t = startMin;
   if (vars.critique_format === 'after_each') {
+    // after_each: critique immediately follows each show's strike
     for (let i = 0; i < n; i++) {
       const s = vars.schools[i] || {name: 'School ' + (i+1)};
       const dur = i === 0 ? FIRST_SLOT : PERF_ONLY;
@@ -1185,8 +1590,11 @@ function calculateSchedule(vars) {
       events.push({start:t, end:t+EACH_TRANS, dur:EACH_TRANS, label:tLbl, play:'', school:'', type:'trans', colorIdx:i});
       t += EACH_TRANS;
     }
+    events.push({start:t, end:t+TABULATION, dur:TABULATION, label:"Judge's Tabulation", play:'', school:'', type:'admin', colorIdx:-1});
+    t += TABULATION;
+    events.push({start:t, end:t+AWARDS, dur:AWARDS, label:'Awards Ceremony', play:'', school:'', type:'awards', colorIdx:-1});
   } else {
-    // after_all
+    // after_all: shows → last show strike → tabulation → critiques → awards
     for (let i = 0; i < n; i++) {
       const s = vars.schools[i] || {name: 'School ' + (i+1)};
       const dur = i === 0 ? FIRST_SLOT : PERF_ONLY;
@@ -1199,24 +1607,32 @@ function calculateSchedule(vars) {
         t += ALL_TRANS;
       }
     }
+    // Last show strike (no next setup — just clear the stage)
+    const lastS = vars.schools[n-1] || {name: 'School ' + n};
+    events.push({start:t, end:t+ALL_TRANS, dur:ALL_TRANS, label:'School ' + n + ' Strike', play:'', school:'', type:'trans', colorIdx:n-1});
+    t += ALL_TRANS;
+    // Judges tabulate while strike is completing / directors wait
+    events.push({start:t, end:t+TABULATION, dur:TABULATION, label:"Judge's Tabulation", play:'', school:'', type:'admin', colorIdx:-1});
+    t += TABULATION;
+    // Critiques after tabulation, before awards
     const showsPerJudge = Math.ceil(n / nj);
-    const critBlock = showsPerJudge * 15;  // 15 min per critique per judge
+    const critBlock = showsPerJudge * CRIT_MINS_PER_SHOW;  // minutes per critique per judge
     const critLbl = nj > 1
       ? 'Critiques \u2014 ' + nj + ' Judges Concurrent'
       : 'Critiques \u2014 ' + n + ' Shows Sequential';
     events.push({start:t, end:t+critBlock, dur:critBlock, label:critLbl, play:'', school:'', type:'crit', colorIdx:-1});
     t += critBlock;
+    events.push({start:t, end:t+AWARDS, dur:AWARDS, label:'Awards Ceremony', play:'', school:'', type:'awards', colorIdx:-1});
   }
-  events.push({start:t, end:t+TABULATION, dur:TABULATION, label:"Judge's Tabulation", play:'', school:'', type:'admin', colorIdx:-1});
-  t += TABULATION;
-  events.push({start:t, end:t+AWARDS, dur:AWARDS, label:'Awards Ceremony', play:'', school:'', type:'awards', colorIdx:-1});
   return events;
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  SCHEDULE PREVIEW
 // ═══════════════════════════════════════════════════════════════
-const SCHOOL_COLORS_HEX = ['#FEF2CB','#B4C6E7','#F4B083','#C5E0B3','#FFFF00','#FFC000','#E06666','#CCA3FF'];
+const SCHOOL_COLORS_HEX  = ['#FEF2CB','#B4C6E7','#F4B083','#C5E0B3','#FFFF00','#FFC000','#E06666','#CCA3FF'];
+// Same palette without '#' prefix — used by SheetJS cell-fill (fgColor.rgb expects bare hex)
+const SCHOOL_COLORS_XLSX = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
 function updateSchedulePreview() {
   const box = document.getElementById('schedule_preview_box');
   if (!box) return;
@@ -1225,6 +1641,15 @@ function updateSchedulePreview() {
   if (!events.length) {
     box.innerHTML = '<p style="color:#888;font-style:italic;padding:10px 0">Enter a First Show / Setup Time to see schedule preview.</p>';
     return;
+  }
+  // Prepend Directors Meeting row if time is set and falls before first show
+  const dmMins = parseTime(vars.directors_meeting_time);
+  if (dmMins != null && !isNaN(dmMins) && vars.first_show_minutes != null && dmMins < vars.first_show_minutes) {
+    events.unshift({
+      start: dmMins, end: vars.first_show_minutes,
+      dur: vars.first_show_minutes - dmMins,
+      label: 'Directors\u2019 Meeting', play: '', school: '', type: 'dm', colorIdx: 0
+    });
   }
   let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">' +
     '<thead><tr>' +
@@ -1236,11 +1661,12 @@ function updateSchedulePreview() {
   events.forEach(ev => {
     let bg = '#DADADA';
     if (ev.type === 'show') bg = SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
-    const school = ev.type === 'show' ? ev.school + (ev.play ? ' \u2014 ' + ev.play : '') : '';
+    if (ev.type === 'dm')   bg = SCHOOL_COLORS_HEX[0]; // matches Excel output color for DM row
+    const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' \u2014 ' + xe(ev.play) : '') : '';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.start) + '</td>' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.end) + '</td>' +
-      '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + ev.label + '</td>' +
+      '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + xe(ev.label) + '</td>' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + school + '</td>' +
       '</tr>';
   });
@@ -1468,7 +1894,7 @@ function setCellStyled(ws, addr, cell) {
 function minToFrac(mins) { return mins / 1440; }
 function genContestSchedule(vars) {
   const events = calculateSchedule(vars);
-  const SCHOOL_COLORS = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
+  const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
   const GREY = 'DADADA';
   const BLACK = '000000';
   const wb = XLSX.utils.book_new();
@@ -1529,7 +1955,7 @@ function genContestSchedule(vars) {
 //  DOC 3: REHEARSAL SCHEDULE (.xlsx)
 // ═══════════════════════════════════════════════════════════════
 function genRehearsalSchedule(vars) {
-  const SCHOOL_COLORS = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
+  const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
   const BLACK = '000000';
   const GREY  = 'DADADA';
   const slotLen = vars.rehearsal_length_minutes + 10; // rehearsal time + 10-min transition
@@ -1844,19 +2270,32 @@ async function genChecklist(vars) {
 //  FORM STATE SERIALIZER (pre-filled HTML backup in ZIP)
 // ═══════════════════════════════════════════════════════════════
 function serializeFormState() {
-  const numSchools = parseInt(gv('num_schools')) || 6;
+  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
   const state = {
     num_schools: gv('num_schools'),
     num_judges:  gv('num_judges'),
-    director_counts: [],
+    director_counts: [],  // kept for backwards-compat; director_data is authoritative
+    director_data: [],
     fields: [],
+    critique_assignment: _critiqueLocked ? JSON.parse(JSON.stringify(_critiqueAssignments)) : null,
+    critique_locked: _critiqueLocked,
   };
   for (let i = 1; i <= numSchools; i++) {
     const con = document.getElementById('school_' + i + '_directors');
-    state.director_counts.push(con ? con.querySelectorAll('.director-row').length : 1);
+    const rows = con ? con.querySelectorAll('.director-row') : [];
+    state.director_counts.push(rows.length);
+    const dirs = [];
+    rows.forEach(function(row) {
+      const ni = row.querySelector('input[type="text"]');
+      const ei = row.querySelector('input[type="email"]');
+      dirs.push({ name: ni ? ni.value : '', email: ei ? ei.value : '' });
+    });
+    state.director_data.push(dirs);
   }
   document.querySelectorAll('input, select, textarea').forEach(function(el) {
     if (!el.id) return;
+    // Directors captured in director_data (position-based); skip to avoid ID-mismatch on restore
+    if (/_dir_\d+_(name|email)$/.test(el.id)) return;
     if (el.type === 'radio' || el.type === 'checkbox') {
       state.fields.push({id: el.id, type: el.type, checked: el.checked, value: el.value});
     } else {
@@ -1867,22 +2306,44 @@ function serializeFormState() {
   const prefillScript =
     '<script id="_oap_prefill">\n(function(){\nvar S=' + stateJson + ';\n' +
     'function ap(){\n' +
+    // Reset generate button and status frozen by the serialize snapshot
+    '  var gb=document.getElementById("generateBtn");if(gb)gb.disabled=false;\n' +
+    '  var st=document.getElementById("status");if(st){st.textContent="";st.style.color="";}\n' +
     '  var ns=document.getElementById("num_schools");\n' +
     '  if(ns&&S.num_schools){ns.value=S.num_schools;if(typeof updateSchoolFields==="function")updateSchoolFields();}\n' +
     '  var nj=document.getElementById("num_judges");\n' +
     '  if(nj&&S.num_judges){nj.value=S.num_judges;if(typeof updateJudgeFields==="function")updateJudgeFields();}\n' +
-    '  if(S.director_counts){S.director_counts.forEach(function(cnt,i){\n' +
-    '    for(var r=1;r<cnt;r++){if(typeof addDirectorRow==="function")addDirectorRow(i+1);}\n' +
-    '  });}\n' +
+    // Restore all non-director fields first
     '  S.fields.forEach(function(f){\n' +
     '    var el=document.getElementById(f.id);if(!el)return;\n' +
     '    if(f.type==="checkbox"){el.checked=!!f.checked;}\n' +
     '    else if(f.type==="radio"){if(f.checked)el.checked=true;}\n' +
     '    else{el.value=f.value||"";}\n' +
     '  });\n' +
+    // Restore directors by position to avoid ID-gap issues from mid-row removals
+    '  if(S.director_data){S.director_data.forEach(function(dirs,si){\n' +
+    '    var idx=si+1;\n' +
+    '    var con=document.getElementById("school_"+idx+"_directors");\n' +
+    '    if(!con)return;\n' +
+    '    var existing=con.querySelectorAll(".director-row").length;\n' +
+    '    for(var d=existing;d<dirs.length;d++){if(typeof addDirectorRow==="function")addDirectorRow(idx);}\n' +
+    '    dirs.forEach(function(dir,di){\n' +
+    '      var ni=document.getElementById("school_"+idx+"_dir_"+(di+1)+"_name");\n' +
+    '      var ei=document.getElementById("school_"+idx+"_dir_"+(di+1)+"_email");\n' +
+    '      if(ni)ni.value=dir.name||"";\n' +
+    '      if(ei)ei.value=dir.email||"";\n' +
+    '    });\n' +
+    '    if(typeof updateDirRemoveButtons==="function")updateDirRemoveButtons(idx);\n' +
+    '  });}\n' +
     '  if(typeof updateContestName==="function")updateContestName();\n' +
     '  if(typeof updateEmailList==="function")updateEmailList();\n' +
     '  for(var j=1;j<=3;j++){if(typeof toggleHotelNights==="function")toggleHotelNights(j);}\n' +
+    // Restore locked critique assignment
+    '  if(S.critique_assignment&&S.critique_locked){\n' +
+    '    if(typeof _critiqueAssignments!=="undefined")_critiqueAssignments=S.critique_assignment;\n' +
+    '    if(typeof _critiqueLocked!=="undefined")_critiqueLocked=true;\n' +
+    '    if(typeof renderCritiqueAssignments==="function")renderCritiqueAssignments();\n' +
+    '  }\n' +
     '}\n' +
     'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){setTimeout(ap,50);});}' +
     'else{setTimeout(ap,50);}\n' +
@@ -2584,12 +3045,36 @@ async function genPreRehearsalMeeting(vars) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  DEPENDENCY CHECK — called at start of generateAll()
+// ═══════════════════════════════════════════════════════════════
+/**
+ * Checks that all CDN libraries loaded successfully.
+ * @returns {string[]} Array of human-readable missing-library messages.
+ *                     Empty array means all dependencies are present.
+ */
+function checkDependencies() {
+  const missing = [];
+  if (typeof XLSX === 'undefined')  missing.push('SheetJS (XLSX) — required for Excel files');
+  if (typeof JSZip === 'undefined') missing.push('JSZip — required for ZIP download');
+  return missing;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  MAIN: GENERATE ALL → ZIP
 // ═══════════════════════════════════════════════════════════════
 async function generateAll() {
   const btn = document.getElementById('generateBtn');
   const statusEl = document.getElementById('status');
+  if (!btn || !statusEl) return;
   btn.disabled = true; statusEl.style.color = '#555';
+
+  const missingLibs = checkDependencies();
+  if (missingLibs.length) {
+    statusEl.textContent = '❌ Cannot generate — missing libraries: ' + missingLibs.join('; ') + '. Check your internet connection and reload the page.';
+    statusEl.style.color = '#C62828';
+    btn.disabled = false;
+    return;
+  }
   try {
     const vars = collectVars();
 
@@ -2681,13 +3166,25 @@ async function generateAll() {
     if (wantAdjPackets && typeof PDFLib !== 'undefined') {
       try {
         statusEl.textContent = '📝 Building Adjudicator Packets…';
-        var packetsBytes = await genAdjudicatorPackets(vars);
-        fold.file('Adjudicator Packets.pdf', packetsBytes); count++;
+        var packetsResult = await genAdjudicatorPackets(vars);
+        fold.file('Adjudicator Packets.pdf', packetsResult.bytes); count++;
+        if (packetsResult.fieldErrors && packetsResult.fieldErrors.length) {
+          console.warn('PDF field fill warnings:', packetsResult.fieldErrors);
+          statusEl.textContent = '⚠️ Adjudicator Packets generated with ' + packetsResult.fieldErrors.length + ' field warning(s) — some fields may be blank. See browser console for details.';
+          statusEl.style.color = '#B45309';
+          await new Promise(function(r) { setTimeout(r, 3000); });
+        }
       } catch(pdfErr) {
         console.error('Adjudicator packet error:', pdfErr);
+        statusEl.textContent = '⚠️ Adjudicator Packets could not be generated: ' + pdfErr.message;
+        statusEl.style.color = '#C62828';
+        await new Promise(function(r) { setTimeout(r, 3000); });
       }
     } else if (wantAdjPackets) {
       console.warn('pdf-lib not loaded - adjudicator packets skipped');
+      statusEl.textContent = '⚠️ pdf-lib library not loaded — Adjudicator Packets skipped. Check your internet connection and reload.';
+      statusEl.style.color = '#B45309';
+      await new Promise(function(r) { setTimeout(r, 3000); });
     }
 
     if (count === 0) { statusEl.style.color='#c62828'; statusEl.textContent='No documents selected.'; btn.disabled=false; return; }
@@ -2714,7 +3211,7 @@ async function generateAll() {
 function toggleDarkMode() {
   const dark = document.body.classList.toggle('dark-mode');
   document.getElementById('darkModeBtn').textContent = dark ? '☀️ Light' : '🌙 Dark';
-  localStorage.setItem('oap_dark', dark ? '1' : '0');
+  safeStorageSet('oap_dark', dark ? '1' : '0');
 }
 // Restore dark mode preference on load
 (function() {
@@ -2740,9 +3237,14 @@ function jumpTo(id) {
 //  CRITIQUE ASSIGNMENT RANDOMIZER
 // ═══════════════════════════════════════════════════════════════
 var _critiqueAssignments = null;
+var _critiqueLocked = false;
+var _formDirty = false; // true when form has been changed since last snapshot save
 
 function runCritiqueRandomizer() {
-  if (_critiqueAssignments) {
+  if (_critiqueLocked) {
+    if (!confirm('This assignment is locked. Unlock and re-randomize?')) return;
+    _critiqueLocked = false;
+  } else if (_critiqueAssignments) {
     if (!confirm('Are you sure you want to regenerate critique assignments?')) return;
   }
   _critiqueAssignments = generateCritiqueAssignments();
@@ -2830,7 +3332,10 @@ function renderCritiqueAssignments() {
   var N = schools.length;
 
   var judgeColors = ['#D6E4F0', '#D8EDDA', '#FFF3CD', '#FCE4EC'];
-  var judgeBorder = ['#9BB8D4', '#9BCBA0', '#F0D080', '#F4ABBD'];
+
+  var moveCol = !_critiqueLocked
+    ? '<th style="background:#4A148C;color:#fff;padding:6px 4px;text-align:center;width:58px">Move</th>'
+    : '';
 
   var html = '<table style="width:100%;border-collapse:collapse;font-size:0.87rem;margin-top:4px">' +
     '<thead><tr>' +
@@ -2838,30 +3343,37 @@ function renderCritiqueAssignments() {
     '<th style="background:#4A148C;color:#fff;padding:6px 10px;text-align:left">School</th>' +
     '<th style="background:#4A148C;color:#fff;padding:6px 10px;text-align:left">Play Title</th>' +
     '<th style="background:#4A148C;color:#fff;padding:6px 10px;text-align:left">Judge Assigned</th>' +
+    moveCol +
     '</tr></thead><tbody>';
 
   for (var i = 0; i < N; i++) {
     var jNum = result[i];
     var jName = jNum ? (judgeNames[jNum - 1] || '') : '';
-    var label = jNum ? ('Judge ' + jNum + (jName ? ' \u2014 ' + jName : '')) : '?';
+    var label = jNum ? ('Judge ' + jNum + (jName ? ' \u2014 ' + xe(jName) : '')) : '?';
     var bg = jNum ? judgeColors[(jNum - 1) % judgeColors.length] : '#f5f5f5';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd;text-align:center;font-weight:700;color:#555">' + (i + 1) + '</td>' +
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd">' + xe(schools[i].name) + '</td>' +
       '<td style="padding:5px 10px;border-bottom:1px solid #ddd;font-style:italic;color:#555">' + xe(schools[i].play || '\u2014') + '</td>' +
-      '<td style="padding:5px 10px;border-bottom:1px solid #ddd;font-weight:700">' + label + '</td>' +
-      '</tr>';
+      '<td style="padding:5px 10px;border-bottom:1px solid #ddd;font-weight:700">' + label + '</td>';
+    if (!_critiqueLocked) {
+      html += '<td style="padding:3px 4px;border-bottom:1px solid #ddd;text-align:center;white-space:nowrap">' +
+        '<button class="critique-move-btn" onclick="moveCritiqueRow(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + ' title="Move up">\u2191</button> ' +
+        '<button class="critique-move-btn" onclick="moveCritiqueRow(' + i + ',1)"' + (i === N - 1 ? ' disabled' : '') + ' title="Move down">\u2193</button>' +
+        '</td>';
+    }
+    html += '</tr>';
   }
   html += '</tbody></table>';
 
-  // Summary row
+  // Summary
   html += '<div style="margin-top:12px;font-size:0.81rem;color:#444;display:flex;flex-wrap:wrap;gap:14px">';
   for (var jj = 1; jj <= J; jj++) {
     var cnt = result.filter(function(x) { return x === jj; }).length;
     var jn = judgeNames[jj - 1] || '';
     var bg2 = judgeColors[(jj - 1) % judgeColors.length];
     html += '<span style="background:' + bg2 + ';border-radius:4px;padding:3px 10px">' +
-      'Judge ' + jj + (jn ? ' (' + jn + ')' : '') + ': <strong>' + cnt + ' critique' + (cnt !== 1 ? 's' : '') + '</strong></span>';
+      'Judge ' + jj + (jn ? ' (' + xe(jn) + ')' : '') + ': <strong>' + cnt + ' critique' + (cnt !== 1 ? 's' : '') + '</strong></span>';
   }
   html += '</div>';
 
@@ -2869,7 +3381,55 @@ function renderCritiqueAssignments() {
     html += '<p style="margin-top:10px;font-size:0.78rem;color:#888;font-style:italic">\u26a0\ufe0f After-Each mode: Judge 1 is not assigned the last school.</p>';
   }
 
+  // Lock / unlock controls
+  if (_critiqueLocked) {
+    html += '<div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">' +
+      '<span class="critique-locked-notice">\uD83D\uDD12 Assignment locked \u2014 saved with this contest</span>' +
+      '<button class="critique-unlock-btn" onclick="unlockCritiqueAssignment()">\uD83D\uDD13 Unlock &amp; Re-randomize</button>' +
+      '</div>';
+  } else {
+    html += '<div style="margin-top:14px;text-align:center">' +
+      '<button class="critique-lock-btn" onclick="lockCritiqueAssignment()">\uD83D\uDD12 Lock &amp; Save This Assignment</button>' +
+      '<p style="margin-top:6px;font-size:0.78rem;color:#888">Use \u2191\u2193 to adjust order first, then lock to persist through generate/regenerate.</p>' +
+      '</div>';
+  }
+
   out.innerHTML = html;
+}
+
+function lockCritiqueAssignment() {
+  if (!_critiqueAssignments) return;
+  _critiqueLocked = true;
+  renderCritiqueAssignments();
+}
+
+function unlockCritiqueAssignment() {
+  _critiqueLocked = false;
+  renderCritiqueAssignments();
+}
+
+function moveCritiqueRow(idx, dir) {
+  if (!_critiqueAssignments) return;
+  var result = _critiqueAssignments.result;
+  var newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= result.length) return;
+  var tmp = result[idx]; result[idx] = result[newIdx]; result[newIdx] = tmp;
+  renderCritiqueAssignments();
+}
+
+function copySwPassword(btn) {
+  var inp = document.getElementById('sw_password');
+  if (!inp || !inp.value) return;
+  navigator.clipboard ? navigator.clipboard.writeText(inp.value) : (inp.select(), document.execCommand('copy'));
+  var orig = btn.textContent; btn.textContent = '✓ Copied!';
+  setTimeout(function() { btn.textContent = orig; }, 2000);
+}
+function toggleSwPassword() {
+  var inp = document.getElementById('sw_password');
+  var btn = document.getElementById('sw_pw_toggle');
+  if (!inp || !btn) return;
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'Hide'; btn.setAttribute('aria-label','Hide password'); btn.setAttribute('aria-pressed','true'); }
+  else { inp.type = 'password'; btn.textContent = 'Show'; btn.setAttribute('aria-label','Show password'); btn.setAttribute('aria-pressed','false'); }
 }
 
 // =================================================================
@@ -2885,6 +3445,7 @@ function _b64ToBytes(b64) {
 async function genAdjudicatorPackets(vars) {
   var PDFDocument = PDFLib.PDFDocument;
   var merged = await PDFDocument.create();
+  var _pdfFieldErrors = [];
 
   // Level checkbox map: contest_level -> field name on Evaluation form
   var levelCheckMap = {
@@ -2920,14 +3481,14 @@ async function genAdjudicatorPackets(vars) {
       var form = evalDoc.getForm();
 
       // Fill header/admin fields only; ratings and comments left blank for judge
-      try { form.getTextField('Title').setText((school.name ? school.name + ' \u2014 ' : '') + (school.play || '')); } catch(e) {}
-      try { form.getTextField('Date').setText(vars.contest_date_short || ''); } catch(e) {}
-      try { form.getTextField('Performance Order').setText(String(school.order)); } catch(e) {}
-      try { form.getTextField('Conference').setText(vars.classification || ''); } catch(e) {}
-      try { form.getTextField('Contest Site').setText(vars.host_venue_name || ''); } catch(e) {}
-      try { form.getTextField('Judge').setText(judgeName); } catch(e) {}
+      try { form.getTextField('Title').setText((school.name ? school.name + ' \u2014 ' : '') + (school.play || '')); } catch(e) { _pdfFieldErrors.push('Eval Title'); }
+      try { form.getTextField('Date').setText(vars.contest_date_short || ''); } catch(e) { _pdfFieldErrors.push('Eval Date'); }
+      try { form.getTextField('Performance Order').setText(String(school.order)); } catch(e) { _pdfFieldErrors.push('Eval Performance Order'); }
+      try { form.getTextField('Conference').setText(vars.classification || ''); } catch(e) { _pdfFieldErrors.push('Eval Conference'); }
+      try { form.getTextField('Contest Site').setText(vars.host_venue_name || ''); } catch(e) { _pdfFieldErrors.push('Eval Contest Site'); }
+      try { form.getTextField('Judge').setText(judgeName); } catch(e) { _pdfFieldErrors.push('Eval Judge'); }
       var cbName = levelCheckMap[vars.contest_level];
-      if (cbName) { try { form.getCheckBox(cbName).check(); } catch(e) {} }
+      if (cbName) { try { form.getCheckBox(cbName).check(); } catch(e) { _pdfFieldErrors.push('Eval level checkbox (' + cbName + ')'); } }
 
       form.flatten();
       var evPages = await merged.copyPages(evalDoc, evalDoc.getPageIndices());
@@ -2938,17 +3499,17 @@ async function genAdjudicatorPackets(vars) {
     var rankDoc = await PDFDocument.load(_b64ToBytes(RANK_PDF_B64));
     var rForm = rankDoc.getForm();
 
-    try { rForm.getDropdown('Panelist').select(panelistLetters[jIdx] || 'A'); } catch(e) {}
-    try { rForm.getDropdown('Conference').select(vars.classification || '5A'); } catch(e) {}
+    try { rForm.getDropdown('Panelist').select(panelistLetters[jIdx] || 'A'); } catch(e) { _pdfFieldErrors.push('Rank Panelist'); }
+    try { rForm.getDropdown('Conference').select(vars.classification || '5A'); } catch(e) { _pdfFieldErrors.push('Rank Conference'); }
     var lvl = levelDropMap[vars.contest_level] || 'District';
-    try { rForm.getDropdown('Level/Zone').select(lvl); } catch(e) {}
+    try { rForm.getDropdown('Level/Zone').select(lvl); } catch(e) { _pdfFieldErrors.push('Rank Level/Zone'); }
 
-    for (var ri = 0; ri < schools.length && ri < 8; ri++) {
+    for (var ri = 0; ri < schools.length && ri < MAX_SCHOOLS; ri++) {
       var rs = schools[ri];
       var playfld = 'Play ' + (ri + 1);
       var sclfld  = ri === 0 ? 'School' : 'School_' + (ri + 1);
-      try { rForm.getTextField(playfld).setText(rs.play || ''); } catch(e) {}
-      try { rForm.getTextField(sclfld).setText(rs.name  || ''); } catch(e) {}
+      try { rForm.getTextField(playfld).setText(rs.play || ''); } catch(e) { _pdfFieldErrors.push('Rank ' + playfld); }
+      try { rForm.getTextField(sclfld).setText(rs.name  || ''); } catch(e) { _pdfFieldErrors.push('Rank ' + sclfld); }
     }
 
     rForm.flatten();
@@ -2964,7 +3525,7 @@ async function genAdjudicatorPackets(vars) {
     }
   }
 
-  return merged.save();
+  return { bytes: await merged.save(), fieldErrors: _pdfFieldErrors };
 }
 
 
