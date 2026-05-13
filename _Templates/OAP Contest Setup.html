@@ -2013,8 +2013,6 @@ function genContestSchedule(vars) {
 // ═══════════════════════════════════════════════════════════════
 function genRehearsalSchedule(vars) {
   const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
-  const BLACK = '000000';
-  const GREY  = 'DADADA';
   const slotLen = vars.rehearsal_length_minutes + 10; // rehearsal time + 10-min transition
   const wb = XLSX.utils.book_new();
   const ws = {};
@@ -2032,11 +2030,11 @@ function genRehearsalSchedule(vars) {
 
   // ── Helpers ─────────────────────────────────────────────────────
   function addSectionHeader(label) {
-    ws['A'+row] = {v: label, t:'s', s:{font:{bold:true,sz:11,name:'Calibri'}}};
+    ws['A'+row] = {v: label, t:'s', s:{font:{bold:true,sz:THEME.xlsx.headerSz,name:THEME.xlsx.font}}};
     merges.push({s:{r:row-1,c:0},e:{r:row-1,c:3}});
     row++;
     ['START','END','WHAT','SCHOOL'].forEach((h,ci) => {
-      ws[['A','B','C','D'][ci]+row] = sc(h, BLACK, true, false);
+      ws[['A','B','C','D'][ci]+row] = sc(h, THEME.xlsx.black, true, false);
     });
     row++;
   }
@@ -2065,7 +2063,7 @@ function genRehearsalSchedule(vars) {
     const events = calculateSchedule(vars);
     events.forEach(ev => {
       const rgb = (ev.type === 'show' || ev.type === 'trans')
-        ? SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length] : GREY;
+        ? SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length] : THEME.xlsx.grey;
       ws['A'+row] = sc(minToFrac(ev.start), rgb, false, true);
       ws['B'+row] = sc(minToFrac(ev.end),   rgb, false, true);
       ws['C'+row] = sc(ev.label,            rgb, false, false);
@@ -2090,7 +2088,7 @@ function genRehearsalSchedule(vars) {
   if (sameDay) {
     // ── ONE-DAY: continuous schedule, no date section headers ──────
     ['START','END','WHAT','SCHOOL'].forEach((h,ci) => {
-      ws[['A','B','C','D'][ci]+row] = sc(h, BLACK, true, false);
+      ws[['A','B','C','D'][ci]+row] = sc(h, THEME.xlsx.black, true, false);
     });
     row++;
     addRehearsalRows(vars.schools, vars.rehearsal_start_minutes, 0);
@@ -3308,8 +3306,8 @@ function runCritiqueRandomizer() {
   renderCritiqueAssignments();
 }
 
-function generateCritiqueAssignments() {
-  var vars = collectVars();
+function generateCritiqueAssignments(vars) {
+  if (!vars) vars = collectVars();
   var schools = vars.schools; // already sorted by performance order
   var N = schools.length;
   var J = vars.num_judges;
@@ -3373,7 +3371,7 @@ function generateCritiqueAssignments() {
   return {
     schools: schools,
     result: result,
-    judgeNames: [gv('judge_1_name'), gv('judge_2_name'), gv('judge_3_name')],
+    judgeNames: [vars['judge_1_name']||'', vars['judge_2_name']||'', vars['judge_3_name']||''],
     afterEach: afterEach,
     J: J
   };
