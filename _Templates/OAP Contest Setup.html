@@ -1060,79 +1060,76 @@ function renderSnapshotList() {
 //  EMAIL DRAFT COMPOSER
 // ═══════════════════════════════════════════════════════════════
 const EMAIL_TEMPLATES = {
-  announcement: {
-    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Contest Information'; },
-    body: () => {
-      const v = FormState.email();
-      const cn  = v.contest_full_name || '[Contest Name]';
-      const lv  = v.contest_level || 'Contest';
-      const dt  = v.contest_date_display || '[Contest Date TBD]';
-      const ven = v.host_venue_name || '[Venue TBD]';
-      const adr = v.host_school_address || '[Address TBD]';
-      const dmt = v.directors_meeting_time || '[TBD]';
-      const fst = v.first_show_time || '[TBD]';
-      const edd = v.entry_system_deadline_display || '[TBD]';
-      const cmn = v.cm_name || '[CM Name]';
-      const cme = v.cm_email || '[CM Email]';
-      const cmp = v.cm_phone || '';
-      return 'Dear ' + lv + ' Directors,\n\nCongratulations on qualifying for the ' + cn + '! I am looking forward to serving as your Contest Manager.\n\nThe contest will be held on ' + dt + ' at ' + ven + ', located at ' + adr + '.\n\nDirectors\u2019 Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease submit your entries by ' + edd + '.\n\nIf you have any questions, please contact me at ' + cme + (cmp ? ' or ' + cmp : '') + '.\n\nSincerely,\n' + cmn + '\nContest Manager';
-    }
+  announcement: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const lv  = state.contest_level || 'Contest';
+    const dt  = state.contest_date_display || '[Contest Date TBD]';
+    const ven = state.host_venue_name || '[Venue TBD]';
+    const adr = state.host_school_address || '[Address TBD]';
+    const dmt = state.directors_meeting_time || '[TBD]';
+    const fst = state.first_show_time || '[TBD]';
+    const edd = state.entry_system_deadline_display || '[TBD]';
+    const cmn = state.cm_name || '[CM Name]';
+    const cme = state.cm_email || '[CM Email]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Contest Information',
+      body: 'Dear ' + lv + ' Directors,\n\nCongratulations on qualifying for the ' + cn + '! I am looking forward to serving as your Contest Manager.\n\nThe contest will be held on ' + dt + ' at ' + ven + ', located at ' + adr + '.\n\nDirectors’ Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease submit your entries by ' + edd + '.\n\nIf you have any questions, please contact me at ' + cme + (cmp ? ' or ' + cmp : '') + '.\n\nSincerely,\n' + cmn + '\nContest Manager',
+    };
   },
-  deadline: {
-    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Entry Deadline Reminder'; },
-    body: () => {
-      const v = FormState.email();
-      const cn  = v.contest_full_name || '[Contest Name]';
-      const edd = v.entry_system_deadline_display || '[TBD]';
-      const lcd = v.light_cue_deadline_date_display || '[TBD]';
-      const lct = v.light_cue_deadline_time || '5:00 PM';
-      const cmn = v.cm_name || '[CM Name]';
-      const cmp = v.cm_phone || '';
-      return 'Dear Directors,\n\nThis is a reminder of the upcoming deadlines for the ' + cn + ':\n\n\u2022  Entry Deadline: ' + edd + '\n\u2022  Light Cue Submission Deadline: ' + lcd + ' by ' + lct + '\n\nIf you have not yet submitted your entry, please do so as soon as possible. Late entries may not be accepted.\n\nPlease contact me if you have any questions.\n\n' + cmn + (cmp ? '\n' + cmp : '');
-    }
+  deadline: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const edd = state.entry_system_deadline_display || '[TBD]';
+    const lcd = state.light_cue_deadline_date_display || '[TBD]';
+    const lct = state.light_cue_deadline_time || '5:00 PM';
+    const cmn = state.cm_name || '[CM Name]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Entry Deadline Reminder',
+      body: 'Dear Directors,\n\nThis is a reminder of the upcoming deadlines for the ' + cn + ':\n\n•  Entry Deadline: ' + edd + '\n•  Light Cue Submission Deadline: ' + lcd + ' by ' + lct + '\n\nIf you have not yet submitted your entry, please do so as soon as possible. Late entries may not be accepted.\n\nPlease contact me if you have any questions.\n\n' + cmn + (cmp ? '\n' + cmp : ''),
+    };
   },
-  daybefore: {
-    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Tomorrow\u2019s Contest'; },
-    body: () => {
-      const v = FormState.email();
-      const cn  = v.contest_full_name || '[Contest Name]';
-      const dt  = v.contest_date_short || '[Contest Date]';
-      const ven = v.host_venue_name || '[Venue TBD]';
-      const adr = v.host_school_address || '[Address TBD]';
-      const dmt = v.directors_meeting_time || '[TBD]';
-      const fst = v.first_show_time || '[TBD]';
-      const cmn = v.cm_name || '[CM Name]';
-      const cme = v.cm_email || '[CM Email]';
-      const cmp = v.cm_phone || '';
-      return 'Dear Directors,\n\nJust a reminder that the ' + cn + ' is tomorrow, ' + dt + '.\n\nVenue: ' + ven + '\nAddress: ' + adr + '\nDirectors\u2019 Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease arrive prepared and on time. I look forward to seeing you tomorrow!\n\n' + cmn + '\n' + cme + (cmp ? '\n' + cmp : '');
-    }
+  daybefore: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const dt  = state.contest_date_short || '[Contest Date]';
+    const ven = state.host_venue_name || '[Venue TBD]';
+    const adr = state.host_school_address || '[Address TBD]';
+    const dmt = state.directors_meeting_time || '[TBD]';
+    const fst = state.first_show_time || '[TBD]';
+    const cmn = state.cm_name || '[CM Name]';
+    const cme = state.cm_email || '[CM Email]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Tomorrow’s Contest',
+      body: 'Dear Directors,\n\nJust a reminder that the ' + cn + ' is tomorrow, ' + dt + '.\n\nVenue: ' + ven + '\nAddress: ' + adr + '\nDirectors’ Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease arrive prepared and on time. I look forward to seeing you tomorrow!\n\n' + cmn + '\n' + cme + (cmp ? '\n' + cmp : ''),
+    };
   },
-  judges: {
-    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Judge Information'; },
-    body: () => {
-      const v = FormState.email();
-      const cn  = v.contest_full_name || '[Contest Name]';
-      const dt  = v.contest_date_short || '[Contest Date TBD]';
-      const ven = v.host_venue_name || '[Venue TBD]';
-      const adr = v.host_school_address || '[Address TBD]';
-      const dmtDisplay = v.directors_meeting_time || '[TBD]';
-      const dmtMin = parseTime(v.directors_meeting_time);
-      const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors\u2019 Meeting]';
-      const cfText = v.critique_format === 'after_each' ? 'after each show' : 'after all shows';
-      const showList = v.schools.map(function(s, i) {
-        return (i+1) + '. ' + s.name + (s.play ? ' \u2014 ' + s.play : '');
-      }).join('\n');
-      const cmn = v.cm_name || '[CM Name]';
-      const cme = v.cm_email || '[CM Email]';
-      const cmp = v.cm_phone || '';
-      return 'Dear Judge,\n\nThe ' + cn + ' is coming up on ' + dt + '. We are so excited to have you adjudicate!\n\nVenue: ' + ven + '\nAddress: ' + adr + '\n\nThe Directors\u2019 Meeting begins promptly at ' + dmtDisplay + ', so please plan to arrive by ' + arrDisplay + ' to get settled in.\n\nShows will run back to back in the following order:\n\n' + showList + '\n\nCritiques will be randomly drawn, and will be held ' + cfText + '.\n\nIf you have any questions or concerns before contest day, please don\u2019t hesitate to reach out.\n\n' + cmn + '\nContest Manager\n' + cme + (cmp ? '\n' + cmp : '');
-    }
-  }
+  judges: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const dt  = state.contest_date_short || '[Contest Date TBD]';
+    const ven = state.host_venue_name || '[Venue TBD]';
+    const adr = state.host_school_address || '[Address TBD]';
+    const dmtDisplay = state.directors_meeting_time || '[TBD]';
+    const dmtMin = parseTime(state.directors_meeting_time);
+    const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors’ Meeting]';
+    const cfText = state.critique_format === 'after_each' ? 'after each show' : 'after all shows';
+    const showList = state.schools.map(function(s, i) {
+      return (i+1) + '. ' + s.name + (s.play ? ' — ' + s.play : '');
+    }).join('\n');
+    const cmn = state.cm_name || '[CM Name]';
+    const cme = state.cm_email || '[CM Email]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Judge Information',
+      body: 'Dear Judge,\n\nThe ' + cn + ' is coming up on ' + dt + '. We are so excited to have you adjudicate!\n\nVenue: ' + ven + '\nAddress: ' + adr + '\n\nThe Directors’ Meeting begins promptly at ' + dmtDisplay + ', so please plan to arrive by ' + arrDisplay + ' to get settled in.\n\nShows will run back to back in the following order:\n\n' + showList + '\n\nCritiques will be randomly drawn, and will be held ' + cfText + '.\n\nIf you have any questions or concerns before contest day, please don’t hesitate to reach out.\n\n' + cmn + '\nContest Manager\n' + cme + (cmp ? '\n' + cmp : ''),
+    };
+  },
 };
 function loadEmailTemplate(key) {
-  const tmpl = EMAIL_TEMPLATES[key]; if (!tmpl) return;
-  document.getElementById('email_subject_display').value = tmpl.subject();
-  document.getElementById('email_body_display').value = tmpl.body();
+  const fn = EMAIL_TEMPLATES[key]; if (!fn) return;
+  const { subject, body } = fn(FormState.email());
+  document.getElementById('email_subject_display').value = subject;
+  document.getElementById('email_body_display').value = body;
 }
 
 function toggleAdvancingPicker() {
