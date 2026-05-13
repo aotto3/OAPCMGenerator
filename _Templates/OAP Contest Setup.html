@@ -612,6 +612,34 @@ const DEFAULT_JUDGES     = 3;   // Default num_judges when no value is present
 const CRIT_MINS_PER_SHOW = 15;  // Minutes allocated per critique slot in the schedule
 
 // ═══════════════════════════════════════════════════════════════
+//  THEME — named styling constants for OOXML docs and XLSX sheets
+// ═══════════════════════════════════════════════════════════════
+const THEME = {
+  doc: {
+    font:       'Calibri',
+    color:      '222222',
+    headColor:  '1F4E79',
+    lineColor:  'CCCCCC',
+    signColor:  '444444',
+    bodySize:   20,
+    headSize:   22,
+    indent:     360,
+    spaceAfter: 120,
+    headSb:     200,
+    headSa:     80,
+    bulletSa:   60,
+  },
+  xlsx: {
+    font:       'Calibri',
+    titleSz:    13,
+    headerSz:   11,
+    footnoteSz: 10,
+    black:      '000000',
+    grey:       'DADADA',
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
 //  UI HELPERS
 // ═══════════════════════════════════════════════════════════════
 function toggle(header) {
@@ -719,30 +747,7 @@ const OAP_SNAP_FIELDS = [
 ];
 const OAP_SNAP_SELECTS = ['contest_level','classification'];
 
-function serializeState() {
-  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
-  const fields = {};
-  [...OAP_SNAP_FIELDS, ...OAP_SNAP_SELECTS].forEach(id => {
-    const el = document.getElementById(id); if (el) fields[id] = el.value;
-  });
-  const schools = [];
-  for (let i = 1; i <= numSchools; i++) {
-    const dirs = [];
-    const con = document.getElementById('school_' + i + '_directors');
-    if (con) con.querySelectorAll('.director-row').forEach(row => {
-      const ni = row.querySelector('input[type="text"]');
-      const ei = row.querySelector('input[type="email"]');
-      dirs.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
-    });
-    if (!dirs.length) dirs.push({ name: '', email: '' });
-    schools.push({ name: gv('school_' + i + '_name') || '', directors: dirs, play: gv('play_' + i + '_play') || '' });
-  }
-  return {
-    v: 1, saved_at: new Date().toISOString(),
-    num_schools: String(numSchools),
-    fields, schools,
-  };
-}
+function serializeState() { return FormState.snapshot(); }
 
 /**
  * Applies forward-only migrations to snapshot data so that snapshots saved
@@ -768,9 +773,7 @@ function restoreState(data) {
   const nsSel = document.getElementById('num_schools');
   if (nsSel) { nsSel.value = data.num_schools || '6'; updateSchoolFields(); }
   // 2. Static fields + selects
-  Object.entries(data.fields || {}).forEach(([id, val]) => {
-    const el = document.getElementById(id); if (el) el.value = val;
-  });
+  FormState.restore(data.fields || {});
   // 3. Schools & directors (including play titles)
   const numS = parseInt(data.num_schools) || DEFAULT_SCHOOLS;
   (data.schools || []).slice(0, numS).forEach((s, i) => {
@@ -1057,84 +1060,76 @@ function renderSnapshotList() {
 //  EMAIL DRAFT COMPOSER
 // ═══════════════════════════════════════════════════════════════
 const EMAIL_TEMPLATES = {
-  announcement: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Contest Information',
-    body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const lv  = (document.getElementById('contest_level') || {}).value || 'Contest';
-      const dt  = fmtDate(gv('contest_date')) || '[Contest Date TBD]';
-      const ven = gv('host_venue_name') || '[Venue TBD]';
-      const adr = gv('host_school_address') || '[Address TBD]';
-      const dmt = gv('directors_meeting_time') || '[TBD]';
-      const fst = gv('first_show_time') || '[TBD]';
-      const edd = fmtDateShort(gv('entry_system_deadline')) || '[TBD]';
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cme = gv('cm_email') || '[CM Email]';
-      const cmp = gv('cm_phone') || '';
-      return 'Dear ' + lv + ' Directors,\n\nCongratulations on qualifying for the ' + cn + '! I am looking forward to serving as your Contest Manager.\n\nThe contest will be held on ' + dt + ' at ' + ven + ', located at ' + adr + '.\n\nDirectors\u2019 Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease submit your entries by ' + edd + '.\n\nIf you have any questions, please contact me at ' + cme + (cmp ? ' or ' + cmp : '') + '.\n\nSincerely,\n' + cmn + '\nContest Manager';
-    }
+  announcement: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const lv  = state.contest_level || 'Contest';
+    const dt  = state.contest_date_display || '[Contest Date TBD]';
+    const ven = state.host_venue_name || '[Venue TBD]';
+    const adr = state.host_school_address || '[Address TBD]';
+    const dmt = state.directors_meeting_time || '[TBD]';
+    const fst = state.first_show_time || '[TBD]';
+    const edd = state.entry_system_deadline_display || '[TBD]';
+    const cmn = state.cm_name || '[CM Name]';
+    const cme = state.cm_email || '[CM Email]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Contest Information',
+      body: 'Dear ' + lv + ' Directors,\n\nCongratulations on qualifying for the ' + cn + '! I am looking forward to serving as your Contest Manager.\n\nThe contest will be held on ' + dt + ' at ' + ven + ', located at ' + adr + '.\n\nDirectors’ Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease submit your entries by ' + edd + '.\n\nIf you have any questions, please contact me at ' + cme + (cmp ? ' or ' + cmp : '') + '.\n\nSincerely,\n' + cmn + '\nContest Manager',
+    };
   },
-  deadline: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Entry Deadline Reminder',
-    body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const edd = fmtDateShort(gv('entry_system_deadline')) || '[TBD]';
-      const lcd = fmtDateShort(gv('light_cue_deadline_date')) || '[TBD]';
-      const lct = gv('light_cue_deadline_time') || '5:00 PM';
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cmp = gv('cm_phone') || '';
-      return 'Dear Directors,\n\nThis is a reminder of the upcoming deadlines for the ' + cn + ':\n\n\u2022  Entry Deadline: ' + edd + '\n\u2022  Light Cue Submission Deadline: ' + lcd + ' by ' + lct + '\n\nIf you have not yet submitted your entry, please do so as soon as possible. Late entries may not be accepted.\n\nPlease contact me if you have any questions.\n\n' + cmn + (cmp ? '\n' + cmp : '');
-    }
+  deadline: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const edd = state.entry_system_deadline_display || '[TBD]';
+    const lcd = state.light_cue_deadline_date_display || '[TBD]';
+    const lct = state.light_cue_deadline_time || '5:00 PM';
+    const cmn = state.cm_name || '[CM Name]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Entry Deadline Reminder',
+      body: 'Dear Directors,\n\nThis is a reminder of the upcoming deadlines for the ' + cn + ':\n\n•  Entry Deadline: ' + edd + '\n•  Light Cue Submission Deadline: ' + lcd + ' by ' + lct + '\n\nIf you have not yet submitted your entry, please do so as soon as possible. Late entries may not be accepted.\n\nPlease contact me if you have any questions.\n\n' + cmn + (cmp ? '\n' + cmp : ''),
+    };
   },
-  daybefore: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Tomorrow\u2019s Contest',
-    body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const dt  = fmtDateShort(gv('contest_date')) || '[Contest Date]';
-      const ven = gv('host_venue_name') || '[Venue TBD]';
-      const adr = gv('host_school_address') || '[Address TBD]';
-      const dmt = gv('directors_meeting_time') || '[TBD]';
-      const fst = gv('first_show_time') || '[TBD]';
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cme = gv('cm_email') || '[CM Email]';
-      const cmp = gv('cm_phone') || '';
-      return 'Dear Directors,\n\nJust a reminder that the ' + cn + ' is tomorrow, ' + dt + '.\n\nVenue: ' + ven + '\nAddress: ' + adr + '\nDirectors\u2019 Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease arrive prepared and on time. I look forward to seeing you tomorrow!\n\n' + cmn + '\n' + cme + (cmp ? '\n' + cmp : '');
-    }
+  daybefore: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const dt  = state.contest_date_short || '[Contest Date]';
+    const ven = state.host_venue_name || '[Venue TBD]';
+    const adr = state.host_school_address || '[Address TBD]';
+    const dmt = state.directors_meeting_time || '[TBD]';
+    const fst = state.first_show_time || '[TBD]';
+    const cmn = state.cm_name || '[CM Name]';
+    const cme = state.cm_email || '[CM Email]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Tomorrow’s Contest',
+      body: 'Dear Directors,\n\nJust a reminder that the ' + cn + ' is tomorrow, ' + dt + '.\n\nVenue: ' + ven + '\nAddress: ' + adr + '\nDirectors’ Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease arrive prepared and on time. I look forward to seeing you tomorrow!\n\n' + cmn + '\n' + cme + (cmp ? '\n' + cmp : ''),
+    };
   },
-  judges: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Judge Information',
-    body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const dt  = fmtDateShort(gv('contest_date')) || '[Contest Date TBD]';
-      const ven = gv('host_venue_name') || '[Venue TBD]';
-      const adr = gv('host_school_address') || '[Address TBD]';
-      const dmtRaw = gv('directors_meeting_time');
-      const dmtDisplay = dmtRaw || '[TBD]';
-      const dmtMin = parseTime(dmtRaw);
-      const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors\u2019 Meeting]';
-      const cfEl = document.querySelector('input[name="critique_format"]:checked');
-      const cfText = (cfEl && cfEl.value === 'after_each') ? 'after each show' : 'after all shows';
-      const numS = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
-      const shows = [];
-      for (let i = 1; i <= numS; i++) {
-        const ord  = parseInt(gv('play_' + i + '_order')) || i;
-        const name = gv('school_' + i + '_name') || 'School ' + i;
-        const play = gv('play_' + i + '_play') || '';
-        shows.push({ ord, name, play });
-      }
-      shows.sort((a, b) => a.ord - b.ord);
-      const showList = shows.map((s, i) => (i+1) + '. ' + s.name + (s.play ? ' \u2014 ' + s.play : '')).join('\n');
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cme = gv('cm_email') || '[CM Email]';
-      const cmp = gv('cm_phone') || '';
-      return 'Dear Judge,\n\nThe ' + cn + ' is coming up on ' + dt + '. We are so excited to have you adjudicate!\n\nVenue: ' + ven + '\nAddress: ' + adr + '\n\nThe Directors\u2019 Meeting begins promptly at ' + dmtDisplay + ', so please plan to arrive by ' + arrDisplay + ' to get settled in.\n\nShows will run back to back in the following order:\n\n' + showList + '\n\nCritiques will be randomly drawn, and will be held ' + cfText + '.\n\nIf you have any questions or concerns before contest day, please don\u2019t hesitate to reach out.\n\n' + cmn + '\nContest Manager\n' + cme + (cmp ? '\n' + cmp : '');
-    }
-  }
+  judges: (state) => {
+    const cn  = state.contest_full_name || '[Contest Name]';
+    const dt  = state.contest_date_short || '[Contest Date TBD]';
+    const ven = state.host_venue_name || '[Venue TBD]';
+    const adr = state.host_school_address || '[Address TBD]';
+    const dmtDisplay = state.directors_meeting_time || '[TBD]';
+    const dmtMin = parseTime(state.directors_meeting_time);
+    const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors’ Meeting]';
+    const cfText = state.critique_format === 'after_each' ? 'after each show' : 'after all shows';
+    const showList = state.schools.map(function(s, i) {
+      return (i+1) + '. ' + s.name + (s.play ? ' — ' + s.play : '');
+    }).join('\n');
+    const cmn = state.cm_name || '[CM Name]';
+    const cme = state.cm_email || '[CM Email]';
+    const cmp = state.cm_phone || '';
+    return {
+      subject: cn + ' — Judge Information',
+      body: 'Dear Judge,\n\nThe ' + cn + ' is coming up on ' + dt + '. We are so excited to have you adjudicate!\n\nVenue: ' + ven + '\nAddress: ' + adr + '\n\nThe Directors’ Meeting begins promptly at ' + dmtDisplay + ', so please plan to arrive by ' + arrDisplay + ' to get settled in.\n\nShows will run back to back in the following order:\n\n' + showList + '\n\nCritiques will be randomly drawn, and will be held ' + cfText + '.\n\nIf you have any questions or concerns before contest day, please don’t hesitate to reach out.\n\n' + cmn + '\nContest Manager\n' + cme + (cmp ? '\n' + cmp : ''),
+    };
+  },
 };
 function loadEmailTemplate(key) {
-  const tmpl = EMAIL_TEMPLATES[key]; if (!tmpl) return;
-  document.getElementById('email_subject_display').value = tmpl.subject();
-  document.getElementById('email_body_display').value = tmpl.body();
+  const fn = EMAIL_TEMPLATES[key]; if (!fn) return;
+  const { subject, body } = fn(FormState.email());
+  document.getElementById('email_subject_display').value = subject;
+  document.getElementById('email_body_display').value = body;
 }
 
 function toggleAdvancingPicker() {
@@ -1165,22 +1160,20 @@ function generateAdvancingEmail() {
   const selected = Array.from(checks.querySelectorAll('input[type=checkbox]:checked'));
   if (!selected.length) { alert('Please check at least one advancing school.'); return; }
 
-  // Collect director emails for selected schools only
+  // Collect director emails via FormState — single source of truth for director data
+  const allSchools = FormState.get().schools;
   const toEmails = [];
   selected.forEach(function(cb) {
-    const idx = cb.getAttribute('data-idx');
-    const con = document.getElementById('school_' + idx + '_directors');
-    if (con) {
-      con.querySelectorAll('input[type=email]').forEach(function(ei) {
-        if (ei.value.trim()) toEmails.push(ei.value.trim());
-      });
-    }
+    const formIdx = parseInt(cb.getAttribute('data-idx'));
+    const school = allSchools.find(function(s) { return s.idx === formIdx; });
+    if (school) school.directors.forEach(function(d) { if (d.email) toEmails.push(d.email); });
   });
 
-  const cn   = gv('contest_name_preview') || '[Contest Name]';
-  const cmn  = gv('cm_name')   || 'Allen';
-  const cmp  = gv('cm_phone')  || '281-777-8672';
-  const cmw  = gv('cm_website')|| 'www.allenotto.com';
+  const v   = FormState.email();
+  const cn  = v.contest_full_name || '[Contest Name]';
+  const cmn = v.cm_name    || 'Allen';
+  const cmp = v.cm_phone   || '281-777-8672';
+  const cmw = v.cm_website || 'www.allenotto.com';
 
   const subject = cn + ' \u2014 Post-Contest Evaluation';
   const body =
@@ -1443,121 +1436,192 @@ function xe(s) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  COLLECT VARIABLES
+//  FORM STATE — centralised DOM-field reader
+//  All form field reads go through FormState. The injected _gv
+//  makes the module testable with a stub object (no browser needed).
 // ═══════════════════════════════════════════════════════════════
-/**
- * Reads the entire form and returns a single flat object containing every
- * value needed by the document generators. This is the canonical source of
- * truth passed to all generate* functions — add new form fields here first.
- *
- * Key properties returned:
- *   num_schools, num_judges, schools[] (sorted by performance order),
- *   first_show_minutes (null when not set/unparseable),
- *   contest_title, folder_name, classification, contest_level, …
- *
- * @returns {Object}
- */
-function collectVars() {
-  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
-  const numJudges  = parseInt(gv('num_judges'))  || DEFAULT_JUDGES;
-  const yr  = gv('contest_year')  || String(new Date().getFullYear());
-  const lv  = gv('contest_level') || 'District';
-  const cls = gv('classification') || '5A';
-  const num = gv('district_number');
-  const schools = [];
-  for (let i = 1; i <= numSchools; i++) {
-    const directors = [];
-    const con = document.getElementById('school_' + i + '_directors');
-    if (con) {
-      con.querySelectorAll('.director-row').forEach(row => {
-        const ni = row.querySelector('input[type="text"]');
-        const ei = row.querySelector('input[type="email"]');
-        directors.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
+const FormState = (function(_gv) {
+
+  let _cache = null; // per-animation-frame memo; cleared automatically between renders
+
+  function _readSchools(numSchools) {
+    const schools = [];
+    for (let i = 1; i <= numSchools; i++) {
+      const directors = [];
+      const con = document.getElementById('school_' + i + '_directors');
+      if (con) {
+        con.querySelectorAll('.director-row').forEach(function(row) {
+          const ni = row.querySelector('input[type="text"]');
+          const ei = row.querySelector('input[type="email"]');
+          directors.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
+        });
+      }
+      if (directors.length === 0) directors.push({name:'', email:''});
+      const order = parseInt((document.getElementById('play_' + i + '_order') || {}).value) || i;
+      const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
+      schools.push({
+        order, play,
+        idx: i,    // 1-based form index — used to match checkbox data-idx
+        name:      _gv('school_' + i + '_name') || 'School ' + i,
+        director:  directors[0].name,
+        email:     directors[0].email,
+        directors,
+        allEmails: directors.map(function(d) { return d.email; }).filter(Boolean).join(', '),
       });
     }
-    if (directors.length === 0) directors.push({name:'', email:''});
-    const order = parseInt((document.getElementById('play_' + i + '_order') || {}).value) || i;
-    const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
-    schools.push({
-      order, play,
-      name:     gv('school_' + i + '_name') || 'School ' + i,
-      director: directors[0].name,
-      email:    directors[0].email,
-      directors,
-      allEmails: directors.map(d => d.email).filter(Boolean).join(', '),
-    });
+    schools.sort(function(a, b) { return a.order - b.order; });
+    return schools;
   }
-  schools.sort((a,b) => a.order - b.order);
-  const cfEl = document.querySelector('input[name="critique_format"]:checked');
-  const critFmt = cfEl ? cfEl.value : 'after_all';
-  const contestFull = 'UIL ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' One-Act Play Contest';
-  const contestLong = yr + ' ' + contestFull;
-  const folderName  = yr + ' \u2014 ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' OAP';
-  const ef = gv('entry_fee');
-  const af = gv('admission_fee');
+
+  function _buildVars() {
+    const numSchools = parseInt(_gv('num_schools')) || DEFAULT_SCHOOLS;
+    const numJudges  = parseInt(_gv('num_judges'))  || DEFAULT_JUDGES;
+    const yr  = _gv('contest_year')  || String(new Date().getFullYear());
+    const lv  = _gv('contest_level') || 'District';
+    const cls = _gv('classification') || '5A';
+    const num = _gv('district_number');
+    const schools = _readSchools(numSchools);
+    const cfEl = document.querySelector('input[name="critique_format"]:checked');
+    const critFmt = cfEl ? cfEl.value : 'after_all';
+    const contestFull = 'UIL ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' One-Act Play Contest';
+    const contestLong = yr + ' ' + contestFull;
+    const folderName  = yr + ' — ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' OAP';
+    const ef = _gv('entry_fee');
+    const af = _gv('admission_fee');
+    return {
+      cm_name:    _gv('cm_name')    || 'Allen Otto',
+      cm_email:   _gv('cm_email')   || 'aotto3@gmail.com',
+      cm_phone:   _gv('cm_phone')   || '',
+      cm_address: _gv('cm_address') || '',
+      cm_website: _gv('cm_website') || '',
+      tech_contact: _gv('tech_contact') || '[Host Technical Director]',
+      contest_year: yr, contest_level: lv, classification: cls, district_number: num,
+      host_school_name:    _gv('host_school_name')    || '[Host School]',
+      host_school_address: _gv('host_school_address') || '[Address TBD]',
+      host_venue_name:     _gv('host_venue_name')     || '[Venue TBD]',
+      contest_full_name: contestFull,
+      contest_title_long: contestLong,
+      folder_name: folderName,
+      contest_date:             _gv('contest_date'),
+      contest_date_display:     fmtDate(_gv('contest_date')),
+      contest_date_short:       fmtDateShort(_gv('contest_date')),
+      contest_date_numeric:     fmtDateNumeric(_gv('contest_date')),
+      directors_meeting_time:   _gv('directors_meeting_time') || 'TBD',
+      first_show_time:          _gv('first_show_time') || '',
+      first_show_minutes:       (function(){ const t = parseTime(_gv('first_show_time')); return (t != null && !isNaN(t)) ? t : null; })(),
+      rehearsal_date_1:         _gv('rehearsal_date_1'),
+      rehearsal_date_1_display: fmtDate(_gv('rehearsal_date_1')),
+      rehearsal_date_2:         _gv('rehearsal_date_2'),
+      rehearsal_date_2_display: fmtDate(_gv('rehearsal_date_2')),
+      rehearsal_length_minutes:  parseInt(_gv('rehearsal_length_minutes')) || 90,
+      rehearsal_start_time:      _gv('rehearsal_start_time') || '2:00 PM',
+      rehearsal_start_minutes:   parseTime(_gv('rehearsal_start_time') || '2:00 PM'),
+      rehearsal_start_time_2:    _gv('rehearsal_start_time_2') || _gv('rehearsal_start_time') || '2:00 PM',
+      rehearsal_start_minutes_2: parseTime(_gv('rehearsal_start_time_2') || _gv('rehearsal_start_time') || '2:00 PM'),
+      rehearsal_day_1_count:     parseInt(_gv('rehearsal_day_1_count')) || Math.ceil(numSchools / 2),
+      critique_format: critFmt,
+      num_judges: numJudges, num_schools: numSchools,
+      entry_fee:               ef ? '$' + ef + ' per school' : 'No entry fee',
+      entry_fee_raw:           ef || '',
+      admission_fee:           af ? '$' + af : 'No admission charge',
+      admission_fee_raw:       af || '',
+      entry_system_deadline:   _gv('entry_system_deadline'),
+      entry_system_deadline_display: fmtDateShort(_gv('entry_system_deadline')),
+      entry_system_deadline_numeric: fmtDateNumeric(_gv('entry_system_deadline')),
+      light_cue_deadline_date:        _gv('light_cue_deadline_date'),
+      light_cue_deadline_date_display: fmtDateShort(_gv('light_cue_deadline_date')),
+      light_cue_deadline_date_numeric: fmtDateNumeric(_gv('light_cue_deadline_date')),
+      light_cue_deadline_time: _gv('light_cue_deadline_time') || '5:00 PM',
+      bidc_contest_date:       fmtDateShort(_gv('bidc_contest_date')),
+      judge_1_name: _gv('judge_1_name'), judge_1_address: _gv('judge_1_address'),
+      judge_1_needs_power: !!(document.getElementById('judge_1_needs_power')||{}).checked,
+      judge_1_needs_hotel: !!(document.getElementById('judge_1_needs_hotel')||{}).checked,
+      judge_1_hotel_nights: _gv('judge_1_hotel_nights') || '1',
+      judge_1_dietary: _gv('judge_1_dietary') || '',
+      judge_2_name: _gv('judge_2_name'), judge_2_address: _gv('judge_2_address'),
+      judge_2_needs_power: !!(document.getElementById('judge_2_needs_power')||{}).checked,
+      judge_2_needs_hotel: !!(document.getElementById('judge_2_needs_hotel')||{}).checked,
+      judge_2_hotel_nights: _gv('judge_2_hotel_nights') || '1',
+      judge_2_dietary: _gv('judge_2_dietary') || '',
+      judge_3_name: _gv('judge_3_name'), judge_3_address: _gv('judge_3_address'),
+      judge_3_needs_power: !!(document.getElementById('judge_3_needs_power')||{}).checked,
+      judge_3_needs_hotel: !!(document.getElementById('judge_3_needs_hotel')||{}).checked,
+      judge_3_hotel_nights: _gv('judge_3_hotel_nights') || '1',
+      judge_3_dietary: _gv('judge_3_dietary') || '',
+      schools,
+    };
+  }
+
+  function _read() {
+    if (_cache) return _cache;
+    _cache = _buildVars();
+    requestAnimationFrame(function() { _cache = null; });
+    return _cache;
+  }
+
   return {
-    cm_name: gv('cm_name') || 'Allen Otto',
-    cm_email: gv('cm_email') || 'aotto3@gmail.com',
-    cm_phone: gv('cm_phone') || '',
-    cm_address: gv('cm_address') || '',
-    cm_website: gv('cm_website') || '',
-    tech_contact: gv('tech_contact') || '[Host Technical Director]',
-    contest_year: yr, contest_level: lv, classification: cls, district_number: num,
-    host_school_name:    gv('host_school_name')    || '[Host School]',
-    host_school_address: gv('host_school_address') || '[Address TBD]',
-    host_venue_name:     gv('host_venue_name')     || '[Venue TBD]',
-    contest_full_name: contestFull,
-    contest_title_long: contestLong,
-    folder_name: folderName,
-    contest_date:             gv('contest_date'),
-    contest_date_display:     fmtDate(gv('contest_date')),
-    contest_date_short:       fmtDateShort(gv('contest_date')),
-    contest_date_numeric:     fmtDateNumeric(gv('contest_date')),
-    directors_meeting_time:   gv('directors_meeting_time') || 'TBD',
-    first_show_time:          gv('first_show_time') || '',
-    first_show_minutes:       (function(){ const t = parseTime(gv('first_show_time')); return (t != null && !isNaN(t)) ? t : null; })(),
-    rehearsal_date_1:         gv('rehearsal_date_1'),
-    rehearsal_date_1_display: fmtDate(gv('rehearsal_date_1')),
-    rehearsal_date_2:         gv('rehearsal_date_2'),
-    rehearsal_date_2_display: fmtDate(gv('rehearsal_date_2')),
-    rehearsal_length_minutes:  parseInt(gv('rehearsal_length_minutes')) || 90,
-    rehearsal_start_time:      gv('rehearsal_start_time') || '2:00 PM',
-    rehearsal_start_minutes:   parseTime(gv('rehearsal_start_time') || '2:00 PM'),
-    rehearsal_start_time_2:    gv('rehearsal_start_time_2') || gv('rehearsal_start_time') || '2:00 PM',
-    rehearsal_start_minutes_2: parseTime(gv('rehearsal_start_time_2') || gv('rehearsal_start_time') || '2:00 PM'),
-    rehearsal_day_1_count:     parseInt(gv('rehearsal_day_1_count')) || Math.ceil(numSchools / 2),
-    critique_format: critFmt,
-    num_judges: numJudges, num_schools: numSchools,
-    entry_fee:               ef ? '$' + ef + ' per school' : 'No entry fee',
-    entry_fee_raw:           ef || '',
-    admission_fee:           af ? '$' + af : 'No admission charge',
-    admission_fee_raw:       af || '',
-    entry_system_deadline:   gv('entry_system_deadline'),
-    entry_system_deadline_display: fmtDateShort(gv('entry_system_deadline')),
-    entry_system_deadline_numeric: fmtDateNumeric(gv('entry_system_deadline')),
-    light_cue_deadline_date:        gv('light_cue_deadline_date'),
-    light_cue_deadline_date_display: fmtDateShort(gv('light_cue_deadline_date')),
-    light_cue_deadline_date_numeric: fmtDateNumeric(gv('light_cue_deadline_date')),
-    light_cue_deadline_time: gv('light_cue_deadline_time') || '5:00 PM',
-    bidc_contest_date:       fmtDateShort(gv('bidc_contest_date')),
-    judge_1_name: gv('judge_1_name'), judge_1_address: gv('judge_1_address'),
-    judge_1_needs_power: !!(document.getElementById('judge_1_needs_power')||{}).checked,
-    judge_1_needs_hotel: !!(document.getElementById('judge_1_needs_hotel')||{}).checked,
-    judge_1_hotel_nights: gv('judge_1_hotel_nights') || '1',
-    judge_1_dietary: gv('judge_1_dietary') || '',
-    judge_2_name: gv('judge_2_name'), judge_2_address: gv('judge_2_address'),
-    judge_2_needs_power: !!(document.getElementById('judge_2_needs_power')||{}).checked,
-    judge_2_needs_hotel: !!(document.getElementById('judge_2_needs_hotel')||{}).checked,
-    judge_2_hotel_nights: gv('judge_2_hotel_nights') || '1',
-    judge_2_dietary: gv('judge_2_dietary') || '',
-    judge_3_name: gv('judge_3_name'), judge_3_address: gv('judge_3_address'),
-    judge_3_needs_power: !!(document.getElementById('judge_3_needs_power')||{}).checked,
-    judge_3_needs_hotel: !!(document.getElementById('judge_3_needs_hotel')||{}).checked,
-    judge_3_hotel_nights: gv('judge_3_hotel_nights') || '1',
-    judge_3_dietary: gv('judge_3_dietary') || '',
-    schools,
+    /** Full vars object for document generation. Memoised per animation frame. */
+    get: function() { return _read(); },
+
+    /** Timing fields + school names/order only — cheap fast path for schedule preview.
+        Never calls _read(); safe to invoke on every keystroke. */
+    timing: function() {
+      const numSchools = parseInt(_gv('num_schools')) || DEFAULT_SCHOOLS;
+      const numJudges  = parseInt(_gv('num_judges'))  || DEFAULT_JUDGES;
+      const cfEl = document.querySelector('input[name="critique_format"]:checked');
+      const schools = [];
+      for (let i = 1; i <= numSchools; i++) {
+        const order = parseInt((document.getElementById('play_' + i + '_order') || {}).value) || i;
+        const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
+        schools.push({ order, play, name: _gv('school_' + i + '_name') || 'School ' + i });
+      }
+      schools.sort(function(a, b) { return a.order - b.order; });
+      const t = parseTime(_gv('first_show_time'));
+      return {
+        first_show_minutes:     (t != null && !isNaN(t)) ? t : null,
+        directors_meeting_time: _gv('directors_meeting_time') || 'TBD',
+        num_schools: numSchools,
+        num_judges:  numJudges,
+        critique_format: cfEl ? cfEl.value : 'after_all',
+        schools,
+      };
+    },
+
+    /** Contest fields for email templates — projection of the memoised get() read. */
+    email: function() { return _read(); },
+
+    /** Raw {fieldId → value} snapshot map — round-trips cleanly through JSON. */
+    snapshot: function() {
+      const numSchools = parseInt(_gv('num_schools')) || DEFAULT_SCHOOLS;
+      const fields = {};
+      OAP_SNAP_FIELDS.concat(OAP_SNAP_SELECTS).forEach(function(id) {
+        const el = document.getElementById(id); if (el) fields[id] = el.value;
+      });
+      return {
+        v: 1, saved_at: new Date().toISOString(),
+        num_schools: String(numSchools),
+        fields,
+        schools: _readSchools(numSchools).map(function(s) {
+          return { name: s.name, directors: s.directors, play: s.play };
+        }),
+      };
+    },
+
+    /** Bulk-write {fieldId → value} back to DOM. Silently skips missing elements. */
+    restore: function(map) {
+      Object.keys(map || {}).forEach(function(id) {
+        const el = document.getElementById(id); if (el) el.value = map[id];
+      });
+    },
   };
-}
+
+})(function(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; });
+
+// ═══════════════════════════════════════════════════════════════
+//  COLLECT VARIABLES
+// ═══════════════════════════════════════════════════════════════
+/** Delegates to FormState.get(). All field reads centralised in FormState. */
+function collectVars() { return FormState.get(); }
 
 // ═══════════════════════════════════════════════════════════════
 //  SCHEDULE CALCULATOR
@@ -1633,23 +1697,14 @@ function calculateSchedule(vars) {
 const SCHOOL_COLORS_HEX  = ['#FEF2CB','#B4C6E7','#F4B083','#C5E0B3','#FFFF00','#FFC000','#E06666','#CCA3FF'];
 // Same palette without '#' prefix — used by SheetJS cell-fill (fgColor.rgb expects bare hex)
 const SCHOOL_COLORS_XLSX = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
-function updateSchedulePreview() {
-  const box = document.getElementById('schedule_preview_box');
-  if (!box) return;
-  const vars = collectVars();
-  const events = calculateSchedule(vars);
-  if (!events.length) {
-    box.innerHTML = '<p style="color:#888;font-style:italic;padding:10px 0">Enter a First Show / Setup Time to see schedule preview.</p>';
-    return;
-  }
-  // Prepend Directors Meeting row if time is set and falls before first show
+function renderScheduleHTML(events, vars) {
   const dmMins = parseTime(vars.directors_meeting_time);
   if (dmMins != null && !isNaN(dmMins) && vars.first_show_minutes != null && dmMins < vars.first_show_minutes) {
-    events.unshift({
+    events = [{
       start: dmMins, end: vars.first_show_minutes,
       dur: vars.first_show_minutes - dmMins,
-      label: 'Directors\u2019 Meeting', play: '', school: '', type: 'dm', colorIdx: 0
-    });
+      label: 'Directors’ Meeting', play: '', school: '', type: 'dm', colorIdx: 0
+    }].concat(events);
   }
   let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">' +
     '<thead><tr>' +
@@ -1659,10 +1714,10 @@ function updateSchedulePreview() {
     '<th style="background:#222;color:#fff;padding:5px 8px;text-align:left">SCHOOL</th>' +
     '</tr></thead><tbody>';
   events.forEach(ev => {
-    let bg = '#DADADA';
+    let bg = '#' + THEME.xlsx.grey;
     if (ev.type === 'show') bg = SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
-    if (ev.type === 'dm')   bg = SCHOOL_COLORS_HEX[0]; // matches Excel output color for DM row
-    const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' \u2014 ' + xe(ev.play) : '') : '';
+    if (ev.type === 'dm')   bg = SCHOOL_COLORS_HEX[0];
+    const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' — ' + xe(ev.play) : '') : '';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.start) + '</td>' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.end) + '</td>' +
@@ -1671,16 +1726,27 @@ function updateSchedulePreview() {
       '</tr>';
   });
   html += '</tbody></table>';
-  box.innerHTML = html;
+  return html;
+}
+function updateSchedulePreview() {
+  const box = document.getElementById('schedule_preview_box');
+  if (!box) return;
+  const vars = collectVars();
+  const events = calculateSchedule(vars);
+  if (!events.length) {
+    box.innerHTML = '<p style="color:#888;font-style:italic;padding:10px 0">Enter a First Show / Setup Time to see schedule preview.</p>';
+    return;
+  }
+  box.innerHTML = renderScheduleHTML(events, vars);
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  RAW OOXML HELPERS (for .docx)
 // ═══════════════════════════════════════════════════════════════
 function ooP(text, opts) {
-  const o = opts||{}; const align=o.align||''; const sb=o.sb!=null?o.sb:0; const sa=o.sa!=null?o.sa:120;
-  const indent=o.indent||0; const size=o.size||20; const color=o.color||'222222';
-  const bold=o.bold||false; const italic=o.italic||false; const font=o.font||'Calibri';
+  const o = opts||{}; const align=o.align||''; const sb=o.sb!=null?o.sb:0; const sa=o.sa!=null?o.sa:THEME.doc.spaceAfter;
+  const indent=o.indent||0; const size=o.size||THEME.doc.bodySize; const color=o.color||THEME.doc.color;
+  const bold=o.bold||false; const italic=o.italic||false; const font=o.font||THEME.doc.font;
   const ul=o.ul||false;
   const ppr='<w:pPr>'+(align?'<w:jc w:val="'+align+'"/>':'')+
     '<w:spacing w:before="'+sb+'" w:after="'+sa+'"/>'+
@@ -1692,17 +1758,17 @@ function ooP(text, opts) {
     '<w:sz w:val="'+size+'"/><w:szCs w:val="'+size+'"/><w:color w:val="'+color+'"/></w:rPr>';
   return '<w:p>'+ppr+'<w:r>'+rpr+'<w:t xml:space="preserve">'+xe(text)+'</w:t></w:r></w:p>';
 }
-function ooPEmpty(sa) { return '<w:p><w:pPr><w:spacing w:before="0" w:after="'+(sa!=null?sa:120)+'"/></w:pPr></w:p>'; }
+function ooPEmpty(sa) { return '<w:p><w:pPr><w:spacing w:before="0" w:after="'+(sa!=null?sa:THEME.doc.spaceAfter)+'"/></w:pPr></w:p>'; }
 function ooPLine(color) {
-  const c=color||'CCCCCC';
+  const c=color||THEME.doc.lineColor;
   return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="'+c+'"/></w:pBdr><w:spacing w:before="60" w:after="60"/></w:pPr></w:p>';
 }
-function ooPHead(text, color) { return ooP(text,{bold:true,size:22,color:color||'1F4E79',sb:200,sa:80}); }
-function ooPBullet(text) { return ooP(text,{size:20,indent:360,sa:60}); }
+function ooPHead(text, color) { return ooP(text,{bold:true,size:THEME.doc.headSize,color:color||THEME.doc.headColor,sb:THEME.doc.headSb,sa:THEME.doc.headSa}); }
+function ooPBullet(text) { return ooP(text,{size:THEME.doc.bodySize,indent:THEME.doc.indent,sa:THEME.doc.bulletSa}); }
 function ooPSignLine(indent, sa) {
-  const i=indent||0; const s=sa!=null?sa:120;
+  const i=indent||0; const s=sa!=null?sa:THEME.doc.spaceAfter;
   return '<w:p><w:pPr><w:spacing w:before="60" w:after="'+s+'"/>'+
-    '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="444444"/></w:pBdr>'+
+    '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="'+THEME.doc.signColor+'"/></w:pBdr>'+
     (i?'<w:ind w:left="'+i+'"/>':'')+'</w:pPr></w:p>';
 }
 function ooPPageBreak() { return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'; }
@@ -1881,7 +1947,7 @@ function sc(v, rgb, bold, isTime) {
   if (isTime && typeof v === 'number') { cell.z = 'h:mm AM/PM'; }
   cell.s = {
     fill: rgb ? {fgColor:{rgb}, patternType:'solid'} : {patternType:'none'},
-    font: {name:'Calibri', sz:11, bold:!!bold, color:{rgb: rgb==='000000' ? 'FFFFFF' : '000000'}},
+    font: {name:THEME.xlsx.font, sz:THEME.xlsx.headerSz, bold:!!bold, color:{rgb: rgb===THEME.xlsx.black ? 'FFFFFF' : THEME.xlsx.black}},
     alignment: {horizontal:'left', vertical:'center'},
   };
   if (isTime) cell.s.numFmt = 'h:mm AM/PM';
@@ -1892,63 +1958,51 @@ function setCellStyled(ws, addr, cell) {
   if (!ws['!ref']) ws['!ref'] = addr + ':' + addr;
 }
 function minToFrac(mins) { return mins / 1440; }
-function genContestSchedule(vars) {
-  const events = calculateSchedule(vars);
+function renderScheduleXLSX(events, vars) {
   const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
-  const GREY = 'DADADA';
-  const BLACK = '000000';
   const wb = XLSX.utils.book_new();
   const ws = {};
   let row = 1;
-  // Title row
   ws['A'+row] = {v: vars.contest_title_long + ' — ' + (vars.contest_date_short||'Date TBD'), t:'s',
-    s:{font:{bold:true,sz:13,name:'Calibri'}, fill:{patternType:'none'}}};
+    s:{font:{bold:true,sz:THEME.xlsx.titleSz,name:THEME.xlsx.font}, fill:{patternType:'none'}}};
   ws['!merges'] = [{s:{r:row-1,c:0},e:{r:row-1,c:3}}];
-  row++;
-  // Blank row
-  row++;
-  // Header row
-  const headers = ['START','END','WHAT','SCHOOL'];
+  row++; row++;
   ['A','B','C','D'].forEach((col,ci) => {
-    ws[col+row] = sc(headers[ci], BLACK, true, false);
+    ws[col+row] = sc(['START','END','WHAT','SCHOOL'][ci], THEME.xlsx.black, true, false);
   });
   row++;
-  // CM Arrival (directors_meeting_time - 2 hours)
   const dmMins = parseTime(vars.directors_meeting_time);
   if (dmMins != null) {
-    const arrMins = dmMins - 120;
-    ws['A'+row] = sc(minToFrac(arrMins), null, false, true);
+    ws['A'+row] = sc(minToFrac(dmMins - 120), null, false, true);
     ws['C'+row] = sc('CM Arrival', null, false, false);
     row++;
-    // Director's Meeting
-    ws['A'+row] = sc(minToFrac(dmMins), SCHOOL_COLORS[0], false, true);
-    ws['B'+row] = sc(minToFrac(dmMins+30), SCHOOL_COLORS[0], false, true);
-    ws['C'+row] = sc("Director's Meeting", SCHOOL_COLORS[0], false, false);
+    ws['A'+row] = sc(minToFrac(dmMins),      SCHOOL_COLORS[0], false, true);
+    ws['B'+row] = sc(minToFrac(dmMins + 30), SCHOOL_COLORS[0], false, true);
+    ws['C'+row] = sc("Director's Meeting",   SCHOOL_COLORS[0], false, false);
     row++;
   }
-  // Events
-  let schoolColorIdx = 0;
   events.forEach(ev => {
-    let rgb;
-    if (ev.type === 'show') { rgb = SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length]; }
-    else if (ev.type === 'trans') { rgb = SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length]; }
-    else if (ev.type === 'crit') { rgb = GREY; }
-    else { rgb = GREY; }
+    const rgb = (ev.type === 'show' || ev.type === 'trans')
+      ? SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length] : THEME.xlsx.grey;
     ws['A'+row] = sc(minToFrac(ev.start), rgb, false, true);
-    ws['B'+row] = sc(minToFrac(ev.end), rgb, false, true);
-    ws['C'+row] = sc(ev.label, rgb, false, false);
+    ws['B'+row] = sc(minToFrac(ev.end),   rgb, false, true);
+    ws['C'+row] = sc(ev.label,            rgb, false, false);
     ws['D'+row] = sc(ev.type === 'show' && ev.play ? ev.play : (ev.school||''), rgb, false, false);
     row++;
   });
-  // Blank then notes
   row++;
-  ws['C'+row] = {v:'** Written evaluation sheets will be given to schools at the end of the contest.', t:'s', s:{font:{name:'Calibri',sz:10,italic:true}}};
+  ws['C'+row] = {v:'** Written evaluation sheets will be given to schools at the end of the contest.', t:'s',
+    s:{font:{name:THEME.xlsx.font,sz:THEME.xlsx.footnoteSz,italic:true}}};
   row++;
-  ws['C'+row] = {v:'**ALL PERFORMANCES WILL BE BACK TO BACK - TIMES ARE APPROXIMATE', t:'s', s:{font:{bold:true,name:'Calibri',sz:10}}};
-  ws['!ref'] = 'A1:D' + (row+1);
+  ws['C'+row] = {v:'**ALL PERFORMANCES WILL BE BACK TO BACK - TIMES ARE APPROXIMATE', t:'s',
+    s:{font:{bold:true,name:THEME.xlsx.font,sz:THEME.xlsx.footnoteSz}}};
+  ws['!ref'] = 'A1:D' + (row + 1);
   ws['!cols'] = [{wch:12},{wch:12},{wch:52},{wch:34}];
   XLSX.utils.book_append_sheet(wb, ws, vars.contest_date_short||'Contest Day');
   return xlsxBuf(wb);
+}
+function genContestSchedule(vars) {
+  return renderScheduleXLSX(calculateSchedule(vars), vars);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1956,8 +2010,6 @@ function genContestSchedule(vars) {
 // ═══════════════════════════════════════════════════════════════
 function genRehearsalSchedule(vars) {
   const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
-  const BLACK = '000000';
-  const GREY  = 'DADADA';
   const slotLen = vars.rehearsal_length_minutes + 10; // rehearsal time + 10-min transition
   const wb = XLSX.utils.book_new();
   const ws = {};
@@ -1975,11 +2027,11 @@ function genRehearsalSchedule(vars) {
 
   // ── Helpers ─────────────────────────────────────────────────────
   function addSectionHeader(label) {
-    ws['A'+row] = {v: label, t:'s', s:{font:{bold:true,sz:11,name:'Calibri'}}};
+    ws['A'+row] = {v: label, t:'s', s:{font:{bold:true,sz:THEME.xlsx.headerSz,name:THEME.xlsx.font}}};
     merges.push({s:{r:row-1,c:0},e:{r:row-1,c:3}});
     row++;
     ['START','END','WHAT','SCHOOL'].forEach((h,ci) => {
-      ws[['A','B','C','D'][ci]+row] = sc(h, BLACK, true, false);
+      ws[['A','B','C','D'][ci]+row] = sc(h, THEME.xlsx.black, true, false);
     });
     row++;
   }
@@ -2008,7 +2060,7 @@ function genRehearsalSchedule(vars) {
     const events = calculateSchedule(vars);
     events.forEach(ev => {
       const rgb = (ev.type === 'show' || ev.type === 'trans')
-        ? SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length] : GREY;
+        ? SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length] : THEME.xlsx.grey;
       ws['A'+row] = sc(minToFrac(ev.start), rgb, false, true);
       ws['B'+row] = sc(minToFrac(ev.end),   rgb, false, true);
       ws['C'+row] = sc(ev.label,            rgb, false, false);
@@ -2033,7 +2085,7 @@ function genRehearsalSchedule(vars) {
   if (sameDay) {
     // ── ONE-DAY: continuous schedule, no date section headers ──────
     ['START','END','WHAT','SCHOOL'].forEach((h,ci) => {
-      ws[['A','B','C','D'][ci]+row] = sc(h, BLACK, true, false);
+      ws[['A','B','C','D'][ci]+row] = sc(h, THEME.xlsx.black, true, false);
     });
     row++;
     addRehearsalRows(vars.schools, vars.rehearsal_start_minutes, 0);
@@ -3251,8 +3303,8 @@ function runCritiqueRandomizer() {
   renderCritiqueAssignments();
 }
 
-function generateCritiqueAssignments() {
-  var vars = collectVars();
+function generateCritiqueAssignments(vars) {
+  if (!vars) vars = collectVars();
   var schools = vars.schools; // already sorted by performance order
   var N = schools.length;
   var J = vars.num_judges;
@@ -3316,7 +3368,7 @@ function generateCritiqueAssignments() {
   return {
     schools: schools,
     result: result,
-    judgeNames: [gv('judge_1_name'), gv('judge_2_name'), gv('judge_3_name')],
+    judgeNames: [vars['judge_1_name']||'', vars['judge_2_name']||'', vars['judge_3_name']||''],
     afterEach: afterEach,
     J: J
   };
