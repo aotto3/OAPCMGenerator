@@ -3487,4 +3487,100 @@ function toggleSwPassword() {
 // =================================================================
 //  ADJUDICATOR PACKETS - OFFICIAL PDF FORM FILLER (pdf-lib)
 // =================================================================
-function _b64ToBytes(b
+function _b64ToBytes(b64) {
+  var bin = atob(b64);
+  var bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function genAdjudicatorPackets(vars) {
+  var PDFDocument = PDFLib.PDFDocument;
+  var merged = await PDFDocument.create();
+  var _pdfFieldErrors = [];
+
+  // Level checkbox map: contest_level -> field name on Evaluation form
+  var levelCheckMap = {
+    'Zone':       'Check Box6',
+    'District':   'Check Box7',
+    'BiDistrict': 'Check Box8',
+    'Area':       'Check Box9',
+    'Region':     'Check Box10',
+    'State':      'Check Box11'
+  };
+
+  // Level dropdown map: contest_level -> option text on Ranking Ballot
+  var levelDropMap = {
+    'Zone':       'Zone',
+    'District':   'District',
+    'BiDistrict': 'Bi District',
+    'Area':       'Area',
+    'Region':     'Region',
+    'State':      'State'
+  };
+
+  var panelistLetters = ['A', 'B', 'C'];
+  var schools = vars.schools; // sorted by performance order
+
+  for (var jIdx = 0; jIdx < vars.num_judges; jIdx++) {
+    var judgeNum  = jIdx + 1;
+    var judgeName = gv('judge_' + judgeNum + '_name') || ('Judge ' + judgeNum);
+
+    // ---- Evaluation Ballots: one copy of the official form per school ----
+    for (var sIdx = 0; sIdx < schools.length; sIdx++) {
+      var school = schools[sIdx];
+      var evalDoc = await PDFDocument.load(_b64ToBytes(EVAL_PDF_B64));
+      var form = evalDoc.getForm();
+
+      // Fill header/admin fields only; ratings and comments left blank for judge
+      try { form.getTextField('Title').setText((school.name ? school.name + ' \u2014 ' : '') + (school.play || '')); } catch(e) { _pdfFieldErrors.push('Eval Title'); }
+      try { form.getTextField('Date').setText(vars.contest_date_short || ''); } catch(e) { _pdfFieldErrors.push('Eval Date'); }
+      try { form.getTextField('Performance Order').setText(String(school.order)); } catch(e) { _pdfFieldErrors.push('Eval Performance Order'); }
+      try { form.getTextField('Conference').setText(vars.classification || ''); } catch(e) { _pdfFieldErrors.push('Eval Conference'); }
+      try { form.getTextField('Contest Site').setText(vars.host_venue_name || ''); } catch(e) { _pdfFieldErrors.push('Eval Contest Site'); }
+      try { form.getTextField('Judge').setText(judgeName); } catch(e) { _pdfFieldErrors.push('Eval Judge'); }
+      var cbName = levelCheckMap[vars.contest_level];
+      if (cbName) { try { form.getCheckBox(cbName).check(); } catch(e) { _pdfFieldErrors.push('Eval level checkbox (' + cbName + ')'); } }
+
+      form.flatten();
+      var evPages = await merged.copyPages(evalDoc, evalDoc.getPageIndices());
+      evPages.forEach(function(p) { merged.addPage(p); });
+    }
+
+    // ---- Ranking Ballot: one copy of the official form per judge ----------
+    var rankDoc = await PDFDocument.load(_b64ToBytes(RANK_PDF_B64));
+    var rForm = rankDoc.getForm();
+
+    try { rForm.getDropdown('Panelist').select(panelistLetters[jIdx] || 'A'); } catch(e) { _pdfFieldErrors.push('Rank Panelist'); }
+    try { rForm.getDropdown('Conference').select(vars.classification || '5A'); } catch(e) { _pdfFieldErrors.push('Rank Conference'); }
+    var lvl = levelDropMap[vars.contest_level] || 'District';
+    try { rForm.getDropdown('Level/Zone').select(lvl); } catch(e) { _pdfFieldErrors.push('Rank Level/Zone'); }
+
+    for (var ri = 0; ri < schools.length && ri < MAX_SCHOOLS; ri++) {
+      var rs = schools[ri];
+      var playfld = 'Play ' + (ri + 1);
+      var sclfld  = ri === 0 ? 'School' : 'School_' + (ri + 1);
+      try { rForm.getTextField(playfld).setText(rs.play || ''); } catch(e) { _pdfFieldErrors.push('Rank ' + playfld); }
+      try { rForm.getTextField(sclfld).setText(rs.name  || ''); } catch(e) { _pdfFieldErrors.push('Rank ' + sclfld); }
+    }
+
+    rForm.flatten();
+    var rkPages = await merged.copyPages(rankDoc, rankDoc.getPageIndices());
+    rkPages.forEach(function(p) { merged.addPage(p); });
+
+    // ---- Acting Awards Ballot: Judge 1 only, completely blank per rules ---
+    if (jIdx === 0) {
+      var awardsDoc = await PDFDocument.load(_b64ToBytes(AWARDS_PDF_B64));
+      // No fields pre-filled; judges complete the acting awards ballot themselves
+      var awPages = await merged.copyPages(awardsDoc, awardsDoc.getPageIndices());
+      awPages.forEach(function(p) { merged.addPage(p); });
+    }
+  }
+
+  return { bytes: await merged.save(), fieldErrors: _pdfFieldErrors };
+}
+
+
+</script>
+</body>
+</html>
