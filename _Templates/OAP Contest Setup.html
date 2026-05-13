@@ -1443,121 +1443,173 @@ function xe(s) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  COLLECT VARIABLES
+//  FORM STATE — centralised DOM-field reader
+//  All form field reads go through FormState. The injected _gv
+//  makes the module testable with a stub object (no browser needed).
 // ═══════════════════════════════════════════════════════════════
-/**
- * Reads the entire form and returns a single flat object containing every
- * value needed by the document generators. This is the canonical source of
- * truth passed to all generate* functions — add new form fields here first.
- *
- * Key properties returned:
- *   num_schools, num_judges, schools[] (sorted by performance order),
- *   first_show_minutes (null when not set/unparseable),
- *   contest_title, folder_name, classification, contest_level, …
- *
- * @returns {Object}
- */
-function collectVars() {
-  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
-  const numJudges  = parseInt(gv('num_judges'))  || DEFAULT_JUDGES;
-  const yr  = gv('contest_year')  || String(new Date().getFullYear());
-  const lv  = gv('contest_level') || 'District';
-  const cls = gv('classification') || '5A';
-  const num = gv('district_number');
-  const schools = [];
-  for (let i = 1; i <= numSchools; i++) {
-    const directors = [];
-    const con = document.getElementById('school_' + i + '_directors');
-    if (con) {
-      con.querySelectorAll('.director-row').forEach(row => {
-        const ni = row.querySelector('input[type="text"]');
-        const ei = row.querySelector('input[type="email"]');
-        directors.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
+const FormState = (function(_gv) {
+
+  let _cache = null; // per-animation-frame memo; cleared automatically between renders
+
+  function _readSchools(numSchools) {
+    const schools = [];
+    for (let i = 1; i <= numSchools; i++) {
+      const directors = [];
+      const con = document.getElementById('school_' + i + '_directors');
+      if (con) {
+        con.querySelectorAll('.director-row').forEach(function(row) {
+          const ni = row.querySelector('input[type="text"]');
+          const ei = row.querySelector('input[type="email"]');
+          directors.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
+        });
+      }
+      if (directors.length === 0) directors.push({name:'', email:''});
+      const order = parseInt((document.getElementById('play_' + i + '_order') || {}).value) || i;
+      const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
+      schools.push({
+        order, play,
+        name:      _gv('school_' + i + '_name') || 'School ' + i,
+        director:  directors[0].name,
+        email:     directors[0].email,
+        directors,
+        allEmails: directors.map(function(d) { return d.email; }).filter(Boolean).join(', '),
       });
     }
-    if (directors.length === 0) directors.push({name:'', email:''});
-    const order = parseInt((document.getElementById('play_' + i + '_order') || {}).value) || i;
-    const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
-    schools.push({
-      order, play,
-      name:     gv('school_' + i + '_name') || 'School ' + i,
-      director: directors[0].name,
-      email:    directors[0].email,
-      directors,
-      allEmails: directors.map(d => d.email).filter(Boolean).join(', '),
-    });
+    schools.sort(function(a, b) { return a.order - b.order; });
+    return schools;
   }
-  schools.sort((a,b) => a.order - b.order);
-  const cfEl = document.querySelector('input[name="critique_format"]:checked');
-  const critFmt = cfEl ? cfEl.value : 'after_all';
-  const contestFull = 'UIL ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' One-Act Play Contest';
-  const contestLong = yr + ' ' + contestFull;
-  const folderName  = yr + ' \u2014 ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' OAP';
-  const ef = gv('entry_fee');
-  const af = gv('admission_fee');
+
+  function _buildVars() {
+    const numSchools = parseInt(_gv('num_schools')) || DEFAULT_SCHOOLS;
+    const numJudges  = parseInt(_gv('num_judges'))  || DEFAULT_JUDGES;
+    const yr  = _gv('contest_year')  || String(new Date().getFullYear());
+    const lv  = _gv('contest_level') || 'District';
+    const cls = _gv('classification') || '5A';
+    const num = _gv('district_number');
+    const schools = _readSchools(numSchools);
+    const cfEl = document.querySelector('input[name="critique_format"]:checked');
+    const critFmt = cfEl ? cfEl.value : 'after_all';
+    const contestFull = 'UIL ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' One-Act Play Contest';
+    const contestLong = yr + ' ' + contestFull;
+    const folderName  = yr + ' — ' + cls + ' ' + lv + (num ? ' ' + num : '') + ' OAP';
+    const ef = _gv('entry_fee');
+    const af = _gv('admission_fee');
+    return {
+      cm_name:    _gv('cm_name')    || 'Allen Otto',
+      cm_email:   _gv('cm_email')   || 'aotto3@gmail.com',
+      cm_phone:   _gv('cm_phone')   || '',
+      cm_address: _gv('cm_address') || '',
+      cm_website: _gv('cm_website') || '',
+      tech_contact: _gv('tech_contact') || '[Host Technical Director]',
+      contest_year: yr, contest_level: lv, classification: cls, district_number: num,
+      host_school_name:    _gv('host_school_name')    || '[Host School]',
+      host_school_address: _gv('host_school_address') || '[Address TBD]',
+      host_venue_name:     _gv('host_venue_name')     || '[Venue TBD]',
+      contest_full_name: contestFull,
+      contest_title_long: contestLong,
+      folder_name: folderName,
+      contest_date:             _gv('contest_date'),
+      contest_date_display:     fmtDate(_gv('contest_date')),
+      contest_date_short:       fmtDateShort(_gv('contest_date')),
+      contest_date_numeric:     fmtDateNumeric(_gv('contest_date')),
+      directors_meeting_time:   _gv('directors_meeting_time') || 'TBD',
+      first_show_time:          _gv('first_show_time') || '',
+      first_show_minutes:       (function(){ const t = parseTime(_gv('first_show_time')); return (t != null && !isNaN(t)) ? t : null; })(),
+      rehearsal_date_1:         _gv('rehearsal_date_1'),
+      rehearsal_date_1_display: fmtDate(_gv('rehearsal_date_1')),
+      rehearsal_date_2:         _gv('rehearsal_date_2'),
+      rehearsal_date_2_display: fmtDate(_gv('rehearsal_date_2')),
+      rehearsal_length_minutes:  parseInt(_gv('rehearsal_length_minutes')) || 90,
+      rehearsal_start_time:      _gv('rehearsal_start_time') || '2:00 PM',
+      rehearsal_start_minutes:   parseTime(_gv('rehearsal_start_time') || '2:00 PM'),
+      rehearsal_start_time_2:    _gv('rehearsal_start_time_2') || _gv('rehearsal_start_time') || '2:00 PM',
+      rehearsal_start_minutes_2: parseTime(_gv('rehearsal_start_time_2') || _gv('rehearsal_start_time') || '2:00 PM'),
+      rehearsal_day_1_count:     parseInt(_gv('rehearsal_day_1_count')) || Math.ceil(numSchools / 2),
+      critique_format: critFmt,
+      num_judges: numJudges, num_schools: numSchools,
+      entry_fee:               ef ? '$' + ef + ' per school' : 'No entry fee',
+      entry_fee_raw:           ef || '',
+      admission_fee:           af ? '$' + af : 'No admission charge',
+      admission_fee_raw:       af || '',
+      entry_system_deadline:   _gv('entry_system_deadline'),
+      entry_system_deadline_display: fmtDateShort(_gv('entry_system_deadline')),
+      entry_system_deadline_numeric: fmtDateNumeric(_gv('entry_system_deadline')),
+      light_cue_deadline_date:        _gv('light_cue_deadline_date'),
+      light_cue_deadline_date_display: fmtDateShort(_gv('light_cue_deadline_date')),
+      light_cue_deadline_date_numeric: fmtDateNumeric(_gv('light_cue_deadline_date')),
+      light_cue_deadline_time: _gv('light_cue_deadline_time') || '5:00 PM',
+      bidc_contest_date:       fmtDateShort(_gv('bidc_contest_date')),
+      judge_1_name: _gv('judge_1_name'), judge_1_address: _gv('judge_1_address'),
+      judge_1_needs_power: !!(document.getElementById('judge_1_needs_power')||{}).checked,
+      judge_1_needs_hotel: !!(document.getElementById('judge_1_needs_hotel')||{}).checked,
+      judge_1_hotel_nights: _gv('judge_1_hotel_nights') || '1',
+      judge_1_dietary: _gv('judge_1_dietary') || '',
+      judge_2_name: _gv('judge_2_name'), judge_2_address: _gv('judge_2_address'),
+      judge_2_needs_power: !!(document.getElementById('judge_2_needs_power')||{}).checked,
+      judge_2_needs_hotel: !!(document.getElementById('judge_2_needs_hotel')||{}).checked,
+      judge_2_hotel_nights: _gv('judge_2_hotel_nights') || '1',
+      judge_2_dietary: _gv('judge_2_dietary') || '',
+      judge_3_name: _gv('judge_3_name'), judge_3_address: _gv('judge_3_address'),
+      judge_3_needs_power: !!(document.getElementById('judge_3_needs_power')||{}).checked,
+      judge_3_needs_hotel: !!(document.getElementById('judge_3_needs_hotel')||{}).checked,
+      judge_3_hotel_nights: _gv('judge_3_hotel_nights') || '1',
+      judge_3_dietary: _gv('judge_3_dietary') || '',
+      schools,
+    };
+  }
+
+  function _read() {
+    if (_cache) return _cache;
+    _cache = _buildVars();
+    requestAnimationFrame(function() { _cache = null; });
+    return _cache;
+  }
+
   return {
-    cm_name: gv('cm_name') || 'Allen Otto',
-    cm_email: gv('cm_email') || 'aotto3@gmail.com',
-    cm_phone: gv('cm_phone') || '',
-    cm_address: gv('cm_address') || '',
-    cm_website: gv('cm_website') || '',
-    tech_contact: gv('tech_contact') || '[Host Technical Director]',
-    contest_year: yr, contest_level: lv, classification: cls, district_number: num,
-    host_school_name:    gv('host_school_name')    || '[Host School]',
-    host_school_address: gv('host_school_address') || '[Address TBD]',
-    host_venue_name:     gv('host_venue_name')     || '[Venue TBD]',
-    contest_full_name: contestFull,
-    contest_title_long: contestLong,
-    folder_name: folderName,
-    contest_date:             gv('contest_date'),
-    contest_date_display:     fmtDate(gv('contest_date')),
-    contest_date_short:       fmtDateShort(gv('contest_date')),
-    contest_date_numeric:     fmtDateNumeric(gv('contest_date')),
-    directors_meeting_time:   gv('directors_meeting_time') || 'TBD',
-    first_show_time:          gv('first_show_time') || '',
-    first_show_minutes:       (function(){ const t = parseTime(gv('first_show_time')); return (t != null && !isNaN(t)) ? t : null; })(),
-    rehearsal_date_1:         gv('rehearsal_date_1'),
-    rehearsal_date_1_display: fmtDate(gv('rehearsal_date_1')),
-    rehearsal_date_2:         gv('rehearsal_date_2'),
-    rehearsal_date_2_display: fmtDate(gv('rehearsal_date_2')),
-    rehearsal_length_minutes:  parseInt(gv('rehearsal_length_minutes')) || 90,
-    rehearsal_start_time:      gv('rehearsal_start_time') || '2:00 PM',
-    rehearsal_start_minutes:   parseTime(gv('rehearsal_start_time') || '2:00 PM'),
-    rehearsal_start_time_2:    gv('rehearsal_start_time_2') || gv('rehearsal_start_time') || '2:00 PM',
-    rehearsal_start_minutes_2: parseTime(gv('rehearsal_start_time_2') || gv('rehearsal_start_time') || '2:00 PM'),
-    rehearsal_day_1_count:     parseInt(gv('rehearsal_day_1_count')) || Math.ceil(numSchools / 2),
-    critique_format: critFmt,
-    num_judges: numJudges, num_schools: numSchools,
-    entry_fee:               ef ? '$' + ef + ' per school' : 'No entry fee',
-    entry_fee_raw:           ef || '',
-    admission_fee:           af ? '$' + af : 'No admission charge',
-    admission_fee_raw:       af || '',
-    entry_system_deadline:   gv('entry_system_deadline'),
-    entry_system_deadline_display: fmtDateShort(gv('entry_system_deadline')),
-    entry_system_deadline_numeric: fmtDateNumeric(gv('entry_system_deadline')),
-    light_cue_deadline_date:        gv('light_cue_deadline_date'),
-    light_cue_deadline_date_display: fmtDateShort(gv('light_cue_deadline_date')),
-    light_cue_deadline_date_numeric: fmtDateNumeric(gv('light_cue_deadline_date')),
-    light_cue_deadline_time: gv('light_cue_deadline_time') || '5:00 PM',
-    bidc_contest_date:       fmtDateShort(gv('bidc_contest_date')),
-    judge_1_name: gv('judge_1_name'), judge_1_address: gv('judge_1_address'),
-    judge_1_needs_power: !!(document.getElementById('judge_1_needs_power')||{}).checked,
-    judge_1_needs_hotel: !!(document.getElementById('judge_1_needs_hotel')||{}).checked,
-    judge_1_hotel_nights: gv('judge_1_hotel_nights') || '1',
-    judge_1_dietary: gv('judge_1_dietary') || '',
-    judge_2_name: gv('judge_2_name'), judge_2_address: gv('judge_2_address'),
-    judge_2_needs_power: !!(document.getElementById('judge_2_needs_power')||{}).checked,
-    judge_2_needs_hotel: !!(document.getElementById('judge_2_needs_hotel')||{}).checked,
-    judge_2_hotel_nights: gv('judge_2_hotel_nights') || '1',
-    judge_2_dietary: gv('judge_2_dietary') || '',
-    judge_3_name: gv('judge_3_name'), judge_3_address: gv('judge_3_address'),
-    judge_3_needs_power: !!(document.getElementById('judge_3_needs_power')||{}).checked,
-    judge_3_needs_hotel: !!(document.getElementById('judge_3_needs_hotel')||{}).checked,
-    judge_3_hotel_nights: gv('judge_3_hotel_nights') || '1',
-    judge_3_dietary: gv('judge_3_dietary') || '',
-    schools,
+    /** Full vars object for document generation. Memoised per animation frame. */
+    get: function() { return _read(); },
+
+    /** Timing fields + school names/order only — cheap fast path for schedule preview.
+        Never calls _read(); safe to invoke on every keystroke. */
+    timing: function() {
+      const numSchools = parseInt(_gv('num_schools')) || DEFAULT_SCHOOLS;
+      const numJudges  = parseInt(_gv('num_judges'))  || DEFAULT_JUDGES;
+      const cfEl = document.querySelector('input[name="critique_format"]:checked');
+      const schools = [];
+      for (let i = 1; i <= numSchools; i++) {
+        const order = parseInt((document.getElementById('play_' + i + '_order') || {}).value) || i;
+        const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
+        schools.push({ order, play, name: _gv('school_' + i + '_name') || 'School ' + i });
+      }
+      schools.sort(function(a, b) { return a.order - b.order; });
+      const t = parseTime(_gv('first_show_time'));
+      return {
+        first_show_minutes:     (t != null && !isNaN(t)) ? t : null,
+        directors_meeting_time: _gv('directors_meeting_time') || 'TBD',
+        num_schools: numSchools,
+        num_judges:  numJudges,
+        critique_format: cfEl ? cfEl.value : 'after_all',
+        schools,
+      };
+    },
+
+    /** ~15-field subset for email templates. Stub — full impl in issue #5. */
+    email: function() { return _read(); },
+
+    /** Raw {fieldId → value} snapshot map. Stub — full impl in issue #4. */
+    snapshot: function() { return {}; },
+
+    /** Bulk-write {fieldId → value} back to DOM. Stub — full impl in issue #4. */
+    restore: function() {},
   };
-}
+
+})(function(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; });
+
+// ═══════════════════════════════════════════════════════════════
+//  COLLECT VARIABLES
+// ═══════════════════════════════════════════════════════════════
+/** Delegates to FormState.get(). All field reads centralised in FormState. */
+function collectVars() { return FormState.get(); }
 
 // ═══════════════════════════════════════════════════════════════
 //  SCHEDULE CALCULATOR
