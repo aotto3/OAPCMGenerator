@@ -612,6 +612,34 @@ const DEFAULT_JUDGES     = 3;   // Default num_judges when no value is present
 const CRIT_MINS_PER_SHOW = 15;  // Minutes allocated per critique slot in the schedule
 
 // ═══════════════════════════════════════════════════════════════
+//  THEME — named styling constants for OOXML docs and XLSX sheets
+// ═══════════════════════════════════════════════════════════════
+const THEME = {
+  doc: {
+    font:       'Calibri',
+    color:      '222222',
+    headColor:  '1F4E79',
+    lineColor:  'CCCCCC',
+    signColor:  '444444',
+    bodySize:   20,
+    headSize:   22,
+    indent:     360,
+    spaceAfter: 120,
+    headSb:     200,
+    headSa:     80,
+    bulletSa:   60,
+  },
+  xlsx: {
+    font:       'Calibri',
+    titleSz:    13,
+    headerSz:   11,
+    footnoteSz: 10,
+    black:      '000000',
+    grey:       'DADADA',
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
 //  UI HELPERS
 // ═══════════════════════════════════════════════════════════════
 function toggle(header) {
@@ -1717,9 +1745,9 @@ function updateSchedulePreview() {
 //  RAW OOXML HELPERS (for .docx)
 // ═══════════════════════════════════════════════════════════════
 function ooP(text, opts) {
-  const o = opts||{}; const align=o.align||''; const sb=o.sb!=null?o.sb:0; const sa=o.sa!=null?o.sa:120;
-  const indent=o.indent||0; const size=o.size||20; const color=o.color||'222222';
-  const bold=o.bold||false; const italic=o.italic||false; const font=o.font||'Calibri';
+  const o = opts||{}; const align=o.align||''; const sb=o.sb!=null?o.sb:0; const sa=o.sa!=null?o.sa:THEME.doc.spaceAfter;
+  const indent=o.indent||0; const size=o.size||THEME.doc.bodySize; const color=o.color||THEME.doc.color;
+  const bold=o.bold||false; const italic=o.italic||false; const font=o.font||THEME.doc.font;
   const ul=o.ul||false;
   const ppr='<w:pPr>'+(align?'<w:jc w:val="'+align+'"/>':'')+
     '<w:spacing w:before="'+sb+'" w:after="'+sa+'"/>'+
@@ -1731,17 +1759,17 @@ function ooP(text, opts) {
     '<w:sz w:val="'+size+'"/><w:szCs w:val="'+size+'"/><w:color w:val="'+color+'"/></w:rPr>';
   return '<w:p>'+ppr+'<w:r>'+rpr+'<w:t xml:space="preserve">'+xe(text)+'</w:t></w:r></w:p>';
 }
-function ooPEmpty(sa) { return '<w:p><w:pPr><w:spacing w:before="0" w:after="'+(sa!=null?sa:120)+'"/></w:pPr></w:p>'; }
+function ooPEmpty(sa) { return '<w:p><w:pPr><w:spacing w:before="0" w:after="'+(sa!=null?sa:THEME.doc.spaceAfter)+'"/></w:pPr></w:p>'; }
 function ooPLine(color) {
-  const c=color||'CCCCCC';
+  const c=color||THEME.doc.lineColor;
   return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="'+c+'"/></w:pBdr><w:spacing w:before="60" w:after="60"/></w:pPr></w:p>';
 }
-function ooPHead(text, color) { return ooP(text,{bold:true,size:22,color:color||'1F4E79',sb:200,sa:80}); }
-function ooPBullet(text) { return ooP(text,{size:20,indent:360,sa:60}); }
+function ooPHead(text, color) { return ooP(text,{bold:true,size:THEME.doc.headSize,color:color||THEME.doc.headColor,sb:THEME.doc.headSb,sa:THEME.doc.headSa}); }
+function ooPBullet(text) { return ooP(text,{size:THEME.doc.bodySize,indent:THEME.doc.indent,sa:THEME.doc.bulletSa}); }
 function ooPSignLine(indent, sa) {
-  const i=indent||0; const s=sa!=null?sa:120;
+  const i=indent||0; const s=sa!=null?sa:THEME.doc.spaceAfter;
   return '<w:p><w:pPr><w:spacing w:before="60" w:after="'+s+'"/>'+
-    '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="444444"/></w:pBdr>'+
+    '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="'+THEME.doc.signColor+'"/></w:pBdr>'+
     (i?'<w:ind w:left="'+i+'"/>':'')+'</w:pPr></w:p>';
 }
 function ooPPageBreak() { return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'; }
@@ -1920,7 +1948,7 @@ function sc(v, rgb, bold, isTime) {
   if (isTime && typeof v === 'number') { cell.z = 'h:mm AM/PM'; }
   cell.s = {
     fill: rgb ? {fgColor:{rgb}, patternType:'solid'} : {patternType:'none'},
-    font: {name:'Calibri', sz:11, bold:!!bold, color:{rgb: rgb==='000000' ? 'FFFFFF' : '000000'}},
+    font: {name:THEME.xlsx.font, sz:THEME.xlsx.headerSz, bold:!!bold, color:{rgb: rgb===THEME.xlsx.black ? 'FFFFFF' : THEME.xlsx.black}},
     alignment: {horizontal:'left', vertical:'center'},
   };
   if (isTime) cell.s.numFmt = 'h:mm AM/PM';
