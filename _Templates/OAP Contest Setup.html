@@ -1700,23 +1700,14 @@ function calculateSchedule(vars) {
 const SCHOOL_COLORS_HEX  = ['#FEF2CB','#B4C6E7','#F4B083','#C5E0B3','#FFFF00','#FFC000','#E06666','#CCA3FF'];
 // Same palette without '#' prefix — used by SheetJS cell-fill (fgColor.rgb expects bare hex)
 const SCHOOL_COLORS_XLSX = ['FEF2CB','B4C6E7','F4B083','C5E0B3','FFFF00','FFC000','E06666','CCA3FF'];
-function updateSchedulePreview() {
-  const box = document.getElementById('schedule_preview_box');
-  if (!box) return;
-  const vars = collectVars();
-  const events = calculateSchedule(vars);
-  if (!events.length) {
-    box.innerHTML = '<p style="color:#888;font-style:italic;padding:10px 0">Enter a First Show / Setup Time to see schedule preview.</p>';
-    return;
-  }
-  // Prepend Directors Meeting row if time is set and falls before first show
+function renderScheduleHTML(events, vars) {
   const dmMins = parseTime(vars.directors_meeting_time);
   if (dmMins != null && !isNaN(dmMins) && vars.first_show_minutes != null && dmMins < vars.first_show_minutes) {
-    events.unshift({
+    events = [{
       start: dmMins, end: vars.first_show_minutes,
       dur: vars.first_show_minutes - dmMins,
-      label: 'Directors\u2019 Meeting', play: '', school: '', type: 'dm', colorIdx: 0
-    });
+      label: 'Directors’ Meeting', play: '', school: '', type: 'dm', colorIdx: 0
+    }].concat(events);
   }
   let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">' +
     '<thead><tr>' +
@@ -1726,10 +1717,10 @@ function updateSchedulePreview() {
     '<th style="background:#222;color:#fff;padding:5px 8px;text-align:left">SCHOOL</th>' +
     '</tr></thead><tbody>';
   events.forEach(ev => {
-    let bg = '#DADADA';
+    let bg = '#' + THEME.xlsx.grey;
     if (ev.type === 'show') bg = SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
-    if (ev.type === 'dm')   bg = SCHOOL_COLORS_HEX[0]; // matches Excel output color for DM row
-    const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' \u2014 ' + xe(ev.play) : '') : '';
+    if (ev.type === 'dm')   bg = SCHOOL_COLORS_HEX[0];
+    const school = ev.type === 'show' ? xe(ev.school) + (ev.play ? ' — ' + xe(ev.play) : '') : '';
     html += '<tr style="background:' + bg + '">' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.start) + '</td>' +
       '<td style="padding:4px 8px;border-bottom:1px solid #ccc">' + fmtTime(ev.end) + '</td>' +
@@ -1738,7 +1729,18 @@ function updateSchedulePreview() {
       '</tr>';
   });
   html += '</tbody></table>';
-  box.innerHTML = html;
+  return html;
+}
+function updateSchedulePreview() {
+  const box = document.getElementById('schedule_preview_box');
+  if (!box) return;
+  const vars = collectVars();
+  const events = calculateSchedule(vars);
+  if (!events.length) {
+    box.innerHTML = '<p style="color:#888;font-style:italic;padding:10px 0">Enter a First Show / Setup Time to see schedule preview.</p>';
+    return;
+  }
+  box.innerHTML = renderScheduleHTML(events, vars);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1959,63 +1961,51 @@ function setCellStyled(ws, addr, cell) {
   if (!ws['!ref']) ws['!ref'] = addr + ':' + addr;
 }
 function minToFrac(mins) { return mins / 1440; }
-function genContestSchedule(vars) {
-  const events = calculateSchedule(vars);
+function renderScheduleXLSX(events, vars) {
   const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
-  const GREY = 'DADADA';
-  const BLACK = '000000';
   const wb = XLSX.utils.book_new();
   const ws = {};
   let row = 1;
-  // Title row
   ws['A'+row] = {v: vars.contest_title_long + ' — ' + (vars.contest_date_short||'Date TBD'), t:'s',
-    s:{font:{bold:true,sz:13,name:'Calibri'}, fill:{patternType:'none'}}};
+    s:{font:{bold:true,sz:THEME.xlsx.titleSz,name:THEME.xlsx.font}, fill:{patternType:'none'}}};
   ws['!merges'] = [{s:{r:row-1,c:0},e:{r:row-1,c:3}}];
-  row++;
-  // Blank row
-  row++;
-  // Header row
-  const headers = ['START','END','WHAT','SCHOOL'];
+  row++; row++;
   ['A','B','C','D'].forEach((col,ci) => {
-    ws[col+row] = sc(headers[ci], BLACK, true, false);
+    ws[col+row] = sc(['START','END','WHAT','SCHOOL'][ci], THEME.xlsx.black, true, false);
   });
   row++;
-  // CM Arrival (directors_meeting_time - 2 hours)
   const dmMins = parseTime(vars.directors_meeting_time);
   if (dmMins != null) {
-    const arrMins = dmMins - 120;
-    ws['A'+row] = sc(minToFrac(arrMins), null, false, true);
+    ws['A'+row] = sc(minToFrac(dmMins - 120), null, false, true);
     ws['C'+row] = sc('CM Arrival', null, false, false);
     row++;
-    // Director's Meeting
-    ws['A'+row] = sc(minToFrac(dmMins), SCHOOL_COLORS[0], false, true);
-    ws['B'+row] = sc(minToFrac(dmMins+30), SCHOOL_COLORS[0], false, true);
-    ws['C'+row] = sc("Director's Meeting", SCHOOL_COLORS[0], false, false);
+    ws['A'+row] = sc(minToFrac(dmMins),      SCHOOL_COLORS[0], false, true);
+    ws['B'+row] = sc(minToFrac(dmMins + 30), SCHOOL_COLORS[0], false, true);
+    ws['C'+row] = sc("Director's Meeting",   SCHOOL_COLORS[0], false, false);
     row++;
   }
-  // Events
-  let schoolColorIdx = 0;
   events.forEach(ev => {
-    let rgb;
-    if (ev.type === 'show') { rgb = SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length]; }
-    else if (ev.type === 'trans') { rgb = SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length]; }
-    else if (ev.type === 'crit') { rgb = GREY; }
-    else { rgb = GREY; }
+    const rgb = (ev.type === 'show' || ev.type === 'trans')
+      ? SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length] : THEME.xlsx.grey;
     ws['A'+row] = sc(minToFrac(ev.start), rgb, false, true);
-    ws['B'+row] = sc(minToFrac(ev.end), rgb, false, true);
-    ws['C'+row] = sc(ev.label, rgb, false, false);
+    ws['B'+row] = sc(minToFrac(ev.end),   rgb, false, true);
+    ws['C'+row] = sc(ev.label,            rgb, false, false);
     ws['D'+row] = sc(ev.type === 'show' && ev.play ? ev.play : (ev.school||''), rgb, false, false);
     row++;
   });
-  // Blank then notes
   row++;
-  ws['C'+row] = {v:'** Written evaluation sheets will be given to schools at the end of the contest.', t:'s', s:{font:{name:'Calibri',sz:10,italic:true}}};
+  ws['C'+row] = {v:'** Written evaluation sheets will be given to schools at the end of the contest.', t:'s',
+    s:{font:{name:THEME.xlsx.font,sz:THEME.xlsx.footnoteSz,italic:true}}};
   row++;
-  ws['C'+row] = {v:'**ALL PERFORMANCES WILL BE BACK TO BACK - TIMES ARE APPROXIMATE', t:'s', s:{font:{bold:true,name:'Calibri',sz:10}}};
-  ws['!ref'] = 'A1:D' + (row+1);
+  ws['C'+row] = {v:'**ALL PERFORMANCES WILL BE BACK TO BACK - TIMES ARE APPROXIMATE', t:'s',
+    s:{font:{bold:true,name:THEME.xlsx.font,sz:THEME.xlsx.footnoteSz}}};
+  ws['!ref'] = 'A1:D' + (row + 1);
   ws['!cols'] = [{wch:12},{wch:12},{wch:52},{wch:34}];
   XLSX.utils.book_append_sheet(wb, ws, vars.contest_date_short||'Contest Day');
   return xlsxBuf(wb);
+}
+function genContestSchedule(vars) {
+  return renderScheduleXLSX(calculateSchedule(vars), vars);
 }
 
 // ═══════════════════════════════════════════════════════════════
