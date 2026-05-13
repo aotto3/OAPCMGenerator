@@ -719,30 +719,7 @@ const OAP_SNAP_FIELDS = [
 ];
 const OAP_SNAP_SELECTS = ['contest_level','classification'];
 
-function serializeState() {
-  const numSchools = parseInt(gv('num_schools')) || DEFAULT_SCHOOLS;
-  const fields = {};
-  [...OAP_SNAP_FIELDS, ...OAP_SNAP_SELECTS].forEach(id => {
-    const el = document.getElementById(id); if (el) fields[id] = el.value;
-  });
-  const schools = [];
-  for (let i = 1; i <= numSchools; i++) {
-    const dirs = [];
-    const con = document.getElementById('school_' + i + '_directors');
-    if (con) con.querySelectorAll('.director-row').forEach(row => {
-      const ni = row.querySelector('input[type="text"]');
-      const ei = row.querySelector('input[type="email"]');
-      dirs.push({ name: ni ? ni.value.trim() : '', email: ei ? ei.value.trim() : '' });
-    });
-    if (!dirs.length) dirs.push({ name: '', email: '' });
-    schools.push({ name: gv('school_' + i + '_name') || '', directors: dirs, play: gv('play_' + i + '_play') || '' });
-  }
-  return {
-    v: 1, saved_at: new Date().toISOString(),
-    num_schools: String(numSchools),
-    fields, schools,
-  };
-}
+function serializeState() { return FormState.snapshot(); }
 
 /**
  * Applies forward-only migrations to snapshot data so that snapshots saved
@@ -768,9 +745,7 @@ function restoreState(data) {
   const nsSel = document.getElementById('num_schools');
   if (nsSel) { nsSel.value = data.num_schools || '6'; updateSchoolFields(); }
   // 2. Static fields + selects
-  Object.entries(data.fields || {}).forEach(([id, val]) => {
-    const el = document.getElementById(id); if (el) el.value = val;
-  });
+  FormState.restore(data.fields || {});
   // 3. Schools & directors (including play titles)
   const numS = parseInt(data.num_schools) || DEFAULT_SCHOOLS;
   (data.schools || []).slice(0, numS).forEach((s, i) => {
@@ -1058,75 +1033,70 @@ function renderSnapshotList() {
 // ═══════════════════════════════════════════════════════════════
 const EMAIL_TEMPLATES = {
   announcement: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Contest Information',
+    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Contest Information'; },
     body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const lv  = (document.getElementById('contest_level') || {}).value || 'Contest';
-      const dt  = fmtDate(gv('contest_date')) || '[Contest Date TBD]';
-      const ven = gv('host_venue_name') || '[Venue TBD]';
-      const adr = gv('host_school_address') || '[Address TBD]';
-      const dmt = gv('directors_meeting_time') || '[TBD]';
-      const fst = gv('first_show_time') || '[TBD]';
-      const edd = fmtDateShort(gv('entry_system_deadline')) || '[TBD]';
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cme = gv('cm_email') || '[CM Email]';
-      const cmp = gv('cm_phone') || '';
+      const v = FormState.email();
+      const cn  = v.contest_full_name || '[Contest Name]';
+      const lv  = v.contest_level || 'Contest';
+      const dt  = v.contest_date_display || '[Contest Date TBD]';
+      const ven = v.host_venue_name || '[Venue TBD]';
+      const adr = v.host_school_address || '[Address TBD]';
+      const dmt = v.directors_meeting_time || '[TBD]';
+      const fst = v.first_show_time || '[TBD]';
+      const edd = v.entry_system_deadline_display || '[TBD]';
+      const cmn = v.cm_name || '[CM Name]';
+      const cme = v.cm_email || '[CM Email]';
+      const cmp = v.cm_phone || '';
       return 'Dear ' + lv + ' Directors,\n\nCongratulations on qualifying for the ' + cn + '! I am looking forward to serving as your Contest Manager.\n\nThe contest will be held on ' + dt + ' at ' + ven + ', located at ' + adr + '.\n\nDirectors\u2019 Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease submit your entries by ' + edd + '.\n\nIf you have any questions, please contact me at ' + cme + (cmp ? ' or ' + cmp : '') + '.\n\nSincerely,\n' + cmn + '\nContest Manager';
     }
   },
   deadline: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Entry Deadline Reminder',
+    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Entry Deadline Reminder'; },
     body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const edd = fmtDateShort(gv('entry_system_deadline')) || '[TBD]';
-      const lcd = fmtDateShort(gv('light_cue_deadline_date')) || '[TBD]';
-      const lct = gv('light_cue_deadline_time') || '5:00 PM';
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cmp = gv('cm_phone') || '';
+      const v = FormState.email();
+      const cn  = v.contest_full_name || '[Contest Name]';
+      const edd = v.entry_system_deadline_display || '[TBD]';
+      const lcd = v.light_cue_deadline_date_display || '[TBD]';
+      const lct = v.light_cue_deadline_time || '5:00 PM';
+      const cmn = v.cm_name || '[CM Name]';
+      const cmp = v.cm_phone || '';
       return 'Dear Directors,\n\nThis is a reminder of the upcoming deadlines for the ' + cn + ':\n\n\u2022  Entry Deadline: ' + edd + '\n\u2022  Light Cue Submission Deadline: ' + lcd + ' by ' + lct + '\n\nIf you have not yet submitted your entry, please do so as soon as possible. Late entries may not be accepted.\n\nPlease contact me if you have any questions.\n\n' + cmn + (cmp ? '\n' + cmp : '');
     }
   },
   daybefore: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Tomorrow\u2019s Contest',
+    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Tomorrow\u2019s Contest'; },
     body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const dt  = fmtDateShort(gv('contest_date')) || '[Contest Date]';
-      const ven = gv('host_venue_name') || '[Venue TBD]';
-      const adr = gv('host_school_address') || '[Address TBD]';
-      const dmt = gv('directors_meeting_time') || '[TBD]';
-      const fst = gv('first_show_time') || '[TBD]';
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cme = gv('cm_email') || '[CM Email]';
-      const cmp = gv('cm_phone') || '';
+      const v = FormState.email();
+      const cn  = v.contest_full_name || '[Contest Name]';
+      const dt  = v.contest_date_short || '[Contest Date]';
+      const ven = v.host_venue_name || '[Venue TBD]';
+      const adr = v.host_school_address || '[Address TBD]';
+      const dmt = v.directors_meeting_time || '[TBD]';
+      const fst = v.first_show_time || '[TBD]';
+      const cmn = v.cm_name || '[CM Name]';
+      const cme = v.cm_email || '[CM Email]';
+      const cmp = v.cm_phone || '';
       return 'Dear Directors,\n\nJust a reminder that the ' + cn + ' is tomorrow, ' + dt + '.\n\nVenue: ' + ven + '\nAddress: ' + adr + '\nDirectors\u2019 Meeting: ' + dmt + '\nFirst Performance: ' + fst + '\n\nPlease arrive prepared and on time. I look forward to seeing you tomorrow!\n\n' + cmn + '\n' + cme + (cmp ? '\n' + cmp : '');
     }
   },
   judges: {
-    subject: () => (gv('contest_name_preview') || '[Contest Name]') + ' \u2014 Judge Information',
+    subject: () => { const v = FormState.email(); return (v.contest_full_name || '[Contest Name]') + ' \u2014 Judge Information'; },
     body: () => {
-      const cn  = gv('contest_name_preview') || '[Contest Name]';
-      const dt  = fmtDateShort(gv('contest_date')) || '[Contest Date TBD]';
-      const ven = gv('host_venue_name') || '[Venue TBD]';
-      const adr = gv('host_school_address') || '[Address TBD]';
-      const dmtRaw = gv('directors_meeting_time');
-      const dmtDisplay = dmtRaw || '[TBD]';
-      const dmtMin = parseTime(dmtRaw);
+      const v = FormState.email();
+      const cn  = v.contest_full_name || '[Contest Name]';
+      const dt  = v.contest_date_short || '[Contest Date TBD]';
+      const ven = v.host_venue_name || '[Venue TBD]';
+      const adr = v.host_school_address || '[Address TBD]';
+      const dmtDisplay = v.directors_meeting_time || '[TBD]';
+      const dmtMin = parseTime(v.directors_meeting_time);
       const arrDisplay = (dmtMin != null && !isNaN(dmtMin)) ? fmtTime(dmtMin - 20) : '[at least 20 minutes before the Directors\u2019 Meeting]';
-      const cfEl = document.querySelector('input[name="critique_format"]:checked');
-      const cfText = (cfEl && cfEl.value === 'after_each') ? 'after each show' : 'after all shows';
-      const numS = parseInt((document.getElementById('num_schools') || {}).value) || DEFAULT_SCHOOLS;
-      const shows = [];
-      for (let i = 1; i <= numS; i++) {
-        const ord  = parseInt(gv('play_' + i + '_order')) || i;
-        const name = gv('school_' + i + '_name') || 'School ' + i;
-        const play = gv('play_' + i + '_play') || '';
-        shows.push({ ord, name, play });
-      }
-      shows.sort((a, b) => a.ord - b.ord);
-      const showList = shows.map((s, i) => (i+1) + '. ' + s.name + (s.play ? ' \u2014 ' + s.play : '')).join('\n');
-      const cmn = gv('cm_name') || '[CM Name]';
-      const cme = gv('cm_email') || '[CM Email]';
-      const cmp = gv('cm_phone') || '';
+      const cfText = v.critique_format === 'after_each' ? 'after each show' : 'after all shows';
+      const showList = v.schools.map(function(s, i) {
+        return (i+1) + '. ' + s.name + (s.play ? ' \u2014 ' + s.play : '');
+      }).join('\n');
+      const cmn = v.cm_name || '[CM Name]';
+      const cme = v.cm_email || '[CM Email]';
+      const cmp = v.cm_phone || '';
       return 'Dear Judge,\n\nThe ' + cn + ' is coming up on ' + dt + '. We are so excited to have you adjudicate!\n\nVenue: ' + ven + '\nAddress: ' + adr + '\n\nThe Directors\u2019 Meeting begins promptly at ' + dmtDisplay + ', so please plan to arrive by ' + arrDisplay + ' to get settled in.\n\nShows will run back to back in the following order:\n\n' + showList + '\n\nCritiques will be randomly drawn, and will be held ' + cfText + '.\n\nIf you have any questions or concerns before contest day, please don\u2019t hesitate to reach out.\n\n' + cmn + '\nContest Manager\n' + cme + (cmp ? '\n' + cmp : '');
     }
   }
@@ -1165,22 +1135,20 @@ function generateAdvancingEmail() {
   const selected = Array.from(checks.querySelectorAll('input[type=checkbox]:checked'));
   if (!selected.length) { alert('Please check at least one advancing school.'); return; }
 
-  // Collect director emails for selected schools only
+  // Collect director emails via FormState — single source of truth for director data
+  const allSchools = FormState.get().schools;
   const toEmails = [];
   selected.forEach(function(cb) {
-    const idx = cb.getAttribute('data-idx');
-    const con = document.getElementById('school_' + idx + '_directors');
-    if (con) {
-      con.querySelectorAll('input[type=email]').forEach(function(ei) {
-        if (ei.value.trim()) toEmails.push(ei.value.trim());
-      });
-    }
+    const formIdx = parseInt(cb.getAttribute('data-idx'));
+    const school = allSchools.find(function(s) { return s.idx === formIdx; });
+    if (school) school.directors.forEach(function(d) { if (d.email) toEmails.push(d.email); });
   });
 
-  const cn   = gv('contest_name_preview') || '[Contest Name]';
-  const cmn  = gv('cm_name')   || 'Allen';
-  const cmp  = gv('cm_phone')  || '281-777-8672';
-  const cmw  = gv('cm_website')|| 'www.allenotto.com';
+  const v   = FormState.email();
+  const cn  = v.contest_full_name || '[Contest Name]';
+  const cmn = v.cm_name    || 'Allen';
+  const cmp = v.cm_phone   || '281-777-8672';
+  const cmw = v.cm_website || 'www.allenotto.com';
 
   const subject = cn + ' \u2014 Post-Contest Evaluation';
   const body =
@@ -1468,6 +1436,7 @@ const FormState = (function(_gv) {
       const play  = (document.getElementById('play_' + i + '_play')  || {}).value || '';
       schools.push({
         order, play,
+        idx: i,    // 1-based form index — used to match checkbox data-idx
         name:      _gv('school_' + i + '_name') || 'School ' + i,
         director:  directors[0].name,
         email:     directors[0].email,
@@ -1593,14 +1562,32 @@ const FormState = (function(_gv) {
       };
     },
 
-    /** ~15-field subset for email templates. Stub — full impl in issue #5. */
+    /** Contest fields for email templates — projection of the memoised get() read. */
     email: function() { return _read(); },
 
-    /** Raw {fieldId → value} snapshot map. Stub — full impl in issue #4. */
-    snapshot: function() { return {}; },
+    /** Raw {fieldId → value} snapshot map — round-trips cleanly through JSON. */
+    snapshot: function() {
+      const numSchools = parseInt(_gv('num_schools')) || DEFAULT_SCHOOLS;
+      const fields = {};
+      OAP_SNAP_FIELDS.concat(OAP_SNAP_SELECTS).forEach(function(id) {
+        const el = document.getElementById(id); if (el) fields[id] = el.value;
+      });
+      return {
+        v: 1, saved_at: new Date().toISOString(),
+        num_schools: String(numSchools),
+        fields,
+        schools: _readSchools(numSchools).map(function(s) {
+          return { name: s.name, directors: s.directors, play: s.play };
+        }),
+      };
+    },
 
-    /** Bulk-write {fieldId → value} back to DOM. Stub — full impl in issue #4. */
-    restore: function() {},
+    /** Bulk-write {fieldId → value} back to DOM. Silently skips missing elements. */
+    restore: function(map) {
+      Object.keys(map || {}).forEach(function(id) {
+        const el = document.getElementById(id); if (el) el.value = map[id];
+      });
+    },
   };
 
 })(function(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; });
