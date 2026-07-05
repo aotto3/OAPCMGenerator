@@ -19,13 +19,26 @@ import { useAutosave } from '../storage/useAutosave';
  * change goes through the model's withIdentity()-style helpers, and
  * useAutosave persists it — components never talk to IndexedDB directly.
  */
-export function Workspace({ contestId, onBack }: { contestId: string; onBack: () => void }) {
+export function Workspace({
+  contestId,
+  draft,
+  onBack,
+}: {
+  contestId: string;
+  /** Fresh unsaved contest from "+ New Contest" — not in storage yet. */
+  draft?: Contest;
+  onBack: () => void;
+}) {
   const [contest, setContest] = useState<Contest>();
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
+    if (draft && draft.id === contestId) {
+      setContest(draft);
+      return;
+    }
     void getContest(contestId).then((c) => (c ? setContest(c) : setMissing(true)));
-  }, [contestId]);
+  }, [contestId, draft]);
 
   useAutosave(contest);
 

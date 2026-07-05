@@ -18,7 +18,11 @@ export function useAutosave(contest: Contest | undefined): void {
   const pending = useRef<Contest>();
 
   useEffect(() => {
-    if (!contest) return;
+    // Brand-new contests (updatedAt still equals createdAt) are unedited
+    // drafts and are NOT persisted — an accidental "+ New Contest" click
+    // must not create a stored contest. The first real edit bumps
+    // updatedAt (via withIdentity) and starts autosaving.
+    if (!contest || contest.updatedAt === contest.createdAt) return;
     pending.current = contest;
     const timer = setTimeout(() => {
       pending.current = undefined;

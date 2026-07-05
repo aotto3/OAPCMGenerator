@@ -42,7 +42,14 @@ codec, and the server later.
 
 ## Conventions later slices must follow
 
-- **No Save button, ever.** Edits update state; `useAutosave` persists them.
+- **No Save button for routine edits.** Edits update state; `useAutosave`
+  persists them. (Named checkpoints — a manual "save with note" — come in a
+  later slice per PRD #13; they layer on top of autosave, they don't replace
+  it.)
+- **New contests are in-memory drafts** until the first edit; an accidental
+  "+ New Contest" click must never leave a stored contest behind.
+  `useAutosave` enforces this by skipping contests whose `updatedAt` still
+  equals `createdAt`.
 - **Derived strings live in the model** (`contestDisplayName`, etc.), never
   recomputed ad hoc in components. v12's exact formats are load-bearing.
 - **Schema changes**: bump `CONTEST_SCHEMA_VERSION`, add a migration step in

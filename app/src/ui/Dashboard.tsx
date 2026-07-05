@@ -1,28 +1,29 @@
 import { useEffect, useState } from 'react';
 import { createContest } from '../model/contest';
-import {
-  deleteContest,
-  listContests,
-  saveContest,
-  type ContestSummary,
-} from '../storage/contestStore';
+import type { Contest } from '../model/contest';
+import { deleteContest, listContests, type ContestSummary } from '../storage/contestStore';
 
 function lastEdited(iso: string): string {
   const date = new Date(iso);
   return isNaN(date.getTime()) ? '' : `last edited ${date.toLocaleString()}`;
 }
 
-export function Dashboard({ onOpen }: { onOpen: (id: string) => void }) {
+export function Dashboard({
+  onOpen,
+  onCreate,
+}: {
+  onOpen: (id: string) => void;
+  onCreate: (draft: Contest) => void;
+}) {
   const [contests, setContests] = useState<ContestSummary[] | null>(null);
 
   useEffect(() => {
     void listContests().then(setContests);
   }, []);
 
-  async function handleCreate() {
-    const contest = createContest();
-    await saveContest(contest);
-    onOpen(contest.id);
+  // Opens an in-memory draft; nothing is stored until the first edit.
+  function handleCreate() {
+    onCreate(createContest());
   }
 
   async function handleDelete(summary: ContestSummary) {
