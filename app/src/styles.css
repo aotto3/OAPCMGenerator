@@ -146,3 +146,10 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
 .field input[readonly] { background: var(--c-bg-blue); }
 
 .issues { margin: 12px 0 0; padding-left: 0; list-style: none; color: #8a6d00; }
+
+.generate-row { margin-top: 12px; }
+.generate-row .btn-primary:disabled { opacity: 0.6; cursor: default; }
+.status { margin: 12px 0 0; font-size: 0.9rem; font-weight: 600; }
+.status-info { color: var(--c-muted); }
+.status-success { color: #2e7d32; }
+.status-error { color: var(--c-red); }

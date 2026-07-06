@@ -414,6 +414,16 @@ export function contestDisplayName(identity: ContestIdentity): string {
 }
 
 /**
+ * Filename of the portable contest file bundled in every generated ZIP, e.g.
+ * "2026 — 5A District 20 OAP — Contest File.json". This is the versioned
+ * serializeContest() JSON — a backup / handoff that re-imports on any machine,
+ * replacing v12's Regenerate.html (PRD issue #13).
+ */
+export function contestFileName(identity: ContestIdentity): string {
+  return `${contestDisplayName(identity)} — Contest File.json`;
+}
+
+/**
  * The copyable "Contest Name Preview", e.g. "2026 — 5A — District 20 — OAP".
  * v12: updateContestName(). Empty segments are dropped (empty year ⇒
  * "5A — District 20 — OAP"), exactly as v12's .filter(Boolean) did.
@@ -586,6 +596,30 @@ export function validateContest(contest: Contest): ValidationIssue[] {
     });
   }
   return issues;
+}
+
+/**
+ * Pre-generation warnings shown by the Generate flow (v12 generateAll's input
+ * validation block). These are the contest-day-readiness checks — a contest can
+ * be schema-valid yet not ready to generate — and, like v12, they warn without
+ * blocking: the user may proceed anyway. Messages match v12 verbatim so the
+ * confirm dialog reads identically. Empty array ⇒ nothing to warn about.
+ */
+export function generationWarnings(contest: Contest): string[] {
+  const { identity, details } = contest;
+  const warnings: string[] = [];
+  if (!details.contestDate.trim()) warnings.push('Contest Date is not set.');
+  if (!identity.hostSchoolName.trim()) warnings.push('Host School Name is blank.');
+  const dmt = details.directorsMeetingTime.trim();
+  if (!dmt || dmt === 'TBD') warnings.push('Directors Meeting Time is not set.');
+  if (!details.firstShowTime.trim()) {
+    warnings.push('First Show / Setup Time is not set — Contest Day Schedule will be empty.');
+  }
+  const orders = contest.schools.map((s) => s.performanceOrder);
+  if (new Set(orders).size < orders.length) {
+    warnings.push('Two or more schools share the same performance order number — check Play Titles & Order.');
+  }
+  return warnings;
 }
 
 /* ────────────────────────── serialization ──────────────────────────

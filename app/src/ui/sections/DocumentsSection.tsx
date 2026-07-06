@@ -1,9 +1,5 @@
-import {
-  DOCUMENT_TYPES,
-  setAllDocuments,
-  setDocumentSelected,
-  type Contest,
-} from '../../model/contest';
+import { setAllDocuments, setDocumentSelected, type Contest } from '../../model/contest';
+import { DOCUMENT_REGISTRY } from '../../documents/registry';
 import { Section } from './Section';
 
 export function DocumentsSection({
@@ -13,7 +9,7 @@ export function DocumentsSection({
   contest: Contest;
   onChange: (next: Contest) => void;
 }) {
-  const selectedCount = DOCUMENT_TYPES.filter((doc) => contest.documents[doc.id]).length;
+  const selectedCount = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]).length;
 
   return (
     <Section title="📦 Documents to Generate" badge="Select All That Apply">
@@ -25,11 +21,11 @@ export function DocumentsSection({
           ☐ Uncheck All
         </button>
         <span className="muted">
-          {selectedCount} of {DOCUMENT_TYPES.length} selected
+          {selectedCount} of {DOCUMENT_REGISTRY.length} selected
         </span>
       </div>
       <div className="doc-check-grid">
-        {DOCUMENT_TYPES.map((doc) => (
+        {DOCUMENT_REGISTRY.map((doc) => (
           <label
             key={doc.id}
             className={contest.documents[doc.id] ? 'doc-check-item checked' : 'doc-check-item'}
