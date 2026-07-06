@@ -165,6 +165,15 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
 
 .issues { margin: 12px 0 0; padding-left: 0; list-style: none; color: #8a6d00; }
 
+/* Live schedule preview — v12 renderScheduleHTML table styling. */
+.schedule-preview { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.schedule-preview th {
+  background: #222; color: #fff; padding: 5px 8px; text-align: left; font-weight: 600;
+}
+.schedule-preview th:first-child, .schedule-preview th:nth-child(2) { width: 80px; }
+.schedule-preview td { padding: 4px 8px; border-bottom: 1px solid #ccc; }
+.schedule-empty { font-style: italic; }
+
 .generate-row { margin-top: 12px; }
 .generate-row .btn-primary:disabled { opacity: 0.6; cursor: default; }
 .status { margin: 12px 0 0; font-size: 0.9rem; font-weight: 600; }
