@@ -16,6 +16,7 @@ import { GenerateSection } from './sections/GenerateSection';
 import { IdentitySection } from './sections/IdentitySection';
 import { PlaysSection } from './sections/PlaysSection';
 import { SchoolsSection } from './sections/SchoolsSection';
+import { SchedulePreview } from './SchedulePreview';
 
 /**
  * Contest workspace — all v12 data-entry sections. Pattern to keep: state
@@ -81,6 +82,7 @@ export function Workspace({
       <AdjudicatorsSection contest={contest} completion={progress.adjudicators} onChange={setContest} />
       <SchoolsSection contest={contest} completion={progress.schools} onChange={setContest} />
       <PlaysSection contest={contest} completion={progress.plays} onChange={setContest} />
+      <SchedulePreview contest={contest} />
       <DocumentsSection contest={contest} onChange={setContest} />
       <GenerateSection contest={contest} />
       <EmailListBox contest={contest} />
