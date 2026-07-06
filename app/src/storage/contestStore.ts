@@ -13,9 +13,11 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
   contestDisplayName,
+  defaultSpeechwire,
   parseContest,
   serializeContest,
   type Contest,
+  type SpeechwireCredentials,
 } from '../model/contest';
 
 interface ContestRecord {
@@ -25,6 +27,13 @@ interface ContestRecord {
   updatedAt: string;
   /** Versioned envelope from serializeContest(). */
   payload: string;
+  /**
+   * Device-only fields (Speechwire credentials). serializeContest() strips
+   * them from the payload by construction, so they are stored here beside
+   * it — the future sync layer and contest-file export read only `payload`
+   * and can never ship credentials off this device.
+   */
+  deviceOnly?: SpeechwireCredentials;
 }
 
 interface OapDB extends DBSchema {
@@ -61,7 +70,10 @@ export async function listContests(): Promise<ContestSummary[]> {
 
 export async function getContest(id: string): Promise<Contest | undefined> {
   const record = await (await db()).get('contests', id);
-  return record ? parseContest(record.payload) : undefined;
+  if (!record) return undefined;
+  const contest = parseContest(record.payload);
+  // Re-attach this device's credentials (parseContest hydrates them blank).
+  return { ...contest, speechwire: record.deviceOnly ?? defaultSpeechwire() };
 }
 
 export async function saveContest(contest: Contest): Promise<void> {
@@ -70,6 +82,7 @@ export async function saveContest(contest: Contest): Promise<void> {
     name: contestDisplayName(contest.identity),
     updatedAt: contest.updatedAt,
     payload: serializeContest(contest),
+    deviceOnly: contest.speechwire,
   });
 }
 
