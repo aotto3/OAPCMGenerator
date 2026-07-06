@@ -15,9 +15,30 @@
  */
 
 import { DOCUMENT_TYPES, type Contest, type DocumentId } from '../model/contest';
+import { buildDirectorLetter } from './letter';
 
-/** contest record in → file bytes out. Pure; no browser APIs. */
-export type DocumentBuilder = (contest: Contest) => Uint8Array;
+/**
+ * Per-build context threaded from the generate pipeline. Optional so a plain
+ * `build(contest)` call still works (placeholders and tests ignore it).
+ */
+export interface DocumentBuildContext {
+  /**
+   * Date to stamp on documents that print a "letter date" (v12 used the clock,
+   * `new Date()`). Injectable so golden-file output is deterministic; defaults
+   * to the build time in production, where the stamp should read "today".
+   */
+  now?: Date;
+}
+
+/**
+ * contest record in → file bytes out. Pure aside from JSZip packing. May be
+ * sync (placeholders) or async — a .docx/.xlsx is itself a ZIP, so its real
+ * builder returns a Promise. buildContestArchive awaits either.
+ */
+export type DocumentBuilder = (
+  contest: Contest,
+  ctx?: DocumentBuildContext,
+) => Uint8Array | Promise<Uint8Array>;
 
 export interface DocumentDefinition {
   id: DocumentId;
@@ -56,7 +77,7 @@ const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilde
   host_checklist: { filename: 'Host School Checklist.docx', build: placeholder('Host School Checklist') },
   rehearsal: { filename: 'Schedule - Reh. and Contest.xlsx', build: placeholder('Schedule - Reh. and Contest') },
   schedule: { filename: 'Contest Day Schedule.xlsx', build: placeholder('Contest Day Schedule') },
-  letter: { filename: 'Director Information Letter.docx', build: placeholder('Director Information Letter') },
+  letter: { filename: 'Director Information Letter.docx', build: buildDirectorLetter },
   pre_rehearsal_meeting: {
     filename: 'Pre-Rehearsal Company Meeting.docx',
     build: placeholder('Pre-Rehearsal Company Meeting'),

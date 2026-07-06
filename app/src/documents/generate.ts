@@ -42,6 +42,12 @@ export interface ContestArchive {
 export interface BuildOptions {
   /** Called before each item is built, for a v12-style per-document status line. */
   onProgress?: (progress: GenerateProgress) => void;
+  /**
+   * Date stamped on documents that print a "letter date" (see
+   * DocumentBuildContext). Defaults to now, so production ZIPs read "today";
+   * tests pass a fixed date for deterministic output.
+   */
+  now?: Date;
 }
 
 /**
@@ -51,7 +57,7 @@ export interface BuildOptions {
  */
 export async function buildContestArchive(
   contest: Contest,
-  { onProgress }: BuildOptions = {},
+  { onProgress, now }: BuildOptions = {},
 ): Promise<ContestArchive> {
   const folderName = contestDisplayName(contest.identity);
   const selected = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]);
@@ -67,7 +73,8 @@ export async function buildContestArchive(
   for (const doc of selected) {
     current++;
     onProgress?.({ label: doc.label, current, total });
-    folder.file(doc.filename, doc.build(contest));
+    // build may be sync (placeholder) or async (real .docx/.xlsx); await both.
+    folder.file(doc.filename, await doc.build(contest, { now }));
   }
 
   current++;

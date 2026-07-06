@@ -40,9 +40,10 @@ describe('DOCUMENT_REGISTRY', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('builds non-empty bytes for every document', () => {
+  it('builds non-empty bytes for every document', async () => {
     for (const doc of DOCUMENT_REGISTRY) {
-      const bytes = doc.build(contest());
+      // build may be sync (placeholder) or async (real .docx); await handles both.
+      const bytes = await doc.build(contest());
       expect(bytes).toBeInstanceOf(Uint8Array);
       expect(bytes.length).toBeGreaterThan(0);
     }
