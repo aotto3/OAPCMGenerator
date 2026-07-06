@@ -12,6 +12,7 @@ import { AdjudicatorsSection } from './sections/AdjudicatorsSection';
 import { CmInfoSection } from './sections/CmInfoSection';
 import { DetailsSection } from './sections/DetailsSection';
 import { DocumentsSection } from './sections/DocumentsSection';
+import { GenerateSection } from './sections/GenerateSection';
 import { IdentitySection } from './sections/IdentitySection';
 import { PlaysSection } from './sections/PlaysSection';
 import { SchoolsSection } from './sections/SchoolsSection';
@@ -81,6 +82,7 @@ export function Workspace({
       <SchoolsSection contest={contest} completion={progress.schools} onChange={setContest} />
       <PlaysSection contest={contest} completion={progress.plays} onChange={setContest} />
       <DocumentsSection contest={contest} onChange={setContest} />
+      <GenerateSection contest={contest} />
       <EmailListBox contest={contest} />
     </main>
   );

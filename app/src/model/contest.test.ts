@@ -11,10 +11,12 @@ import {
   allDirectorEmails,
   autoDeadlineFor,
   contestDisplayName,
+  contestFileName,
   contestFullName,
   contestNamePreview,
   contestTitleLong,
   createContest,
+  generationWarnings,
   defaultDocumentSelection,
   entryFeeDisplay,
   numSchools,
@@ -485,5 +487,51 @@ describe('serialize / parse', () => {
     expect(() =>
       parseContest(JSON.stringify({ schemaVersion: CONTEST_SCHEMA_VERSION, contest: { nope: true } })),
     ).toThrow(/malformed/);
+  });
+});
+
+describe('contestFileName', () => {
+  it('is the display name plus the contest-file suffix', () => {
+    expect(contestFileName(contest({ districtNumber: '20' }).identity)).toBe(
+      '2026 — 5A District 20 OAP — Contest File.json',
+    );
+  });
+});
+
+describe('generationWarnings', () => {
+  /** A contest with every field the pre-flight checks look at filled in. */
+  function ready(): Contest {
+    const c = contest({ hostSchoolName: 'Friendswood HS' });
+    return withDetails(c, {
+      contestDate: '2026-03-15',
+      directorsMeetingTime: '10:00 AM',
+      firstShowTime: '11:00 AM',
+    });
+  }
+
+  it('returns nothing when the contest is ready to generate', () => {
+    expect(generationWarnings(ready())).toEqual([]);
+  });
+
+  it('warns about each missing field, matching v12 wording', () => {
+    // A default contest has blank date/host/meeting/first-show but unique orders.
+    expect(generationWarnings(contest())).toEqual([
+      'Contest Date is not set.',
+      'Host School Name is blank.',
+      'Directors Meeting Time is not set.',
+      'First Show / Setup Time is not set — Contest Day Schedule will be empty.',
+    ]);
+  });
+
+  it("treats a 'TBD' directors meeting time as not set (v12)", () => {
+    const c = withDetails(ready(), { directorsMeetingTime: 'TBD' });
+    expect(generationWarnings(c)).toContain('Directors Meeting Time is not set.');
+  });
+
+  it('warns about duplicate performance orders', () => {
+    const c = withSchool(ready(), 1, { performanceOrder: 1 }); // school 0 is also order 1
+    expect(generationWarnings(c)).toContain(
+      'Two or more schools share the same performance order number — check Play Titles & Order.',
+    );
   });
 });
