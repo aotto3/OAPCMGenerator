@@ -275,6 +275,85 @@ export function createContest(options: NewContestOptions = {}): Contest {
   };
 }
 
+/* ────────────────── creating a contest from an existing one ──────────────────
+ * Two ways a contest enters the account as a NEW record — importing a contest
+ * file and duplicating (roll-forward). Both are pure so their id/timestamp
+ * handling and, for duplicate, the field policy are unit-testable; the UI only
+ * picks the file and persists the result (ui/Dashboard.tsx).
+ */
+
+export interface NewFromExistingOptions {
+  id?: string;
+  /** ISO timestamp for createdAt/updatedAt; defaults to now. */
+  now?: string;
+}
+
+/**
+ * Imports a contest file — the versioned JSON serializeContest() writes into
+ * every generated ZIP — as a NEW contest. parseContest does the real work
+ * (JSON parse, forward migration, friendly-error rejection, device-only
+ * rehydration); this wrapper only stamps a fresh id and timestamps so the
+ * import never collides with or overwrites an existing contest. Device-only
+ * Speechwire fields are never in the file and arrive blank.
+ */
+export function importContest(json: string, options: NewFromExistingOptions = {}): Contest {
+  const now = options.now ?? new Date().toISOString();
+  return { ...parseContest(json), id: options.id ?? crypto.randomUUID(), createdAt: now, updatedAt: now };
+}
+
+/**
+ * Per-season detail fields a roll-forward duplicate CLEARS — the dates,
+ * deadlines, and meeting/show times that belong to a single contest occurrence.
+ * Everything else in ContestDetails (critique format, judge count, rehearsal
+ * lengths/start times, fees) is a stable setting and carries forward.
+ */
+const CLEARED_DETAIL_FIELDS = {
+  contestDate: '',
+  directorsMeetingTime: '',
+  firstShowTime: '',
+  rehearsalDate1: '',
+  rehearsalDate2: '',
+  entrySystemDeadline: '',
+  lightCueDeadlineDate: '',
+  bidcContestDate: '',
+} as const satisfies Partial<ContestDetails>;
+
+/**
+ * Duplicates a contest as a roll-forward (PRD user story 5): a new record that
+ * KEEPS the stable, year-over-year data — contest identity (level,
+ * classification, district, host), CM info, schools and their directors, and
+ * document selection — and CLEARS everything tied to one occurrence: contest
+ * date, deadlines, meeting/show times, rehearsal dates, judges, play titles,
+ * and performance order.
+ *
+ * The kept set mirrors v12's snapshot scope (OAP_SNAP_FIELDS/OAP_SNAP_SELECTS —
+ * the curated fields v12 carried between contests), extended per issue #17 to
+ * also clear judges. Pure and total, so the policy lives here and is tested,
+ * not buried in the dashboard.
+ */
+export function duplicateContest(contest: Contest, options: NewFromExistingOptions = {}): Contest {
+  const now = options.now ?? new Date().toISOString();
+  return {
+    ...contest,
+    id: options.id ?? crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    // identity + cmInfo + documents carry forward untouched (stable data).
+    details: { ...contest.details, ...CLEARED_DETAIL_FIELDS },
+    // Judges change every contest — start fresh.
+    adjudicators: defaultAdjudicators(),
+    // Keep each school and its directors; drop this year's play + draw order.
+    schools: contest.schools.map((s, i) => ({
+      ...s,
+      directors: s.directors.map((d) => ({ ...d })),
+      playTitle: '',
+      performanceOrder: i + 1,
+    })),
+    // Device-only credentials are per-contest; never carry them across.
+    speechwire: defaultSpeechwire(),
+  };
+}
+
 /* ────────────────────────── update helpers ──────────────────────────
  * All edits go through these: they are immutable and bump updatedAt, which
  * is also what arms autosave (a brand-new contest with updatedAt ===

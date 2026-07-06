@@ -16,7 +16,10 @@ import {
   contestNamePreview,
   contestTitleLong,
   createContest,
+  duplicateContest,
   generationWarnings,
+  importContest,
+  defaultAdjudicators,
   defaultDocumentSelection,
   entryFeeDisplay,
   numSchools,
@@ -533,5 +536,163 @@ describe('generationWarnings', () => {
     expect(generationWarnings(c)).toContain(
       'Two or more schools share the same performance order number — check Play Titles & Order.',
     );
+  });
+});
+
+/** A fully-filled contest to exercise import round-trips and the duplicate policy. */
+function filledContest(): Contest {
+  let c = contest({ districtNumber: '20', hostSchoolName: 'Friendswood High School' });
+  c = withCmInfo(c, { techContact: 'Brian Hamlin' });
+  c = withDetails(c, {
+    contestDate: '2026-04-10',
+    directorsMeetingTime: '10:00 AM',
+    firstShowTime: '11:00 AM',
+    critiqueFormat: 'after_each',
+    numJudges: 2,
+    rehearsalDate1: '2026-04-08',
+    rehearsalDate2: '2026-04-09',
+    entryFee: '50',
+    admissionFee: '10',
+    bidcContestDate: '2026-04-20',
+  });
+  c = withAdjudicator(c, 0, { name: 'Jane Judge', mailingAddress: '1 Main St', needsHotel: true });
+  c = withSchool(c, 0, { name: 'Westlake HS', playTitle: 'Our Town', performanceOrder: 3 });
+  c = withSchool(c, 1, { name: 'Anderson HS', playTitle: 'Proof', performanceOrder: 1 });
+  c = addDirector(c, 0);
+  c = withDirector(c, 0, 0, { name: 'Pat Director', email: 'pat@x.org' });
+  c = withSpeechwire(c, { username: 'district20-5a', password: 's3cr3t' });
+  return c;
+}
+
+describe('importContest', () => {
+  it('imports a contest file as a NEW record: fresh id/timestamps, data identical (minus device-only)', () => {
+    const source = filledContest();
+    const json = serializeContest(source);
+    const imported = importContest(json, { id: 'imported-id', now: LATER });
+
+    expect(imported.id).toBe('imported-id');
+    expect(imported.createdAt).toBe(LATER);
+    expect(imported.updatedAt).toBe(LATER);
+    // Everything else matches the exported contest, credentials excluded.
+    expect(imported).toEqual({
+      ...source,
+      id: 'imported-id',
+      createdAt: LATER,
+      updatedAt: LATER,
+      speechwire: { username: '', password: '' },
+    });
+  });
+
+  it('device-only Speechwire credentials never travel through a contest file', () => {
+    const json = serializeContest(filledContest());
+    expect(json).not.toContain('s3cr3t');
+    expect(importContest(json).speechwire).toEqual({ username: '', password: '' });
+  });
+
+  it('assigns a unique id and current timestamp when no options are given', () => {
+    const json = serializeContest(contest());
+    const a = importContest(json);
+    const b = importContest(json);
+    expect(a.id).not.toBe(b.id);
+    expect(a.createdAt).toBe(a.updatedAt); // brand-new record
+  });
+
+  it('MIGRATION ON IMPORT: an older-schema (v1) file migrates forward and gets a fresh identity', () => {
+    // A Slice-1 contest file (schema v1 had only id/timestamps/identity).
+    const v1File = JSON.stringify({
+      schemaVersion: 1,
+      contest: {
+        id: 'old-id',
+        createdAt: NOW,
+        updatedAt: NOW,
+        identity: contest({ districtNumber: '20', hostSchoolName: 'Friendswood HS' }).identity,
+      },
+    });
+    const imported = importContest(v1File, { id: 'fresh-id', now: LATER });
+
+    expect(imported.id).toBe('fresh-id'); // not the file's old id
+    expect(imported.createdAt).toBe(LATER);
+    expect(imported.identity.districtNumber).toBe('20'); // existing data preserved
+    // Sections the old file lacked are filled from defaults by the migration.
+    expect(imported.details).toEqual(contest().details);
+    expect(imported.schools).toHaveLength(DEFAULT_SCHOOLS);
+    expect(imported.documents).toEqual(defaultDocumentSelection());
+    // and it re-serializes at the current schema version.
+    expect(JSON.parse(serializeContest(imported)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('rejects garbage with a friendly error rather than crashing', () => {
+    expect(() => importContest('not json at all')).toThrow(/not valid JSON/);
+    expect(() => importContest('{}')).toThrow(/schemaVersion/);
+    expect(() =>
+      importContest(JSON.stringify({ schemaVersion: CONTEST_SCHEMA_VERSION, contest: { nope: true } })),
+    ).toThrow(/malformed/);
+  });
+});
+
+describe('duplicateContest (roll-forward)', () => {
+  it('assigns a new id and timestamps, leaving the source untouched', () => {
+    const source = filledContest();
+    const dup = duplicateContest(source, { id: 'dup-id', now: LATER });
+    expect(dup.id).toBe('dup-id');
+    expect(dup.createdAt).toBe(LATER);
+    expect(dup.updatedAt).toBe(LATER);
+    expect(source.id).toBe('test-id'); // original unchanged
+    expect(source.details.contestDate).toBe('2026-04-10');
+    expect(duplicateContest(source).id).not.toBe(duplicateContest(source).id);
+  });
+
+  it('KEEPS stable, year-over-year data', () => {
+    const source = filledContest();
+    const dup = duplicateContest(source);
+    // Identity (level/classification/district/host) and CM info carry forward.
+    expect(dup.identity).toEqual(source.identity);
+    expect(dup.cmInfo).toEqual(source.cmInfo);
+    // School names + directors carry forward.
+    expect(dup.schools.map((s) => s.name)).toEqual(source.schools.map((s) => s.name));
+    expect(dup.schools[0].directors).toEqual(source.schools[0].directors);
+    // Stable detail settings and document selection carry forward.
+    expect(dup.details.critiqueFormat).toBe('after_each');
+    expect(dup.details.numJudges).toBe(2);
+    expect(dup.details.entryFee).toBe('50');
+    expect(dup.details.admissionFee).toBe('10');
+    expect(dup.documents).toEqual(source.documents);
+  });
+
+  it('CLEARS per-season dates, deadlines, and meeting/show times', () => {
+    const dup = duplicateContest(filledContest());
+    expect(dup.details.contestDate).toBe('');
+    expect(dup.details.directorsMeetingTime).toBe('');
+    expect(dup.details.firstShowTime).toBe('');
+    expect(dup.details.rehearsalDate1).toBe('');
+    expect(dup.details.rehearsalDate2).toBe('');
+    expect(dup.details.entrySystemDeadline).toBe('');
+    expect(dup.details.lightCueDeadlineDate).toBe('');
+    expect(dup.details.bidcContestDate).toBe('');
+  });
+
+  it('CLEARS judges, play titles, performance order, and device-only credentials', () => {
+    const dup = duplicateContest(filledContest());
+    expect(dup.adjudicators).toEqual(defaultAdjudicators());
+    expect(dup.schools.map((s) => s.playTitle)).toEqual(['', '', '', '', '', '']);
+    expect(dup.schools.map((s) => s.performanceOrder)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(dup.speechwire).toEqual({ username: '', password: '' });
+  });
+
+  it('deep-copies directors so editing the duplicate never touches the source', () => {
+    const source = filledContest();
+    const dup = duplicateContest(source);
+    const edited = withDirector(dup, 0, 0, { name: 'Changed' });
+    expect(source.schools[0].directors[0].name).toBe('Pat Director');
+    expect(edited.schools[0].directors[0].name).toBe('Changed');
+  });
+
+  it('a duplicated contest is schema-valid and round-trips through serialize/parse', () => {
+    const dup = duplicateContest(filledContest(), { id: 'dup-id', now: LATER });
+    expect(validateContest(dup)).toEqual([]);
+    expect(parseContest(serializeContest(dup))).toEqual({
+      ...dup,
+      speechwire: { username: '', password: '' },
+    });
   });
 });

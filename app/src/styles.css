@@ -38,6 +38,24 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
   padding: 6px 10px;
 }
 .btn-ghost { background: none; border: none; color: var(--c-blue); padding: 4px 0; }
+.btn-secondary {
+  background: var(--c-bg-blue); color: var(--c-blue); border: 1px solid var(--c-blue);
+  padding: 8px 14px; font-weight: 600;
+}
+.contest-row .btn-secondary { padding: 6px 10px; }
+
+.toolbar-actions { display: flex; gap: 8px; align-items: center; }
+
+.import-error {
+  margin: 12px 0 0; padding: 8px 12px; border-radius: 6px;
+  background: var(--c-bg-red); color: var(--c-red); border: 1px solid var(--c-red);
+}
+
+/* Screen-reader-only — the hidden file input behind "Import contest file". */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 .contest-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .contest-row {
