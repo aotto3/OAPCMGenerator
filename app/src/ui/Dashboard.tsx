@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
-import { createContest } from '../model/contest';
+import { useEffect, useRef, useState } from 'react';
+import { createContest, duplicateContest, importContest } from '../model/contest';
 import type { Contest } from '../model/contest';
-import { deleteContest, listContests, type ContestSummary } from '../storage/contestStore';
+import {
+  deleteContest,
+  getContest,
+  listContests,
+  type ContestSummary,
+} from '../storage/contestStore';
 
 function lastEdited(iso: string): string {
   const date = new Date(iso);
@@ -11,11 +16,16 @@ function lastEdited(iso: string): string {
 export function Dashboard({
   onOpen,
   onCreate,
+  onOpenSaved,
 }: {
   onOpen: (id: string) => void;
   onCreate: (draft: Contest) => void;
+  /** Persist a fully-formed new contest (import/duplicate), then open it. */
+  onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
   const [contests, setContests] = useState<ContestSummary[] | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void listContests().then(setContests);
@@ -24,6 +34,28 @@ export function Dashboard({
   // Opens an in-memory draft; nothing is stored until the first edit.
   function handleCreate() {
     onCreate(createContest());
+  }
+
+  // Import a contest file (the JSON bundled in every generated ZIP) as a NEW
+  // contest. The model parses + migrates + rejects bad input; we only read the
+  // file and surface a friendly error. Reset the input so re-picking the same
+  // file fires onChange again.
+  async function handleImportFile(file: File) {
+    setImportError(null);
+    try {
+      const contest = importContest(await file.text());
+      await onOpenSaved(contest);
+    } catch (err) {
+      setImportError(
+        `Couldn't import "${file.name}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  async function handleDuplicate(summary: ContestSummary) {
+    const source = await getContest(summary.id);
+    if (!source) return; // deleted out from under us
+    await onOpenSaved(duplicateContest(source));
   }
 
   async function handleDelete(summary: ContestSummary) {
@@ -41,10 +73,32 @@ export function Dashboard({
 
       <div className="toolbar">
         <h2>Your Contests</h2>
-        <button className="btn-primary" onClick={handleCreate}>
-          + New Contest
-        </button>
+        <div className="toolbar-actions">
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            className="visually-hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void handleImportFile(file);
+            }}
+          />
+          <button className="btn-secondary" onClick={() => fileInput.current?.click()}>
+            Import contest file
+          </button>
+          <button className="btn-primary" onClick={handleCreate}>
+            + New Contest
+          </button>
+        </div>
       </div>
+
+      {importError && (
+        <p className="import-error" role="alert">
+          ⚠️ {importError}
+        </p>
+      )}
 
       {contests === null ? (
         <p className="muted">Loading…</p>
@@ -57,6 +111,13 @@ export function Dashboard({
               <button className="contest-open" onClick={() => onOpen(c.id)}>
                 <span className="contest-name">{c.name}</span>
                 <span className="muted"> · {lastEdited(c.updatedAt)}</span>
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => void handleDuplicate(c)}
+                aria-label={`Duplicate ${c.name}`}
+              >
+                Duplicate
               </button>
               <button
                 className="btn-danger"
