@@ -25,8 +25,8 @@ src/
   contestRepo.ts   Data access — every query scoped by ownerId
   contestRoutes.ts Express CRUD router; auth injected as resolveUserId(req)
   app.ts           App factory (DI: repo + resolveUserId + optional auth mount)
-  auth.ts          Better Auth instance (Google + magic link + Resend)
-  email.ts         Resend magic-link sender (logs link in dev if no API key)
+  auth.ts          Better Auth instance (Google + magic link + MailerSend)
+  email.ts         MailerSend magic-link sender (logs link in dev if no API key)
   server.ts        Production entrypoint — wires real Postgres + Better Auth
 db/
   contests.sql     Our one table (Better Auth owns its own tables)
@@ -52,7 +52,7 @@ npm test                  # vitest — the integration suite, no DB needed
 npm run build             # typecheck (tsc --noEmit)
 ```
 
-With `RESEND_API_KEY` unset, magic-link emails are **logged to the console**
+With `MAILERSEND_API_KEY` unset, magic-link emails are **logged to the console**
 instead of sent, so you can test sign-in locally with no email provider. Google
 sign-in needs real `GOOGLE_CLIENT_ID`/`SECRET` even locally.
 
@@ -87,7 +87,7 @@ Create one Railway **project** with three services from this repo:
    - `BETTER_AUTH_SECRET` = a long random string —
      `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
    - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (from step 2)
-   - `RESEND_API_KEY`, `MAGIC_LINK_FROM` (from step 3)
+   - `MAILERSEND_API_KEY`, `MAGIC_LINK_FROM_EMAIL`, `MAGIC_LINK_FROM_NAME` (from step 3)
 3. Under *Settings → Networking*, generate a public domain. Set `SERVER_URL` to
    exactly that origin (e.g. `https://oap-api.up.railway.app`), **no trailing
    slash**. `PORT` is injected by Railway automatically — don't set it.
@@ -130,19 +130,31 @@ Create one Railway **project** with three services from this repo:
    privacy-policy URL and a domain-ownership check). Plan for this before public
    launch — it does not block our private end-to-end test with your own account.
 
-## 3. Resend — magic-link email
+## 3. MailerSend — magic-link email
 
-1. [resend.com](https://resend.com) → create an account and an **API key** →
-   set `RESEND_API_KEY` on the API service.
-2. **Verify a sending domain** (*Domains → Add Domain*) and add the SPF, DKIM,
-   and DMARC DNS records Resend gives you. Set `MAGIC_LINK_FROM` to an address on
-   that domain, e.g. `OAP Contest Manager <signin@yourdomain.org>`.
-   - The unverified `onboarding@resend.dev` sender works for a quick test but
-     **will** hit spam filters — do not rely on it for real CMs.
-3. ⚠️ **School-district spam friction:** even with SPF/DKIM/DMARC, district
-   filters are aggressive. Expect to (a) ask a test CM to check spam/quarantine,
-   (b) possibly request the sending domain be allow-listed by their IT, and
-   (c) keep the email plain and link-forward (the template already is).
+MailerSend is used (instead of Resend) because `allenotto.com`'s DNS is on Wix,
+which does not support the subdomain **MX** record Resend requires. MailerSend
+verifies a domain with **TXT/CNAME** records only, which Wix supports.
+
+1. [mailersend.com](https://mailersend.com) → sign up (new accounts go through a
+   quick **approval review** before they can send — answer the use-case prompt).
+2. **Domains → Add domain → `allenotto.com`.** MailerSend shows DNS records: an
+   **SPF** (TXT), **DKIM** (TXT), and **Return-Path** (CNAME) — plus a
+   verification TXT. Add each in **Wix → your domain → DNS records** (all
+   TXT/CNAME, no MX). Wait for MailerSend to mark the domain **Verified** (DNS
+   propagation — minutes to a couple hours).
+3. **API tokens → Create token** → copy it. Set on the API service:
+   - `MAILERSEND_API_KEY` = the token
+   - `MAGIC_LINK_FROM_EMAIL` = `signin@allenotto.com`
+   - `MAGIC_LINK_FROM_NAME` = `OAP Contest Manager`
+   - (Remove any old `RESEND_API_KEY` / `MAGIC_LINK_FROM` variables.)
+   - Until the domain is verified, you can leave `MAILERSEND_API_KEY` blank — the
+     server then logs the magic link to the console (see §4) so sign-in still
+     works for testing.
+4. ⚠️ **School-district spam friction:** even with SPF/DKIM, district filters are
+   aggressive. Expect to (a) ask a test CM to check spam/quarantine, (b) possibly
+   request the sending domain be allow-listed by their IT, and (c) keep the email
+   plain and link-forward (the template already is).
 
 ## 4. End-to-end verification (we do this together — the deploy-gated ACs)
 

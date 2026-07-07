@@ -20,7 +20,6 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "pg": "^8.13.1",
-    "resend": "^4.5.1",
     "tsx": "^4.19.2"
   },
   "devDependencies": {

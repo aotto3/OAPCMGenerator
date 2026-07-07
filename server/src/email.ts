@@ -1,14 +1,21 @@
 /**
- * Magic-link email delivery via Resend. Transactional sign-in mail; deliver-
- * ability into locked-down school-district inboxes depends on the sending
- * domain's SPF/DKIM/DMARC being configured in Resend (see README).
+ * Magic-link email delivery via MailerSend. Transactional sign-in mail;
+ * deliverability depends on the sending domain (allenotto.com) being verified in
+ * MailerSend with the SPF/DKIM/Return-Path records it provides (see README).
+ * MailerSend is used instead of an MX-record provider because the domain's DNS
+ * is on Wix, which only supports TXT/CNAME records — which is all MailerSend
+ * needs.
  *
- * When RESEND_API_KEY is unset (local dev), we log the link to the console
- * instead of sending, so sign-in can be exercised end to end without a real
- * email provider or any secret.
+ * We call MailerSend's REST API directly with fetch (global on Node 20+) so the
+ * server takes on no extra SDK dependency.
+ *
+ * When MAILERSEND_API_KEY / MAGIC_LINK_FROM_EMAIL are unset (local dev), we log
+ * the link to the console instead of sending, so sign-in can be exercised end to
+ * end without a real email provider or any secret.
  */
-import { Resend } from 'resend';
 import { optionalEnv } from './env';
+
+const MAILERSEND_ENDPOINT = 'https://api.mailersend.com/v1/email';
 
 export interface MagicLinkMessage {
   email: string;
@@ -47,27 +54,36 @@ function renderHtml(url: string): string {
  * the environment so the auth instance stays declarative.
  */
 export function makeMagicLinkSender(): MagicLinkSender {
-  const apiKey = optionalEnv('RESEND_API_KEY');
-  const from = optionalEnv('MAGIC_LINK_FROM', 'OAP Contest Manager <onboarding@resend.dev>');
+  const apiKey = optionalEnv('MAILERSEND_API_KEY');
+  const fromEmail = optionalEnv('MAGIC_LINK_FROM_EMAIL');
+  const fromName = optionalEnv('MAGIC_LINK_FROM_NAME', 'OAP Contest Manager');
 
-  if (!apiKey) {
+  if (!apiKey || !fromEmail) {
     return async ({ email, url }) => {
       // eslint-disable-next-line no-console
       console.log(`[dev] magic-link for ${email}: ${url}`);
     };
   }
 
-  const resend = new Resend(apiKey);
   return async ({ email, url }) => {
-    const { error } = await resend.emails.send({
-      from,
-      to: email,
-      subject: 'Your OAP Contest Manager sign-in link',
-      text: renderText(url),
-      html: renderHtml(url),
+    const res = await fetch(MAILERSEND_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: { email: fromEmail, name: fromName },
+        to: [{ email }],
+        subject: 'Your OAP Contest Manager sign-in link',
+        text: renderText(url),
+        html: renderHtml(url),
+      }),
     });
-    if (error) {
-      throw new Error(`Failed to send magic-link email: ${error.message}`);
+    // MailerSend returns 202 Accepted on success.
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`MailerSend send failed (${res.status}): ${detail}`);
     }
   };
 }
