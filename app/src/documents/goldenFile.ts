@@ -20,6 +20,7 @@
  */
 
 import JSZip from 'jszip';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -132,5 +133,33 @@ export async function expectArchiveMatchesGolden(actual: Uint8Array, goldenPath:
   const mismatches = await diffArchives(actual, golden);
   if (mismatches.length > 0) {
     throw new Error(formatMismatches(goldenPath, mismatches));
+  }
+}
+
+/**
+ * Asserts that `actual` bytes hash to the approved SHA-256 golden at `goldenPath`.
+ *
+ * For binary outputs that are NOT ZIPs (the merged adjudicator PDF): a raw-byte
+ * golden would be multi-megabyte, and a .pdf has no meaningful line diff. Once
+ * the output is deterministic (dates/producer pinned), a content hash locks the
+ * exact bytes in a tiny text file. Writes (and passes) when UPDATE_GOLDEN is set
+ * or the golden does not yet exist; otherwise throws on mismatch. The golden file
+ * stores `<sha256>  <bytelength>` for a readable at-a-glance record.
+ */
+export function expectHashMatchesGolden(actual: Uint8Array, goldenPath: string): void {
+  const hash = createHash('sha256').update(actual).digest('hex');
+  const line = `${hash}  ${actual.length}\n`;
+  if (UPDATE_GOLDEN || !existsSync(goldenPath)) {
+    mkdirSync(dirname(goldenPath), { recursive: true });
+    writeFileSync(goldenPath, line);
+    return;
+  }
+  const golden = readFileSync(goldenPath, 'utf8').trim();
+  if (golden !== line.trim()) {
+    throw new Error(
+      `Output does not match golden hash:\n  ${goldenPath}\n` +
+        `  golden: ${golden}\n  actual: ${line.trim()}\n` +
+        `Re-run with UPDATE_GOLDEN=1 to approve the new output if this change is intended.`,
+    );
   }
 }
