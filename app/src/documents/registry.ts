@@ -16,6 +16,13 @@
 
 import { DOCUMENT_TYPES, type Contest, type DocumentId } from '../model/contest';
 import { buildDirectorLetter } from './letter';
+import { buildFallAgenda } from './fallAgenda';
+import { buildHostChecklist } from './hostChecklist';
+import { buildDirectorsMeeting } from './directorsMeeting';
+import { buildAwardsScript } from './awardsScript';
+import { buildAdvancingLetter } from './advancingLetter';
+import { buildTimerDoc } from './timer';
+import { buildPreRehearsalMeeting } from './preRehearsalMeeting';
 
 /**
  * Per-build context threaded from the generate pipeline. Optional so a plain
@@ -73,25 +80,25 @@ function placeholder(label: string): DocumentBuilder {
  */
 const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilder }> = {
   checklist: { filename: 'Year-Round Checklist.xlsx', build: placeholder('Year-Round Checklist') },
-  fall_agenda: { filename: 'Fall District Meeting Agenda.docx', build: placeholder('Fall District Meeting Agenda') },
-  host_checklist: { filename: 'Host School Checklist.docx', build: placeholder('Host School Checklist') },
+  fall_agenda: { filename: 'Fall District Meeting Agenda.docx', build: buildFallAgenda },
+  host_checklist: { filename: 'Host School Checklist.docx', build: buildHostChecklist },
   rehearsal: { filename: 'Schedule - Reh. and Contest.xlsx', build: placeholder('Schedule - Reh. and Contest') },
   schedule: { filename: 'Contest Day Schedule.xlsx', build: placeholder('Contest Day Schedule') },
   letter: { filename: 'Director Information Letter.docx', build: buildDirectorLetter },
   pre_rehearsal_meeting: {
     filename: 'Pre-Rehearsal Company Meeting.docx',
-    build: placeholder('Pre-Rehearsal Company Meeting'),
+    build: buildPreRehearsalMeeting,
   },
   directors_meeting: {
     filename: 'Contest Day Directors Meeting Agenda.docx',
-    build: placeholder('Contest Day Directors Meeting Agenda'),
+    build: buildDirectorsMeeting,
   },
-  awards: { filename: 'Awards Script.docx', build: placeholder('Awards Script') },
-  advancing_letter: { filename: 'Advancing Schools Letter.docx', build: placeholder('Advancing Schools Letter') },
+  awards: { filename: 'Awards Script.docx', build: buildAwardsScript },
+  advancing_letter: { filename: 'Advancing Schools Letter.docx', build: buildAdvancingLetter },
   contacts: { filename: 'School-Director Contact List.xlsx', build: placeholder('School-Director Contact List') },
   adjudicator: { filename: 'Adjudicator Info Sheet.xlsx', build: placeholder('Adjudicator Info Sheet') },
   adj_packets: { filename: 'Adjudicator Packets.pdf', build: placeholder('Adjudicator Packets') },
-  timer: { filename: 'Timer Instructions and Form.docx', build: placeholder('Timer Instructions + Form') },
+  timer: { filename: 'Timer Instructions and Form.docx', build: buildTimerDoc },
 };
 
 /**
