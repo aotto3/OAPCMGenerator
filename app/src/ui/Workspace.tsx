@@ -10,6 +10,7 @@ import { useAutosave } from '../storage/useAutosave';
 import { EmailListBox } from './EmailListBox';
 import { AdjudicatorsSection } from './sections/AdjudicatorsSection';
 import { CmInfoSection } from './sections/CmInfoSection';
+import { CritiqueSection } from './sections/CritiqueSection';
 import { DetailsSection } from './sections/DetailsSection';
 import { DocumentsSection } from './sections/DocumentsSection';
 import { GenerateSection } from './sections/GenerateSection';
@@ -83,6 +84,7 @@ export function Workspace({
       <SchoolsSection contest={contest} completion={progress.schools} onChange={setContest} />
       <PlaysSection contest={contest} completion={progress.plays} onChange={setContest} />
       <SchedulePreview contest={contest} />
+      <CritiqueSection contest={contest} onChange={setContest} />
       <DocumentsSection contest={contest} onChange={setContest} />
       <GenerateSection contest={contest} />
       <EmailListBox contest={contest} />

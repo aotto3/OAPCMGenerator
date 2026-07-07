@@ -47,3 +47,45 @@ export function docSchools(contest: Contest): DocSchool[] {
     email: s.directors[0]?.email || '',
   }));
 }
+
+/** One row of the critique assignment — a school paired with its assigned judge. */
+export interface CritiqueRow {
+  /** 1-based performance-order slot. */
+  order: number;
+  /** School name (docSchools "School N" fallback). */
+  school: string;
+  /** Play title, or '' when blank. */
+  play: string;
+  /** 1-based judge number. */
+  judgeNumber: number;
+  /** Assigned judge's name, or '' when that adjudicator row is blank. */
+  judgeName: string;
+}
+
+/**
+ * The stored critique assignment projected onto schools in performance order —
+ * the shared shape the workspace table and the Directors Meeting Agenda both
+ * render, so neither re-derives the join. Reuses docSchools() (same order the
+ * assignment was indexed against) and reads judge names live from the contest,
+ * so an adjudicator rename shows through without re-randomizing.
+ *
+ * Returns `null` when there is no assignment yet, or when a STALE assignment no
+ * longer matches the current school count (e.g. the CM added a school after
+ * generating) — callers then fall back to the no-assignment state rather than
+ * render a mismatched table.
+ */
+export function critiqueRows(contest: Contest): CritiqueRow[] | null {
+  const critique = contest.critique;
+  const schools = docSchools(contest);
+  if (!critique || critique.judgeByPosition.length !== schools.length) return null;
+  return schools.map((s, i) => {
+    const judgeNumber = critique.judgeByPosition[i];
+    return {
+      order: s.order,
+      school: s.name,
+      play: s.play,
+      judgeNumber,
+      judgeName: contest.adjudicators[judgeNumber - 1]?.name || '',
+    };
+  });
+}
