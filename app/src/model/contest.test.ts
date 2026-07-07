@@ -22,8 +22,12 @@ import {
   defaultAdjudicators,
   defaultDocumentSelection,
   entryFeeDisplay,
+  lockCritique,
+  moveCritiqueAssignment,
   numSchools,
   parseContest,
+  setCritiqueAssignment,
+  unlockCritique,
   rehearsalDay1Count,
   rehearsalDay2Count,
   removeDirector,
@@ -425,6 +429,46 @@ describe('validateContest', () => {
   });
 });
 
+describe('critique assignment helpers', () => {
+  it('setCritiqueAssignment stores an unlocked, copied result and bumps updatedAt', () => {
+    const source = [1, 2, 3, 1, 2, 3];
+    const c = setCritiqueAssignment(contest(), source, LATER);
+    expect(c.critique).toEqual({ judgeByPosition: [1, 2, 3, 1, 2, 3], locked: false });
+    expect(c.updatedAt).toBe(LATER);
+    // stored array is a copy — mutating the caller's array must not leak in
+    source[0] = 9;
+    expect(c.critique?.judgeByPosition[0]).toBe(1);
+  });
+
+  it('lock / unlock flip the frozen flag; both are no-ops when there is no assignment', () => {
+    const none = contest();
+    expect(lockCritique(none)).toBe(none);
+    expect(unlockCritique(none)).toBe(none);
+
+    const c = setCritiqueAssignment(none, [1, 2, 3], NOW);
+    expect(lockCritique(c, LATER).critique).toEqual({ judgeByPosition: [1, 2, 3], locked: true });
+    const locked = lockCritique(c, LATER);
+    expect(unlockCritique(locked, LATER).critique?.locked).toBe(false);
+  });
+
+  it('moveCritiqueAssignment swaps ADJACENT judge assignments only', () => {
+    const c = setCritiqueAssignment(contest(), [1, 2, 3, 1, 2, 3], NOW);
+    // swap positions 1 and 2 (down from index 1)
+    expect(moveCritiqueAssignment(c, 1, 1, LATER).critique?.judgeByPosition).toEqual([1, 3, 2, 1, 2, 3]);
+    // swap positions 3 and 2 (up from index 3)
+    expect(moveCritiqueAssignment(c, 3, -1, LATER).critique?.judgeByPosition).toEqual([1, 2, 1, 3, 2, 3]);
+  });
+
+  it('moveCritiqueAssignment is a no-op past the ends, for non-adjacent directions, or when LOCKED', () => {
+    const c = setCritiqueAssignment(contest(), [1, 2, 3, 1, 2, 3], NOW);
+    expect(moveCritiqueAssignment(c, 0, -1)).toBe(c); // off the top
+    expect(moveCritiqueAssignment(c, 5, 1)).toBe(c); // off the bottom
+    expect(moveCritiqueAssignment(c, 0, 2)).toBe(c); // non-adjacent
+    const locked = lockCritique(c);
+    expect(moveCritiqueAssignment(locked, 0, 1)).toBe(locked); // reorder disabled when locked
+  });
+});
+
 describe('serialize / parse', () => {
   it('round-trips a fully filled contest exactly (minus device-only fields)', () => {
     let c = contest({ districtNumber: '20', hostSchoolName: 'Friendswood High School' });
@@ -439,6 +483,19 @@ describe('serialize / parse', () => {
   it('writes the current schema version into the envelope', () => {
     const envelope = JSON.parse(serializeContest(contest()));
     expect(envelope.schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('preserves a LOCKED critique assignment through serialize → parse (export/import survives)', () => {
+    const c = lockCritique(setCritiqueAssignment(contest(), [1, 2, 3, 1, 2, 3], NOW), NOW);
+    const back = parseContest(serializeContest(c));
+    expect(back.critique).toEqual({ judgeByPosition: [1, 2, 3, 1, 2, 3], locked: true });
+    expect(back).toEqual(c);
+  });
+
+  it('preserves an unlocked assignment too, and null when none was generated', () => {
+    const unlocked = setCritiqueAssignment(contest(), [2, 1, 3], NOW);
+    expect(parseContest(serializeContest(unlocked)).critique).toEqual({ judgeByPosition: [2, 1, 3], locked: false });
+    expect(parseContest(serializeContest(contest())).critique).toBeNull();
   });
 
   it('DEVICE-ONLY: Speechwire credentials never enter the serialized payload', () => {
@@ -470,6 +527,19 @@ describe('serialize / parse', () => {
     expect(migrated.documents).toEqual(defaultDocumentSelection());
     expect(migrated.speechwire).toEqual({ username: '', password: '' });
     // and the result re-serializes at the current version
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('MIGRATION: a v2 (Slices 2–9) payload gains critique = null without losing data', () => {
+    // A full v2 contest minus the field #23 added: strip `critique` from the envelope.
+    const full = withSchool(contest({ districtNumber: '20' }), 0, { name: 'Westlake HS' });
+    const { critique: _dropped, speechwire: _dev, ...v2Contest } = full;
+    const v2 = JSON.stringify({ schemaVersion: 2, contest: v2Contest });
+
+    const migrated = parseContest(v2);
+    expect(migrated.critique).toBeNull();
+    expect(migrated.schools[0].name).toBe('Westlake HS'); // pre-existing data preserved
+    expect(migrated.identity.districtNumber).toBe('20');
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 

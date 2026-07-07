@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 2;
+export const CONTEST_SCHEMA_VERSION = 3;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -158,6 +158,29 @@ export interface SpeechwireCredentials {
   password: string;
 }
 
+/**
+ * Locked-in critique assignment (v12 _critiqueAssignments/_critiqueLocked).
+ *
+ * Stored IN the contest record so it autosaves, syncs, and exports like every
+ * other field — no separate serialization. The randomizer's output is the ONE
+ * thing that persists: `judgeByPosition[k]` is the 1-based judge number assigned
+ * to the school in performance-order position k (0-based), so its length equals
+ * the school count at generation time. School names, plays, and judge names are
+ * NOT copied here — they are re-derived from the contest at read time (see
+ * critiqueRows in documents/docVars.ts), so a later name edit is reflected
+ * without regenerating.
+ *
+ * `null` on Contest ⇒ no assignment generated yet. `locked` freezes the result:
+ * v12 only persisted and consumed locked assignments, and only locked ones flow
+ * into generated documents.
+ */
+export interface CritiqueAssignment {
+  /** 1-based judge number per performance-order position (0-based index). */
+  judgeByPosition: number[];
+  /** Frozen once locked (v12 _critiqueLocked); reorder is disabled while true. */
+  locked: boolean;
+}
+
 export interface Contest {
   /** Stable unique id; never changes after creation. */
   id: string;
@@ -172,6 +195,8 @@ export interface Contest {
   /** Length is the "Number of Schools" (MIN_SCHOOLS–MAX_SCHOOLS). Form order. */
   schools: School[];
   documents: DocumentSelection;
+  /** Randomized critique-to-judge assignment; null until first generated. */
+  critique: CritiqueAssignment | null;
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -271,6 +296,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     adjudicators: defaultAdjudicators(),
     schools: defaultSchools(),
     documents: defaultDocumentSelection(),
+    critique: null,
     speechwire: defaultSpeechwire(),
   };
 }
@@ -349,6 +375,8 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
       playTitle: '',
       performanceOrder: i + 1,
     })),
+    // Judges and the draw both change every contest — drop last year's assignment.
+    critique: null,
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -474,6 +502,55 @@ export function setAllDocuments(contest: Contest, selected: boolean, now?: strin
   const documents = {} as DocumentSelection;
   for (const doc of DOCUMENT_TYPES) documents[doc.id] = selected;
   return { ...touch(contest, now), documents };
+}
+
+/* ─────────────────────── critique assignment ───────────────────────
+ * v12 runCritiqueRandomizer/lock/unlock/moveCritiqueRow operated on the module
+ * globals _critiqueAssignments/_critiqueLocked; here the same state lives in the
+ * contest record and every edit is an immutable update (so it autosaves). The
+ * RANDOMIZATION itself is the pure model/critique.ts algorithm — these helpers
+ * only store, freeze, and reorder its result.
+ */
+
+/**
+ * Stores a freshly generated assignment, UNLOCKED (v12 always re-randomizes into
+ * the unlocked state, then the CM locks it). `judgeByPosition` is 1-based judge
+ * numbers indexed by performance-order position — normally from
+ * generateCritiqueAssignments().
+ */
+export function setCritiqueAssignment(contest: Contest, judgeByPosition: number[], now?: string): Contest {
+  return { ...touch(contest, now), critique: { judgeByPosition: [...judgeByPosition], locked: false } };
+}
+
+/** Freezes the current assignment (v12 lockCritiqueAssignment). No-op if none. */
+export function lockCritique(contest: Contest, now?: string): Contest {
+  if (!contest.critique) return contest;
+  return { ...touch(contest, now), critique: { ...contest.critique, locked: true } };
+}
+
+/** Unfreezes for re-randomize / reorder (v12 unlockCritiqueAssignment). No-op if none. */
+export function unlockCritique(contest: Contest, now?: string): Contest {
+  if (!contest.critique) return contest;
+  return { ...touch(contest, now), critique: { ...contest.critique, locked: false } };
+}
+
+/**
+ * Adjacent swap of two schools' judge assignments (v12 moveCritiqueRow): swaps
+ * judgeByPosition[index] with judgeByPosition[index + direction]. The school rows
+ * stay in performance order — only the judge assignment moves. `direction` is
+ * ±1; any other value, an out-of-range target, no assignment, or a LOCKED
+ * assignment is a no-op (v12 hides the controls while locked).
+ */
+export function moveCritiqueAssignment(contest: Contest, index: number, direction: number, now?: string): Contest {
+  const critique = contest.critique;
+  if (!critique || critique.locked) return contest;
+  if (direction !== 1 && direction !== -1) return contest;
+  const target = index + direction;
+  const judges = critique.judgeByPosition;
+  if (index < 0 || index >= judges.length || target < 0 || target >= judges.length) return contest;
+  const swapped = [...judges];
+  [swapped[index], swapped[target]] = [swapped[target], swapped[index]];
+  return { ...touch(contest, now), critique: { ...critique, judgeByPosition: swapped } };
 }
 
 /* ────────────────────────── derived values ────────────────────────── */
@@ -735,6 +812,8 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
     schools: defaultSchools(),
     documents: defaultDocumentSelection(),
   }),
+  // v2 (Slices 2–9) had no critique assignment — start with none.
+  2: (raw) => ({ ...raw, critique: null }),
 };
 
 export function parseContest(json: string): Contest {

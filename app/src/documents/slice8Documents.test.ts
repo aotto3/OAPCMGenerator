@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
-import { withDetails, withIdentity, type Contest } from '../model/contest';
+import { lockCritique, setCritiqueAssignment, withDetails, withIdentity, type Contest } from '../model/contest';
 import { fixtureContest, FIXTURE_LETTER_DATE, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildFallAgenda } from './fallAgenda';
@@ -165,6 +165,35 @@ describe('Directors Meeting Agenda — content', () => {
     noJudges.adjudicators.forEach((j) => (j.name = ''));
     const xml = await documentXml(await buildDirectorsMeeting(noJudges));
     expect(xml).toContain('[Judge Names]');
+  });
+
+  it('lists a LOCKED critique assignment in the Critique Order section (issue #23)', async () => {
+    // Fixture schools in performance order: pos 1 = Bravo HS (order 1). Judges:
+    // Dr. Jane Judge (1), Prof. John Critic (2), Ms. Mary Adjudicator (3).
+    const assigned = setCritiqueAssignment(fixtureContest(), [2, 1, 3, 2, 1, 3], FIXTURE_NOW);
+
+    // Unlocked and absent both leave the section in its no-assignment state
+    // (only locked results are consumed — the golden-stable path).
+    expect(await documentXml(await buildDirectorsMeeting(assigned))).not.toContain('Judge assignments');
+    expect(await documentXml(await buildDirectorsMeeting(fixtureContest()))).not.toContain('Judge assignments');
+
+    const locked = lockCritique(assigned, FIXTURE_NOW);
+    const xml = await documentXml(await buildDirectorsMeeting(locked));
+    expect(xml).toContain('Judge assignments');
+    expect(xml).toContain('1. Bravo HS'); // first performance slot, listed in order
+    expect(xml).toContain('Judge 2 — Prof. John Critic'); // its assigned judge
+  });
+
+  it('adds the after-each last-school note only when critiques are after each show', async () => {
+    const each = withDetails(fixtureContest(), { critiqueFormat: 'after_each' }, FIXTURE_NOW);
+    const locked = lockCritique(setCritiqueAssignment(each, [2, 1, 3, 2, 1, 3], FIXTURE_NOW), FIXTURE_NOW);
+    const xml = await documentXml(await buildDirectorsMeeting(locked));
+    expect(xml).toContain('Judge 1 is not assigned the last school');
+
+    const afterAll = lockCritique(setCritiqueAssignment(fixtureContest(), [2, 1, 3, 2, 1, 3], FIXTURE_NOW), FIXTURE_NOW);
+    expect(await documentXml(await buildDirectorsMeeting(afterAll))).not.toContain(
+      'Judge 1 is not assigned the last school',
+    );
   });
 });
 
