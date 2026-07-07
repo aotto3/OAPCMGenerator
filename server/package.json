@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
@@ -12,6 +15,7 @@
     "migrate:auth": "better-auth migrate --config src/auth.ts -y"
   },
   "dependencies": {
+    "@better-auth/cli": "^1.2.9",
     "better-auth": "^1.2.9",
     "cors": "^2.8.5",
     "express": "^5.1.0",
@@ -20,7 +24,6 @@
     "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "@better-auth/cli": "^1.2.9",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^26.1.0",
