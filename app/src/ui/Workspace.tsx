@@ -7,6 +7,7 @@ import {
 } from '../model/contest';
 import { getContest } from '../storage/contestStore';
 import { useAutosave } from '../storage/useAutosave';
+import { EmailComposer } from './EmailComposer';
 import { EmailListBox } from './EmailListBox';
 import { AdjudicatorsSection } from './sections/AdjudicatorsSection';
 import { CmInfoSection } from './sections/CmInfoSection';
@@ -87,6 +88,7 @@ export function Workspace({
       <CritiqueSection contest={contest} onChange={setContest} />
       <DocumentsSection contest={contest} onChange={setContest} />
       <GenerateSection contest={contest} />
+      <EmailComposer contest={contest} />
       <EmailListBox contest={contest} />
     </main>
   );
