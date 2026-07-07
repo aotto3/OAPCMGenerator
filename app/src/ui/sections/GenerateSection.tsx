@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { generationWarnings, type Contest } from '../../model/contest';
 import { DOCUMENT_REGISTRY } from '../../documents/registry';
-import { buildContestArchive, triggerZipDownload } from '../../documents/generate';
+import {
+  buildContestArchive,
+  triggerZipDownload,
+  type DocumentWarning,
+} from '../../documents/generate';
 import { Section } from './Section';
 
 type StatusKind = 'info' | 'success' | 'error';
@@ -19,6 +23,7 @@ interface Status {
  */
 export function GenerateSection({ contest }: { contest: Contest }) {
   const [status, setStatus] = useState<Status | null>(null);
+  const [warnings, setWarnings] = useState<DocumentWarning[]>([]);
   const [busy, setBusy] = useState(false);
 
   const selectedCount = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]).length;
@@ -44,6 +49,7 @@ export function GenerateSection({ contest }: { contest: Contest }) {
     }
 
     setBusy(true);
+    setWarnings([]);
     try {
       const archive = await buildContestArchive(contest, {
         onProgress: ({ label, current, total }) =>
@@ -55,6 +61,8 @@ export function GenerateSection({ contest }: { contest: Contest }) {
         kind: 'success',
         text: `✅ Done! Downloaded ${archive.folderName}.zip (${n} document${n !== 1 ? 's' : ''} + contest file).`,
       });
+      // Non-fatal: the ZIP is complete, but some fields could not be pre-filled.
+      setWarnings(archive.warnings);
     } catch (err) {
       setStatus({ kind: 'error', text: `❌ Error: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
@@ -77,6 +85,16 @@ export function GenerateSection({ contest }: { contest: Contest }) {
         <p className={`status status-${status.kind}`} role="status" aria-live="polite">
           {status.text}
         </p>
+      )}
+      {warnings.length > 0 && (
+        <div className="status status-warning" role="status" aria-live="polite">
+          {warnings.map((w) => (
+            <p key={w.document}>
+              ⚠️ {w.document}: {w.messages.length} field{w.messages.length !== 1 ? 's' : ''} could
+              not be pre-filled ({w.messages.join(', ')}).
+            </p>
+          ))}
+        </div>
       )}
     </Section>
   );

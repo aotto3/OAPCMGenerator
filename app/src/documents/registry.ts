@@ -7,11 +7,10 @@
  * id/label/default in the contest model's DOCUMENT_TYPES — no UI or packaging
  * edits.
  *
- * A definition is pure: contest record in → file bytes out. No React, no DOM,
- * no fetch. The real builders (OOXML / spreadsheet / PDF) arrive in later slices;
- * for now every builder returns a placeholder so the whole pipeline — selection,
- * validation, packaging, download — is exercisable end to end. When a real
- * builder lands, only its `build` changes; id, label, and filename stay put.
+ * A definition is pure: contest record in → file bytes out (the one exception is
+ * the adjudicator PDF builder, which loads bundled ballot templates via a browser
+ * fetch / Node fs loader — see pdfAssets.ts). All 14 documents now have real
+ * builders; id, label, and filename stay put as builders evolve.
  */
 
 import { DOCUMENT_TYPES, type Contest, type DocumentId } from '../model/contest';
@@ -28,6 +27,8 @@ import { buildRehearsalSchedule } from './rehearsalSchedule';
 import { buildContactList } from './contactList';
 import { buildAdjudicatorInfo } from './adjudicatorInfo';
 import { buildChecklist } from './checklist';
+import { buildAdjudicatorPacketsPdf } from './adjPackets';
+import { loadAdjudicatorTemplates } from './pdfAssets';
 
 /**
  * Per-build context threaded from the generate pipeline. Optional so a plain
@@ -43,14 +44,27 @@ export interface DocumentBuildContext {
 }
 
 /**
- * contest record in → file bytes out. Pure aside from JSZip packing. May be
- * sync (placeholders) or async — a .docx/.xlsx is itself a ZIP, so its real
- * builder returns a Promise. buildContestArchive awaits either.
+ * A builder's output. Most builders just emit bytes; a builder that fills a
+ * fixed external template (the adjudicator PDFs) may also report NON-FATAL
+ * warnings — e.g. a form field that could not be filled — which the generate
+ * pipeline surfaces to the user without aborting the ZIP.
+ */
+export interface DocumentResult {
+  bytes: Uint8Array;
+  /** Human-readable, non-fatal warnings from building this document. */
+  warnings?: string[];
+}
+
+/**
+ * contest record in → file bytes out (optionally with warnings). Pure aside from
+ * JSZip packing. May be sync (placeholders) or async — a .docx/.xlsx is itself a
+ * ZIP and the PDF filler loads templates, so real builders return a Promise.
+ * buildContestArchive awaits and normalizes either shape.
  */
 export type DocumentBuilder = (
   contest: Contest,
   ctx?: DocumentBuildContext,
-) => Uint8Array | Promise<Uint8Array>;
+) => Uint8Array | DocumentResult | Promise<Uint8Array | DocumentResult>;
 
 export interface DocumentDefinition {
   id: DocumentId;
@@ -64,19 +78,15 @@ export interface DocumentDefinition {
 }
 
 /**
- * Placeholder builder used until a document's real generator lands. Emits a
- * short UTF-8 note so the file is non-empty and self-explanatory in the ZIP.
+ * Adjudicator Packets builder: loads the official UIL ballot templates for the
+ * current environment, then runs the pure PDF filler. Field-fill failures come
+ * back as non-fatal warnings (v12 fieldErrors) rather than aborting.
  */
-function placeholder(label: string): DocumentBuilder {
-  return () =>
-    new TextEncoder().encode(
-      `Placeholder for "${label}".\n\n` +
-        'This document generator is not implemented yet — it arrives in a later ' +
-        'slice of the OAP Contest Manager 2.0 rebuild. The generation pipeline ' +
-        '(selection, validation, packaging, download) is complete; only the real ' +
-        'document contents are pending.\n',
-    );
-}
+const buildAdjPackets: DocumentBuilder = async (contest) => {
+  const templates = await loadAdjudicatorTemplates();
+  const { bytes, fieldErrors } = await buildAdjudicatorPacketsPdf(contest, templates);
+  return { bytes, warnings: fieldErrors };
+};
 
 /**
  * Per-id filename + builder. Typed as a total map over DocumentId, so adding a
@@ -102,7 +112,7 @@ const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilde
   advancing_letter: { filename: 'Advancing Schools Letter.docx', build: buildAdvancingLetter },
   contacts: { filename: 'School-Director Contact List.xlsx', build: buildContactList },
   adjudicator: { filename: 'Adjudicator Info Sheet.xlsx', build: buildAdjudicatorInfo },
-  adj_packets: { filename: 'Adjudicator Packets.pdf', build: placeholder('Adjudicator Packets') },
+  adj_packets: { filename: 'Adjudicator Packets.pdf', build: buildAdjPackets },
   timer: { filename: 'Timer Instructions and Form.docx', build: buildTimerDoc },
 };
 

@@ -180,3 +180,5 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
 .status-info { color: var(--c-muted); }
 .status-success { color: #2e7d32; }
 .status-error { color: var(--c-red); }
+.status-warning { color: #b26a00; }
+.status-warning p { margin: 6px 0 0; }

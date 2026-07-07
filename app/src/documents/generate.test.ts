@@ -13,7 +13,7 @@ import {
   type Contest,
 } from '../model/contest';
 import { DOCUMENT_REGISTRY } from './registry';
-import { buildContestArchive } from './generate';
+import { buildContestArchive, normalizeResult } from './generate';
 
 const NOW = '2026-07-05T12:00:00.000Z';
 
@@ -42,12 +42,14 @@ describe('DOCUMENT_REGISTRY', () => {
 
   it('builds non-empty bytes for every document', async () => {
     for (const doc of DOCUMENT_REGISTRY) {
-      // build may be sync (placeholder) or async (real .docx); await handles both.
-      const bytes = await doc.build(contest());
+      // build may be sync (placeholder) or async (real .docx/.xlsx/.pdf) and may
+      // return bare bytes or {bytes, warnings}; normalizeResult handles all.
+      const { bytes } = normalizeResult(await doc.build(contest()));
       expect(bytes).toBeInstanceOf(Uint8Array);
       expect(bytes.length).toBeGreaterThan(0);
     }
-  });
+    // The adjudicator PDF (~113 pages) makes this loop take several seconds.
+  }, 30000);
 });
 
 /** Reads a ZIP archive back into its entry paths and folder name. */

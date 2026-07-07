@@ -20,7 +20,7 @@ import {
   serializeContest,
   type Contest,
 } from '../model/contest';
-import { DOCUMENT_REGISTRY } from './registry';
+import { DOCUMENT_REGISTRY, type DocumentResult } from './registry';
 
 export interface GenerateProgress {
   /** Human label of the item currently being built, e.g. "Awards Script". */
@@ -31,12 +31,32 @@ export interface GenerateProgress {
   total: number;
 }
 
+/** Non-fatal warnings from building one document (e.g. PDF fields not filled). */
+export interface DocumentWarning {
+  /** UI label of the document that produced the warnings. */
+  document: string;
+  /** One or more human-readable warning messages. */
+  messages: string[];
+}
+
 export interface ContestArchive {
   bytes: Uint8Array;
   /** Top-level ZIP folder name; also the download filename stem (v12). */
   folderName: string;
   /** Number of documents included (excludes the always-present contest file). */
   documentCount: number;
+  /** Per-document non-fatal warnings; empty when every document built cleanly. */
+  warnings: DocumentWarning[];
+}
+
+/** Normalizes a builder's return (bare bytes or {bytes, warnings}) to one shape. */
+export function normalizeResult(result: Uint8Array | DocumentResult): {
+  bytes: Uint8Array;
+  warnings: string[];
+} {
+  return result instanceof Uint8Array
+    ? { bytes: result, warnings: [] }
+    : { bytes: result.bytes, warnings: result.warnings ?? [] };
 }
 
 export interface BuildOptions {
@@ -69,12 +89,17 @@ export async function buildContestArchive(
   // +1 for the contest file, which is always written last.
   const total = selected.length + 1;
   let current = 0;
+  const warnings: DocumentWarning[] = [];
 
   for (const doc of selected) {
     current++;
     onProgress?.({ label: doc.label, current, total });
-    // build may be sync (placeholder) or async (real .docx/.xlsx); await both.
-    folder.file(doc.filename, await doc.build(contest, { now }));
+    // build may be sync (placeholder) or async (real .docx/.xlsx/.pdf); await both.
+    const { bytes: docBytes, warnings: docWarnings } = normalizeResult(
+      await doc.build(contest, { now }),
+    );
+    folder.file(doc.filename, docBytes);
+    if (docWarnings.length > 0) warnings.push({ document: doc.label, messages: docWarnings });
   }
 
   current++;
@@ -82,7 +107,7 @@ export async function buildContestArchive(
   folder.file(contestFileName(contest.identity), serializeContest(contest));
 
   const bytes = await zip.generateAsync({ type: 'uint8array' });
-  return { bytes, folderName, documentCount: selected.length };
+  return { bytes, folderName, documentCount: selected.length, warnings };
 }
 
 /**
