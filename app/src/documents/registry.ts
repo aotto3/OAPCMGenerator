@@ -23,6 +23,11 @@ import { buildAwardsScript } from './awardsScript';
 import { buildAdvancingLetter } from './advancingLetter';
 import { buildTimerDoc } from './timer';
 import { buildPreRehearsalMeeting } from './preRehearsalMeeting';
+import { buildContestSchedule } from './contestSchedule';
+import { buildRehearsalSchedule } from './rehearsalSchedule';
+import { buildContactList } from './contactList';
+import { buildAdjudicatorInfo } from './adjudicatorInfo';
+import { buildChecklist } from './checklist';
 
 /**
  * Per-build context threaded from the generate pipeline. Optional so a plain
@@ -79,11 +84,11 @@ function placeholder(label: string): DocumentBuilder {
  * here. Filenames match v12's generateAll() output names exactly.
  */
 const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilder }> = {
-  checklist: { filename: 'Year-Round Checklist.xlsx', build: placeholder('Year-Round Checklist') },
+  checklist: { filename: 'Year-Round Checklist.xlsx', build: buildChecklist },
   fall_agenda: { filename: 'Fall District Meeting Agenda.docx', build: buildFallAgenda },
   host_checklist: { filename: 'Host School Checklist.docx', build: buildHostChecklist },
-  rehearsal: { filename: 'Schedule - Reh. and Contest.xlsx', build: placeholder('Schedule - Reh. and Contest') },
-  schedule: { filename: 'Contest Day Schedule.xlsx', build: placeholder('Contest Day Schedule') },
+  rehearsal: { filename: 'Schedule - Reh. and Contest.xlsx', build: buildRehearsalSchedule },
+  schedule: { filename: 'Contest Day Schedule.xlsx', build: buildContestSchedule },
   letter: { filename: 'Director Information Letter.docx', build: buildDirectorLetter },
   pre_rehearsal_meeting: {
     filename: 'Pre-Rehearsal Company Meeting.docx',
@@ -95,8 +100,8 @@ const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilde
   },
   awards: { filename: 'Awards Script.docx', build: buildAwardsScript },
   advancing_letter: { filename: 'Advancing Schools Letter.docx', build: buildAdvancingLetter },
-  contacts: { filename: 'School-Director Contact List.xlsx', build: placeholder('School-Director Contact List') },
-  adjudicator: { filename: 'Adjudicator Info Sheet.xlsx', build: placeholder('Adjudicator Info Sheet') },
+  contacts: { filename: 'School-Director Contact List.xlsx', build: buildContactList },
+  adjudicator: { filename: 'Adjudicator Info Sheet.xlsx', build: buildAdjudicatorInfo },
   adj_packets: { filename: 'Adjudicator Packets.pdf', build: placeholder('Adjudicator Packets') },
   timer: { filename: 'Timer Instructions and Form.docx', build: buildTimerDoc },
 };
