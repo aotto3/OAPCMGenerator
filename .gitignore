@@ -14,5 +14,8 @@
 # 2.0 app (app/.gitignore excludes node_modules/ and dist/ within it)
 !app/
 !app/**
+# 2.0 server (server/.gitignore excludes node_modules/, dist/, .env within it)
+!server/
+!server/**
 !.claude/
 !.claude/launch.json

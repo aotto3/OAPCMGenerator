@@ -282,3 +282,25 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
 .checkpoint-meta { font-size: 0.78rem; color: var(--c-muted); }
 .checkpoint-note { font-size: 0.8rem; color: #777; font-style: italic; margin-top: 2px; }
 .checkpoint-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
+
+/* Sign-in gate (Slice 13 — server auth). */
+.account-bar {
+  display: flex; justify-content: flex-end; align-items: center; gap: 12px;
+  max-width: 860px; margin: 0 auto; padding: 8px 16px 0;
+}
+.signin-card {
+  max-width: 380px; margin: 8px auto 0; padding: 24px;
+  background: #fff; border: 1px solid var(--c-border); border-radius: 10px;
+}
+.signin-google { width: 100%; }
+.signin-divider {
+  text-align: center; color: var(--c-muted); margin: 16px 0;
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.signin-magic { display: flex; flex-direction: column; gap: 8px; }
+.signin-magic label { font-size: 0.85rem; font-weight: 600; }
+.signin-magic input {
+  font: inherit; padding: 8px 10px; border: 1px solid var(--c-border); border-radius: 6px;
+}
+.signin-sent { margin: 0; font-size: 0.9rem; }
+.signin-error { margin: 12px 0 0; font-size: 0.82rem; font-weight: 600; color: var(--c-red); }
