@@ -93,14 +93,18 @@ Create one Railway **project** with three services from this repo:
    slash**. `PORT` is injected by Railway automatically — don't set it.
 
 **c) Frontend service** (the `app/` static build)
-1. *New → GitHub Repo* → same repo, **Root Directory** `app`.
-2. Build: `npm install && npm run build`; the output is static files in
-   `app/dist`. Configure the service as a static site serving `dist` (Railway's
-   Nixpacks detects Vite; if needed, set the start command to a static server or
-   use a Railway static-site template). Set build variable:
-   - `VITE_API_URL` = the API `SERVER_URL` from 1b (baked into the bundle at
-     build time — rebuild if it changes).
-3. Generate its public domain and set the API service's `WEB_ORIGIN` to it.
+1. *New → GitHub Repo* → same repo, **Root Directory** `app`, **Branch**
+   `claude/slice-13-server-auth`. Railway reads `app/railway.json` and handles
+   build + serve automatically: it runs `npm run build` (Vite → `app/dist`) and
+   then `npm start` (serves `dist` as a single-page app on Railway's `PORT`).
+   You do not configure any build or start command by hand.
+2. Add one variable:
+   - `VITE_API_URL` = the API `SERVER_URL` from 1b. This is baked into the
+     bundle at **build** time, so if it ever changes you must redeploy the
+     frontend for the new value to take effect.
+3. Under *Settings → Networking*, generate a public domain, then set the **API**
+   service's `WEB_ORIGIN` to exactly that frontend origin (with `https://`, no
+   trailing slash).
 
 > `SERVER_URL` (API) and `WEB_ORIGIN` (frontend) reference each other, so you'll
 > set placeholder values, generate both domains, then update both. After
