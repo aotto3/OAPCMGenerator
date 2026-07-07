@@ -261,3 +261,24 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
 .status-error { color: var(--c-red); }
 .status-warning { color: #b26a00; }
 .status-warning p { margin: 6px 0 0; }
+
+/* Version History — checkpoint save row + list (v12 snapshot panel port). */
+.checkpoint-save { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.checkpoint-name-input, .checkpoint-note-input {
+  flex: 1; min-width: 140px; padding: 7px 9px;
+  border: 1px solid var(--c-border); border-radius: 6px; font: inherit;
+}
+.checkpoint-error { margin: 8px 0 0; font-size: 0.82rem; font-weight: 600; color: var(--c-red); }
+.checkpoint-empty { margin: 12px 0 0; font-style: italic; }
+
+.checkpoint-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.checkpoint-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: #fff; border: 1px solid var(--c-border); border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 8px;
+}
+.checkpoint-info { flex: 1; min-width: 0; }
+.checkpoint-name { font-weight: 600; }
+.checkpoint-meta { font-size: 0.78rem; color: var(--c-muted); }
+.checkpoint-note { font-size: 0.8rem; color: #777; font-style: italic; margin-top: 2px; }
+.checkpoint-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }

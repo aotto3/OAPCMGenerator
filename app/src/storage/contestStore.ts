@@ -36,19 +36,51 @@ interface ContestRecord {
   deviceOnly?: SpeechwireCredentials;
 }
 
+/**
+ * An immutable checkpoint snapshot (storage/checkpointStore.ts owns the API).
+ * The record IS the model's Checkpoint — id, contestId, name, note, createdAt,
+ * and the serializeContest() payload — so the store never reshapes it. The
+ * `byContest` index lists a single contest's history without scanning.
+ */
+interface CheckpointRecord {
+  id: string;
+  contestId: string;
+  name: string;
+  note: string;
+  createdAt: string;
+  /** Versioned envelope from serializeContest(); device-only fields never in it. */
+  payload: string;
+}
+
 interface OapDB extends DBSchema {
   contests: { key: string; value: ContestRecord };
+  checkpoints: {
+    key: string;
+    value: CheckpointRecord;
+    indexes: { byContest: string };
+  };
 }
 
 const DB_NAME = 'oap-contest-manager';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<OapDB>> | undefined;
 
-function db(): Promise<IDBPDatabase<OapDB>> {
+/**
+ * Shared handle to the on-device database. contestStore owns the schema and
+ * upgrade path; checkpointStore imports this so both live in one versioned DB.
+ */
+export function db(): Promise<IDBPDatabase<OapDB>> {
   dbPromise ??= openDB<OapDB>(DB_NAME, DB_VERSION, {
-    upgrade(database) {
-      database.createObjectStore('contests', { keyPath: 'id' });
+    upgrade(database, oldVersion) {
+      // Version-guarded so an existing v1 device only adds the new store.
+      if (oldVersion < 1) {
+        database.createObjectStore('contests', { keyPath: 'id' });
+      }
+      if (oldVersion < 2) {
+        const checkpoints = database.createObjectStore('checkpoints', { keyPath: 'id' });
+        checkpoints.createIndex('byContest', 'contestId');
+      }
     },
   });
   return dbPromise;

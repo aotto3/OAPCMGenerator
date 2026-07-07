@@ -15,6 +15,7 @@ import { CritiqueSection } from './sections/CritiqueSection';
 import { DetailsSection } from './sections/DetailsSection';
 import { DocumentsSection } from './sections/DocumentsSection';
 import { GenerateSection } from './sections/GenerateSection';
+import { HistorySection } from './sections/HistorySection';
 import { IdentitySection } from './sections/IdentitySection';
 import { PlaysSection } from './sections/PlaysSection';
 import { SchoolsSection } from './sections/SchoolsSection';
@@ -88,6 +89,7 @@ export function Workspace({
       <CritiqueSection contest={contest} onChange={setContest} />
       <DocumentsSection contest={contest} onChange={setContest} />
       <GenerateSection contest={contest} />
+      <HistorySection contest={contest} onRestore={setContest} />
       <EmailComposer contest={contest} />
       <EmailListBox contest={contest} />
     </main>
