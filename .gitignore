@@ -3,6 +3,12 @@
 
 # Un-ignore the files we want to track
 !.gitignore
+
+# Project documentation (root)
+!CLAUDE.md
+!ARCHITECTURE.md
+!USER_GUIDE.md
+
 !_Templates/
 !_Templates/OAP Contest Setup.html
 !output/
