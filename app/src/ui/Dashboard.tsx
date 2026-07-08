@@ -79,7 +79,7 @@ export function Dashboard({
     <main className="page">
       <header className="page-header">
         <h1>🎭 OAP Contest Manager</h1>
-        <p className="subtitle">UIL One-Act Play contest documents — 2.0.1</p>
+        <p className="subtitle">UIL One-Act Play contest documents — 2.0</p>
       </header>
 
       <div className="toolbar">
