@@ -288,6 +288,19 @@ button { font: inherit; cursor: pointer; border-radius: 6px; }
   display: flex; justify-content: flex-end; align-items: center; gap: 12px;
   max-width: 860px; margin: 0 auto; padding: 8px 16px 0;
 }
+
+/* Subtle sync-status indicator (Slice 14). Sits at the left of the account bar;
+   a small dot plus quiet text, never a call to action. */
+.sync-status {
+  margin-right: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; color: var(--c-muted);
+}
+.sync-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--c-muted); flex: none; }
+.sync-status--synced .sync-dot { background: #2e7d32; }
+.sync-status--syncing .sync-dot { background: var(--c-blue); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-status--pending .sync-dot { background: var(--c-blue); }
+.sync-status--offline .sync-dot { background: #b0863a; }
+@keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .signin-card {
   max-width: 380px; margin: 8px auto 0; padding: 24px;
   background: #fff; border: 1px solid var(--c-border); border-radius: 10px;

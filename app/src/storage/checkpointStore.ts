@@ -9,7 +9,7 @@
  */
 import { makeCheckpoint, planRestore, type Checkpoint } from '../model/checkpoint';
 import type { Contest } from '../model/contest';
-import { db, saveContest } from './contestStore';
+import { bumpContestForCheckpointChange, db, saveContest } from './contestStore';
 
 /** Snapshots `contest` as a named checkpoint and persists it. */
 export async function createCheckpoint(
@@ -20,6 +20,9 @@ export async function createCheckpoint(
 ): Promise<Checkpoint> {
   const checkpoint = makeCheckpoint(contest, name, note, now);
   await (await db()).put('checkpoints', checkpoint);
+  // Checkpoints ride the contest's sync bundle, so nudge the contest's clock
+  // (and notify sync) to propagate the new checkpoint.
+  await bumpContestForCheckpointChange(contest.id, now);
   return checkpoint;
 }
 
@@ -30,7 +33,10 @@ export async function listCheckpoints(contestId: string): Promise<Checkpoint[]> 
 }
 
 export async function deleteCheckpoint(id: string): Promise<void> {
-  await (await db()).delete('checkpoints', id);
+  const database = await db();
+  const existing = await database.get('checkpoints', id);
+  await database.delete('checkpoints', id);
+  if (existing) await bumpContestForCheckpointChange(existing.contestId);
 }
 
 /** Updates a checkpoint's note in place (v12 editSnapshotNote). No-op if gone. */
@@ -39,6 +45,7 @@ export async function updateCheckpointNote(id: string, note: string): Promise<vo
   const existing = await database.get('checkpoints', id);
   if (!existing) return;
   await database.put('checkpoints', { ...existing, note: note.trim() });
+  await bumpContestForCheckpointChange(existing.contestId);
 }
 
 /**
