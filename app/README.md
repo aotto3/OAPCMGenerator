@@ -1,18 +1,22 @@
 # OAP Contest Manager 2.0 (`app/`)
 
-The hosted rebuild of the OAP Contest Manager (PRD: issue #13). The legacy
-v12 single-file app lives at `_Templates/OAP Contest Setup.html` and is the
-behavior spec — **never edit it**; `output/context.md` documents its
-conventions.
+**The live app is at https://oapmanager.allenotto.com** — sign in with Google or
+an emailed link; nothing to download. This is the primary tool of record
+(Slice 17, #30). The legacy v12 single-file app lives at
+`_Templates/OAP Contest Setup.html` and is the behavior spec — **never edit
+it**; it stays available as a fallback for one contest cycle, and
+`output/context.md` documents its conventions.
 
 ## Toolchain
 
-Vite + React + TypeScript, tested with vitest. `npm run build` produces a
-plain static site; all document generation and storage stay client-side
-(local-first). The only backend is the thin auth/storage API in `../server`
-(Slice 13, PRD module 5): the app signs in against it (Google OAuth + magic
-link) and — from Slice 14 on — syncs contests to it. Set `VITE_API_URL` to the
-API origin (see `.env.example`).
+Vite + React + TypeScript, tested with vitest. `npm run build` produces the
+static SPA; all document generation and storage stay client-side (local-first).
+The only backend is the thin auth/storage API in `../server` (Slice 13, PRD
+module 5): the app signs in against it (Google OAuth + magic link) and syncs
+contests to it. In production, `serve.mjs` hosts the SPA **and** reverse-proxies
+`/api/*` to that API so both share one origin — the single-origin fix for mobile
+sign-in (#46). The app therefore calls relative `/api` paths and needs no API
+URL set; `vite dev` proxies `/api` the same way (see `.env.example`).
 
 ```
 npm install     # once

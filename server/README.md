@@ -82,33 +82,53 @@ Create one Railway **project** with three services from this repo:
 2. Set these variables:
    - `DATABASE_URL = ${{ Postgres.DATABASE_URL }}` (reference the Postgres service)
    - `NODE_ENV = production`
-   - `SERVER_URL` = the API service's public URL (see below)
-   - `WEB_ORIGIN` = the frontend's public URL (see 1c)
+   - `SERVER_URL` = the **public single origin** `https://oapmanager.allenotto.com`
+     (see 1d) — NOT this service's own Railway URL. Magic links and OAuth
+     callbacks are built from it, so it must be the origin the browser uses.
+   - `WEB_ORIGIN` = the same `https://oapmanager.allenotto.com` (single origin).
    - `BETTER_AUTH_SECRET` = a long random string —
      `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
    - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (from step 2)
    - `MAILERSEND_API_KEY`, `MAGIC_LINK_FROM_EMAIL`, `MAGIC_LINK_FROM_NAME` (from step 3)
-3. Under *Settings → Networking*, generate a public domain. Set `SERVER_URL` to
-   exactly that origin (e.g. `https://oap-api.up.railway.app`), **no trailing
-   slash**. `PORT` is injected by Railway automatically — don't set it.
+3. Under *Settings → Networking*, generate a public domain. This API URL (e.g.
+   `https://oapcmgenerator-production.up.railway.app`) is now **internal**: the
+   browser never hits it directly — the frontend reverse-proxies to it. You'll
+   set it as the frontend's `API_URL` in 1c, not as `SERVER_URL`. `PORT` is
+   injected by Railway automatically — don't set it.
 
-**c) Frontend service** (the `app/` static build)
+**c) Frontend service** (the `app/` host — SPA + reverse proxy)
+Single-origin fix for mobile auth (#46): the frontend no longer serves static
+files only. `npm start` now runs `serve.mjs`, which serves the built SPA **and**
+reverse-proxies `/api/*` to the API. The browser talks to one origin, so the
+session cookie is first-party (`SameSite=Lax`) and mobile sign-in works.
 1. *New → GitHub Repo* → same repo, **Root Directory** `app`, **Branch**
-   `claude/slice-13-server-auth`. Railway reads `app/railway.json` and handles
-   build + serve automatically: it runs `npm run build` (Vite → `app/dist`) and
-   then `npm start` (serves `dist` as a single-page app on Railway's `PORT`).
-   You do not configure any build or start command by hand.
+   `claude/slice-17-parity-switchover`. Railway reads `app/railway.json`: it runs
+   `npm run build` (Vite → `app/dist`) then `npm start` (`node serve.mjs`).
 2. Add one variable:
-   - `VITE_API_URL` = the API `SERVER_URL` from 1b. This is baked into the
-     bundle at **build** time, so if it ever changes you must redeploy the
-     frontend for the new value to take effect.
-3. Under *Settings → Networking*, generate a public domain, then set the **API**
-   service's `WEB_ORIGIN` to exactly that frontend origin (with `https://`, no
-   trailing slash).
+   - `API_URL` = the API service's Railway URL from 1b step 3 (e.g.
+     `https://oapcmgenerator-production.up.railway.app`). This is a **runtime**
+     var read by `serve.mjs` — it is the proxy target, and is *not* baked into
+     the browser bundle. **Do not set `VITE_API_URL`** — the app calls relative
+     `/api` paths on its own origin now.
 
-> `SERVER_URL` (API) and `WEB_ORIGIN` (frontend) reference each other, so you'll
-> set placeholder values, generate both domains, then update both. After
-> changing `VITE_API_URL`, redeploy the frontend so the new value is baked in.
+**d) Custom domain — `oapmanager.allenotto.com` (on the FRONTEND service)**
+The single origin is your own subdomain, so cookies are first-party and Google
+can verify the domain later. Only the frontend service gets the custom domain.
+1. Frontend service → *Settings → Networking → Custom Domain* → add
+   `oapmanager.allenotto.com`. Railway shows a **CNAME target** (e.g.
+   `xxxx.up.railway.app`) and provisions TLS automatically.
+2. In **Wix → your domain (allenotto.com) → DNS records → Add record**:
+   - Type **CNAME**, Host/Name **`oapmanager`**, Value/Points to = the Railway
+     CNAME target from step 1. (Same place you added the MailerSend records — this
+     leaves your `www`/root Wix site untouched.)
+3. Wait for Railway to show the domain **Active** (DNS propagation — minutes to a
+   couple hours). Then `https://oapmanager.allenotto.com` serves the app and
+   `https://oapmanager.allenotto.com/api/health` returns `{"status":"ok"}` via the
+   proxy.
+
+> Both `SERVER_URL` and `WEB_ORIGIN` on the API are the SAME value —
+> `https://oapmanager.allenotto.com`. The API's own Railway URL is used only as
+> the frontend's `API_URL` (the internal proxy target).
 
 ## 2. Google OAuth — consent screen + client credentials
 
@@ -118,17 +138,22 @@ Create one Railway **project** with three services from this repo:
    name, support email, developer contact. Add scopes `email`, `profile`,
    `openid`.
 3. *Credentials → Create Credentials → OAuth client ID* → **Web application**.
-   - Authorized JavaScript origins: your frontend `WEB_ORIGIN`.
-   - Authorized redirect URI: **`{SERVER_URL}/api/auth/callback/google`**
-     (e.g. `https://oap-api.up.railway.app/api/auth/callback/google`).
+   - Authorized JavaScript origin: **`https://oapmanager.allenotto.com`**.
+   - Authorized redirect URI:
+     **`https://oapmanager.allenotto.com/api/auth/callback/google`**
+     (this is `{SERVER_URL}/api/auth/callback/google` — the single origin, which
+     the frontend proxy forwards to the API).
 4. Copy the **Client ID** and **Client secret** into the API service's
    `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
-5. ⚠️ **Verification flag:** while the consent screen is in "Testing", only email
-   addresses you add as *Test users* can sign in, and there's an "unverified app"
-   warning. To let **any** Texas CM sign in, you must *Publish* the app and go
-   through **Google's OAuth verification** (can take days–weeks; may require a
-   privacy-policy URL and a domain-ownership check). Plan for this before public
-   launch — it does not block our private end-to-end test with your own account.
+5. ⚠️ **Verification flag:** for THIS cycle, keep the consent screen in
+   **"Testing"** and add the CMs/judges who need access as *Test users* (up to
+   100). They'll see a one-time "unverified app" warning they can click through —
+   fine for the dry-run and first real contest. To let **any** Texas CM sign in
+   without that warning, you later *Publish* and go through **Google's OAuth
+   verification**, which requires the domain (`oapmanager.allenotto.com`, now
+   real) and a **privacy-policy URL** — already served at
+   `https://oapmanager.allenotto.com/privacy.html`. Do that at public launch; it
+   does not block our private end-to-end test.
 
 ## 3. MailerSend — magic-link email
 
@@ -158,15 +183,28 @@ verifies a domain with **TXT/CNAME** records only, which Wix supports.
 
 ## 4. End-to-end verification (we do this together — the deploy-gated ACs)
 
-Once 1–3 are done and both services are deployed, we verify with your account:
+Once 1–3 and 1d are done and the domain is Active, we verify — **including on a
+real phone**, since fixing mobile sign-in (#46) is the whole point of this slice:
 
-- [ ] Open the frontend URL → **Continue with Google** → land on the dashboard.
-- [ ] Sign out → **email a magic link** → open the link → land on the dashboard.
-- [ ] The API is reachable at its stable URL (`GET {SERVER_URL}/health` → `{"status":"ok"}`).
+**Desktop**
+- [ ] `https://oapmanager.allenotto.com` → **Continue with Google** → dashboard.
+- [ ] Sign out → **email a magic link** → open the link → dashboard.
+- [ ] `GET https://oapmanager.allenotto.com/api/health` → `{"status":"ok"}` (proxy works).
+- [ ] `GET` the API's raw Railway URL root `/` → **302 redirects** to the app
+      (not `Cannot GET /`).
+
+**Mobile (the #46 fix — Safari on iPhone AND Chrome on Android if possible)**
+- [ ] **Continue with Google** completes and lands on the dashboard (no
+      `state_mismatch` / `Cannot GET /`).
+- [ ] **Magic link**: request it, open the emailed link on the phone → dashboard,
+      and the session **persists** after closing/reopening the tab.
+- [ ] Confirm in devtools/inspector that the session cookie is `SameSite=Lax`
+      (not `None`).
+
+**Infra**
 - [ ] Postgres backups show as enabled in Railway.
 
 The auth-gated CRUD guarantees (own-contests-only, cross-account rejected,
-opaque round-trip, credential/malformed rejection) are already locked by the
-integration suite (`npm test`) and don't need manual checking. Wiring the
-frontend's contests to this API is the **next** slice (#27, background sync);
-this slice deliberately stops at "signed in, reaching the app."
+opaque round-trip, credential/malformed rejection) are locked by the integration
+suite (`npm test`). With mobile sign-in working end to end, 2.0 is ready to be
+the tool of record — the switchover-sign-off AC of #30.

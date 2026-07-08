@@ -2,9 +2,20 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Plain static build — no server component anywhere in this app.
-// `vite build` emits static files; `vite dev` is only a local dev convenience.
+// `vite build` emits the static app shell (all document generation and storage
+// stay client-side). It is served in production by serve.mjs, a thin host that
+// also reverse-proxies /api/* to the API so app and API share one origin
+// (Slice 17, #46). In dev, the proxy below gives `vite dev` the same same-origin
+// shape, so the app calls relative /api paths everywhere.
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_API_URL || 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [
     react(),
     // PWA / offline hardening (Slice 15, issue #28). Workbox precaches the app

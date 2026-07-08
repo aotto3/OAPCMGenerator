@@ -19,11 +19,13 @@ import { optionalEnv, requireEnv } from './env';
 const magicLinkSender = makeMagicLinkSender();
 
 const serverUrl = requireEnv('SERVER_URL');
-// Frontend and API are separate origins, so the session cookie is cross-site:
-// it must be SameSite=None; Secure, which requires HTTPS. We key this off the
-// API's own scheme (not NODE_ENV) so a real https deploy always gets the right
-// cookie regardless of how the environment is labelled; http (local dev) uses
-// Lax so cookies still work same-origin.
+// App and API are served from ONE origin in production: a small reverse proxy on
+// the frontend host forwards /api/* to this API (Slice 17, #46). Same-origin
+// means the session cookie is first-party, so SameSite=Lax is correct — and
+// mobile Safari/Chrome (which block third-party SameSite=None cookies) now keep
+// the session, which they did not when the two Railway hosts were cross-site.
+// Secure is keyed off this API's own scheme (not NODE_ENV) so an https deploy
+// always gets it; http (local dev) omits it so cookies still work.
 const secureCookies = serverUrl.startsWith('https://');
 
 export const auth = betterAuth({
@@ -44,8 +46,6 @@ export const auth = betterAuth({
   },
   plugins: [magicLink({ sendMagicLink: ({ email, url }) => magicLinkSender({ email, url }) })],
   advanced: {
-    defaultCookieAttributes: secureCookies
-      ? { sameSite: 'none', secure: true }
-      : { sameSite: 'lax', secure: false },
+    defaultCookieAttributes: { sameSite: 'lax', secure: secureCookies },
   },
 });
