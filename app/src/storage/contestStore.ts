@@ -110,6 +110,29 @@ function emitChange(id: string, type: ContestChangeType): void {
   for (const listener of changeListeners) listener(id, type);
 }
 
+/* ────────────────────────── pull notifications (UI refresh) ──────────────────────────
+ * A pull applies a remote contest to this device (putPulledContest). It must NOT
+ * go through emitChange — that drives the sync engine's push and would bounce the
+ * just-pulled data straight back up. But the UI does need to know: the dashboard
+ * reads its contest list once on mount, so a pull arriving while it is open would
+ * otherwise stay invisible until a reload (Slice 14 known gap, closed here in
+ * Slice 15). This is a separate channel with exactly that one consumer — a pure
+ * "remote data landed" signal, no push semantics.
+ */
+type ContestPulledListener = (id: string) => void;
+
+const pullListeners = new Set<ContestPulledListener>();
+
+/** Subscribe to remote pulls landing on this device. Returns an unsubscribe fn. */
+export function onContestPulled(listener: ContestPulledListener): () => void {
+  pullListeners.add(listener);
+  return () => pullListeners.delete(listener);
+}
+
+function emitPulled(id: string): void {
+  for (const listener of pullListeners) listener(id);
+}
+
 export interface ContestSummary {
   id: string;
   name: string;
@@ -183,7 +206,10 @@ export async function getContestRecord(id: string): Promise<StoredContest | unde
  *    data is per-device and never travels with a pull).
  *  - the contest's checkpoints are REPLACED wholesale with the pulled set, so
  *    checkpoints ride the same last-write-wins-per-contest resolution.
- * Deliberately does NOT publish a change (a pull must not re-trigger a push).
+ * Deliberately does NOT publish a CHANGE (that drives the push path — a pull must
+ * not re-trigger a push). It does emit a PULLED signal, a UI-only channel the
+ * dashboard listens on to refresh; the two channels are kept separate for exactly
+ * this reason.
  */
 export async function putPulledContest(
   contest: Contest,
@@ -209,6 +235,10 @@ export async function putPulledContest(
   for (const checkpoint of checkpoints) await cpStore.put(checkpoint);
 
   await tx.done;
+
+  // Notify the UI (not the sync engine) that remote data landed, so an open
+  // dashboard can refresh. This is NOT emitChange — a pull must not re-push.
+  emitPulled(contest.id);
 }
 
 /**

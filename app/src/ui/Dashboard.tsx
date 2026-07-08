@@ -5,6 +5,7 @@ import {
   deleteContest,
   getContest,
   listContests,
+  onContestPulled,
   type ContestSummary,
 } from '../storage/contestStore';
 
@@ -28,7 +29,17 @@ export function Dashboard({
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void listContests().then(setContests);
+    let active = true;
+    const refresh = () => void listContests().then((list) => active && setContests(list));
+    refresh();
+    // Background sync pulls land in IndexedDB without re-rendering us; refresh
+    // the list when one arrives so a pull while the dashboard is open shows up
+    // without a manual reload (Slice 14 gap, closed in Slice 15 / #28).
+    const off = onContestPulled(refresh);
+    return () => {
+      active = false;
+      off();
+    };
   }, []);
 
   // Opens an in-memory draft; nothing is stored until the first edit.

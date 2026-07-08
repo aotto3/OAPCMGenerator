@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Contest } from '../model/contest';
 import { saveContest } from '../storage/contestStore';
+import { requestPersistentStorage } from '../storage/persist';
 import { signOut, useSession } from '../auth/authClient';
 import { SignIn } from '../auth/SignIn';
 import { Dashboard } from './Dashboard';
 import { SyncStatus } from './SyncStatus';
+import { UpdatePrompt } from './UpdatePrompt';
 import { useSync } from './useSync';
 import { Workspace } from './Workspace';
 
@@ -49,17 +51,23 @@ export function App() {
   const { data: session, isPending } = useSession();
   const syncStatus = useSync(!!session);
 
-  if (isPending) {
-    return (
-      <div className="page">
-        <p className="muted">Loading…</p>
-      </div>
-    );
-  }
+  // Ask the browser to make this origin's IndexedDB persistent once the user is
+  // signed in and actually has contests to protect (Slice 15, #28). Best-effort
+  // and fire-and-forget: the app works whether or not it's granted.
+  useEffect(() => {
+    if (session) void requestPersistentStorage();
+  }, [!!session]);
 
-  if (!session) return <SignIn />;
-
-  return (
+  // The auth-gated content. Computed as one node so UpdatePrompt can render at a
+  // stable position after it in every state — otherwise the loading → sign-in →
+  // app transitions would remount UpdatePrompt and needlessly re-register the SW.
+  const content = isPending ? (
+    <div className="page">
+      <p className="muted">Loading…</p>
+    </div>
+  ) : !session ? (
+    <SignIn />
+  ) : (
     <>
       <div className="account-bar">
         <SyncStatus status={syncStatus} />
@@ -69,6 +77,15 @@ export function App() {
         </button>
       </div>
       <ContestFlow />
+    </>
+  );
+
+  return (
+    <>
+      {content}
+      {/* Registers the service worker (once, stable across auth state) and
+          surfaces new deploys via a subtle update banner. */}
+      <UpdatePrompt />
     </>
   );
 }
