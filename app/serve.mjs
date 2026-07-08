@@ -33,16 +33,20 @@ const app = express();
 app.disable('x-powered-by');
 
 // Reverse-proxy the whole /api surface (Better Auth at /api/auth/*, contest CRUD
-// at /api/contests) to the API service. Mounted BEFORE the static handler so it
-// wins for /api. xfwd forwards X-Forwarded-* so the API sees the original https
-// origin; changeOrigin rewrites Host so TLS to the target resolves. No body
-// parser runs before this, so request bodies stream through untouched.
+// at /api/contests) to the API service. We mount at the ROOT and select with
+// pathFilter — NOT app.use('/api', …) — because mounting on a path makes Express
+// strip that path before the proxy sees it, so the API would receive /auth/*
+// instead of /api/auth/* and 404 every auth call. At root, req.url keeps the
+// full /api prefix and is forwarded verbatim. xfwd forwards X-Forwarded-* so the
+// API sees the original https origin; changeOrigin rewrites Host so TLS to the
+// target resolves. No body parser runs before this, so request bodies stream
+// through untouched.
 app.use(
-  '/api',
   createProxyMiddleware({
     target: API_URL,
     changeOrigin: true,
     xfwd: true,
+    pathFilter: (path) => path.startsWith('/api'),
   }),
 );
 
