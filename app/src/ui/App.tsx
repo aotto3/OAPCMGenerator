@@ -4,6 +4,8 @@ import { saveContest } from '../storage/contestStore';
 import { signOut, useSession } from '../auth/authClient';
 import { SignIn } from '../auth/SignIn';
 import { Dashboard } from './Dashboard';
+import { SyncStatus } from './SyncStatus';
+import { useSync } from './useSync';
 import { Workspace } from './Workspace';
 
 /**
@@ -37,13 +39,15 @@ function ContestFlow() {
 }
 
 /**
- * Auth gate (PRD user stories 1, 2). Contests are still stored locally in this
- * slice; wiring them to the per-account server API is the next slice (#27,
- * background sync). Here we only require a signed-in session to reach the app
- * and expose sign-out — proving the deployed sign-in flow end to end.
+ * Auth gate (PRD user stories 1, 2). Once signed in, background sync (Slice 14,
+ * issue #27) keeps this device's contests in step with the account: useSync
+ * starts the engine and the SyncStatus indicator reflects it. Contests still
+ * live locally in IndexedDB and edits never block on the network — sync runs in
+ * the storage layer, off the typing path.
  */
 export function App() {
   const { data: session, isPending } = useSession();
+  const syncStatus = useSync(!!session);
 
   if (isPending) {
     return (
@@ -58,6 +62,7 @@ export function App() {
   return (
     <>
       <div className="account-bar">
+        <SyncStatus status={syncStatus} />
         <span className="muted">{session.user.email}</span>
         <button className="btn-ghost" onClick={() => void signOut()}>
           Sign out

@@ -30,10 +30,17 @@ src/
              derived names (v12 formats), versioned serialize/parse with
              forward migrations. Fully unit-tested. Everything else imports
              the contest type from here; nothing here imports anything else.
-  storage/   Local-first persistence. contestStore.ts is the only file that
-             touches IndexedDB; useAutosave.ts is the one autosave pattern
-             (debounced write on every state change, flush on leave). The
-             future sync layer plugs in here, not in the UI.
+  storage/   Local-first persistence AND background sync. contestStore.ts is the
+             only file that touches IndexedDB; useAutosave.ts is the one autosave
+             pattern (debounced write on every state change, flush on leave).
+             The sync layer lives here too (Slice 14, issue #27), never in the
+             UI: syncEngine.ts orchestrates push/pull with last-write-wins per
+             contest (syncReconcile.ts), an in-memory offline queue, and
+             retry/backoff (syncBackoff.ts); syncClient.ts is the only place that
+             calls the API; syncStore.ts is the IndexedDB adapter; browserSync.ts
+             wires it to the browser. It runs off the edit path — contestStore
+             publishes a change after each write and the engine schedules an
+             async flush, so typing never waits on the network.
   ui/        React components. They hold a Contest in state, edit it through
              model helpers, and persist via useAutosave. UI components never
              import `idb` or build serialization formats themselves.
@@ -58,8 +65,20 @@ codec, and the server later.
 - **Schema changes**: bump `CONTEST_SCHEMA_VERSION`, add a migration step in
   `MIGRATIONS`, and add a round-trip + migration test. Never edit existing
   migration steps.
+- **Never put a network call on the edit path.** Sync reacts to storage
+  writes and runs asynchronously; nothing the user types waits on the server.
+- **Checkpoints ride the contest's sync bundle**, not their own endpoint. The
+  wire payload is `{ schemaVersion, contest, checkpoints }` — a superset of the
+  `serializeContest()` envelope the server stores opaquely (`model/syncBundle.ts`).
+  A checkpoint-only change nudges the contest's `updatedAt` so it propagates
+  under last-write-wins-per-contest.
+- **Device-only fields never leave the device.** `serializeContest()` strips
+  Speechwire, the server rejects credential-bearing payloads, and
+  `syncBundle.test.ts` / `syncEngine.test.ts` assert it at the wire level.
 - **Tests assert module-boundary behavior** (inputs → outputs), not
-  implementation details. UI is verified manually in v1 (PRD decision).
+  implementation details. UI and multi-device/offline sync flows are verified
+  manually in v1 (PRD decision); the sync logic (LWW, offline queue,
+  retry/backoff, device-only exclusion) is unit-tested at its seams.
 - Boring choices on purpose: no state-management library, no router yet
   (App.tsx holds one `openContestId`), no CSS framework. Add them only when
   a slice actually needs them.

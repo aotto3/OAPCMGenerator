@@ -19,6 +19,7 @@ import {
   type Contest,
   type SpeechwireCredentials,
 } from '../model/contest';
+import type { Checkpoint } from '../model/checkpoint';
 
 interface ContestRecord {
   id: string;
@@ -86,6 +87,29 @@ export function db(): Promise<IDBPDatabase<OapDB>> {
   return dbPromise;
 }
 
+/* ────────────────────────── sync change notifications ──────────────────────────
+ * The sync layer (storage/syncEngine.ts) needs to know when local contest data
+ * changes so it can push. Rather than have the UI or the sync layer poll, the
+ * store publishes a change for the contest whose data was written. This runs
+ * AFTER the IndexedDB write and only marks work for a later async flush — no
+ * network call touches the edit path. Pull writes (putPulledContest) deliberately
+ * do NOT publish, so a pull can never bounce back as a push.
+ */
+export type ContestChangeType = 'save' | 'delete';
+type ContestChangeListener = (id: string, type: ContestChangeType) => void;
+
+const changeListeners = new Set<ContestChangeListener>();
+
+/** Subscribe to local contest data changes. Returns an unsubscribe function. */
+export function onContestChanged(listener: ContestChangeListener): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+function emitChange(id: string, type: ContestChangeType): void {
+  for (const listener of changeListeners) listener(id, type);
+}
+
 export interface ContestSummary {
   id: string;
   name: string;
@@ -116,8 +140,92 @@ export async function saveContest(contest: Contest): Promise<void> {
     payload: serializeContest(contest),
     deviceOnly: contest.speechwire,
   });
+  emitChange(contest.id, 'save');
 }
 
 export async function deleteContest(id: string): Promise<void> {
   await (await db()).delete('contests', id);
+  emitChange(id, 'delete');
+}
+
+/* ────────────────────────── sync-layer access ──────────────────────────
+ * These serve the background sync layer (storage/syncEngine.ts) and keep this
+ * file the only one that touches IndexedDB. The device-only Speechwire field is
+ * never exposed here: getContestRecord hands back only the serializable payload
+ * (which serializeContest already stripped), so nothing on the sync path can
+ * read credentials.
+ */
+
+/** The stored contest payload + metadata for one contest (no device-only data). */
+export interface StoredContest {
+  id: string;
+  name: string;
+  updatedAt: string;
+  /** serializeContest() envelope — the contest without checkpoints or creds. */
+  payload: string;
+}
+
+/** Raw stored contest for the sync layer to build an upload bundle from. */
+export async function getContestRecord(id: string): Promise<StoredContest | undefined> {
+  const record = await (await db()).get('contests', id);
+  if (!record) return undefined;
+  return { id: record.id, name: record.name, updatedAt: record.updatedAt, payload: record.payload };
+}
+
+/**
+ * Writes a contest pulled from the server, together with its checkpoints, as
+ * this device's copy. Used by the sync layer's PULL path:
+ *  - `updatedAt` is the server's version clock (the LWW winner), stored as the
+ *    record's updatedAt so subsequent reconciles compare correctly. It may run
+ *    ahead of the payload's own contest.updatedAt (e.g. after a checkpoint-only
+ *    bump), which is expected and harmless — later edits use a fresh `now`.
+ *  - the device's existing Speechwire credentials are PRESERVED (device-only
+ *    data is per-device and never travels with a pull).
+ *  - the contest's checkpoints are REPLACED wholesale with the pulled set, so
+ *    checkpoints ride the same last-write-wins-per-contest resolution.
+ * Deliberately does NOT publish a change (a pull must not re-trigger a push).
+ */
+export async function putPulledContest(
+  contest: Contest,
+  checkpoints: Checkpoint[],
+  updatedAt: string,
+): Promise<void> {
+  const database = await db();
+  const existing = await database.get('contests', contest.id);
+  const tx = database.transaction(['contests', 'checkpoints'], 'readwrite');
+
+  await tx.objectStore('contests').put({
+    id: contest.id,
+    name: contestDisplayName(contest.identity),
+    updatedAt,
+    // Store the contest-only envelope locally; checkpoints live in their store.
+    payload: serializeContest(contest),
+    deviceOnly: existing?.deviceOnly ?? contest.speechwire,
+  });
+
+  const cpStore = tx.objectStore('checkpoints');
+  const stale = await cpStore.index('byContest').getAllKeys(contest.id);
+  for (const key of stale) await cpStore.delete(key);
+  for (const checkpoint of checkpoints) await cpStore.put(checkpoint);
+
+  await tx.done;
+}
+
+/**
+ * Advances a contest's updatedAt clock for a checkpoint-only change (create,
+ * delete, or note edit that doesn't otherwise touch the contest) and publishes
+ * the change so sync uploads the refreshed bundle. Because checkpoints are
+ * folded into the contest's sync payload, they only propagate when the contest's
+ * clock moves — this is what moves it. No-op if the contest isn't stored (a
+ * brand-new draft has nothing to sync yet).
+ */
+export async function bumpContestForCheckpointChange(
+  contestId: string,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const database = await db();
+  const record = await database.get('contests', contestId);
+  if (!record) return;
+  await database.put('contests', { ...record, updatedAt: now });
+  emitChange(contestId, 'save');
 }
