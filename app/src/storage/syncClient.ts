@@ -5,7 +5,9 @@
  * inject a fake and never touch the network.
  *
  * Requests are credentialed (the Better Auth session cookie rides along, as in
- * authClient.ts) and point at VITE_API_URL. Failures are classified for the
+ * authClient.ts) and are same-origin by default — the frontend reverse proxy
+ * forwards /api/* to the API (Slice 17, #46), so paths are relative unless
+ * VITE_API_URL overrides the origin. Failures are classified for the
  * engine's retry policy: a dropped connection is a SyncNetworkError (transient);
  * a non-2xx response is a SyncHttpError carrying its status (the engine decides
  * — 5xx/429 transient, 401 auth-lost, 404/409 handled structurally).
@@ -65,7 +67,10 @@ export interface SyncClient {
   remove(id: string): Promise<void>;
 }
 
-const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/\/+$/, '');
+// Empty by default → relative, same-origin requests (`/api/contests`), which the
+// frontend reverse proxy forwards to the API. Set VITE_API_URL to an absolute
+// origin to override.
+const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
   let res: Response;

@@ -18,6 +18,7 @@ async function main(): Promise<void> {
   const app = createApp({
     repo: createContestRepo(pool),
     corsOrigin: requireEnv('WEB_ORIGIN'),
+    webOrigin: requireEnv('WEB_ORIGIN'),
     // Mount Better Auth at /api/auth (before the JSON body parser — see app.ts).
     mountAuth: (a) => a.all('/api/auth/*splat', toNodeHandler(auth)),
     // A request is authenticated iff Better Auth resolves a session from its cookies.
