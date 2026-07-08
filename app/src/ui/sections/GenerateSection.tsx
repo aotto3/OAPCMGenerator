@@ -7,6 +7,8 @@ import {
   type DocumentWarning,
 } from '../../documents/generate';
 import { Section } from './Section';
+import { Divider } from './fields';
+import { DocumentsChecklist } from './DocumentsSection';
 
 type StatusKind = 'info' | 'success' | 'error';
 interface Status {
@@ -21,7 +23,13 @@ interface Status {
  * client-side; the document engine does the building, this component only drives
  * it and reports progress.
  */
-export function GenerateSection({ contest }: { contest: Contest }) {
+export function GenerateSection({
+  contest,
+  onChange,
+}: {
+  contest: Contest;
+  onChange: (next: Contest) => void;
+}) {
   const [status, setStatus] = useState<Status | null>(null);
   const [warnings, setWarnings] = useState<DocumentWarning[]>([]);
   const [busy, setBusy] = useState(false);
@@ -71,7 +79,9 @@ export function GenerateSection({ contest }: { contest: Contest }) {
   }
 
   return (
-    <Section title="⬇️ Generate" badge="Download ZIP">
+    <Section title="⬇️ Generate Documents" badge="Download ZIP">
+      <DocumentsChecklist contest={contest} onChange={onChange} />
+      <Divider>Download</Divider>
       <p className="muted">
         Builds a ZIP of the selected documents plus a portable contest file (a backup you can
         re-import on any machine). {selectedCount} document{selectedCount !== 1 ? 's' : ''} selected.

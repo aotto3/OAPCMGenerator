@@ -17,7 +17,8 @@ const GREY = '#DADADA';
 
 function rowColor(ev: ScheduleEvent): string {
   if (ev.type === 'show') return SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
-  if (ev.type === 'dm') return SCHOOL_COLORS_HEX[0];
+  // Directors' Meeting is grey — distinct from school 1, which used to share
+  // this row's color (Slice 16, #29). Mirrors contestSchedule.ts's generated .xlsx.
   return GREY;
 }
 

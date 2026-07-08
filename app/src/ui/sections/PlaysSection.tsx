@@ -11,17 +11,19 @@ export function PlaysSection({
   contest,
   completion,
   onChange,
+  defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  defaultOpen?: boolean;
 }) {
   return (
     <Section
       title="🎭 Play Titles & Performance Order"
       badge="After Entry Deadline"
       completion={completion}
-      defaultOpen={false}
+      defaultOpen={defaultOpen}
     >
       <p className="note-box">
         Enter after the UIL Spring Meet entry deadline. Performance order should match the blind

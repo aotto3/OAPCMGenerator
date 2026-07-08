@@ -6,16 +6,18 @@ export function CmInfoSection({
   contest,
   completion,
   onChange,
+  defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  defaultOpen?: boolean;
 }) {
   const cm = contest.cmInfo;
   const edit = (patch: Partial<Contest['cmInfo']>) => onChange(withCmInfo(contest, patch));
 
   return (
-    <Section title="👤 CM Info" completion={completion} defaultOpen={false}>
+    <Section title="👤 CM Info" completion={completion} defaultOpen={defaultOpen}>
       <div className="field-grid">
         <TextField label="Full Name" value={cm.name} onChange={(v) => edit({ name: v })} />
         <TextField label="Email Address" type="email" value={cm.email} onChange={(v) => edit({ email: v })} />
