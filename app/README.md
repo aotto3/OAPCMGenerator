@@ -8,8 +8,11 @@ conventions.
 ## Toolchain
 
 Vite + React + TypeScript, tested with vitest. `npm run build` produces a
-plain static site — there is no server anywhere in this app; all document
-generation and storage is client-side (local-first).
+plain static site; all document generation and storage stay client-side
+(local-first). The only backend is the thin auth/storage API in `../server`
+(Slice 13, PRD module 5): the app signs in against it (Google OAuth + magic
+link) and — from Slice 14 on — syncs contests to it. Set `VITE_API_URL` to the
+API origin (see `.env.example`).
 
 ```
 npm install     # once
