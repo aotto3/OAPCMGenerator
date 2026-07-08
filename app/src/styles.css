@@ -170,8 +170,8 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .phase-count { font-size: var(--fs-sm); font-weight: 700; }
 .phase-partial { border-left-color: var(--c-blue); }
 .phase-partial .phase-count { color: var(--c-blue); }
-.phase-done { border-left-color: var(--c-success); background: var(--c-success-bg); }
-.phase-done .phase-count { color: var(--c-success); }
+.phase-done { border-left-color: var(--c-blue); background: var(--c-bg-blue); }
+.phase-done .phase-count { color: var(--c-blue); }
 
 /* Jump-to dropdown: the whole section list on one screen, no horizontal scroll.
    Trigger shows the current (scroll-spy) section; the menu reveals all of them. */
@@ -208,7 +208,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   width: 8px; height: 8px; border-radius: var(--radius-pill);
   background: var(--c-warn-border); flex: none;
 }
-.ws-nav-dot.is-done { background: var(--c-success); }
+.ws-nav-dot.is-done { background: var(--c-blue); }
 
 /* Collapsible section header (v12 section-header) with completion chip. */
 .section-header {
@@ -230,7 +230,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   background: var(--c-warn-bg); border: 1px solid var(--c-warn-border);
   border-radius: var(--radius-pill); padding: 2px 8px;
 }
-.chip-done { color: var(--c-success); background: var(--c-success-bg); border-color: var(--c-success-border); }
+.chip-done { color: var(--c-blue); background: var(--c-bg-blue); border-color: var(--c-blue-border); }
 .chevron { font-size: 0.7rem; color: var(--c-muted); transition: transform 0.15s; }
 .chevron-open { transform: rotate(180deg); }
 
