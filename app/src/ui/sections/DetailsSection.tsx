@@ -202,7 +202,8 @@ export function DetailsSection({
 
       <Divider>Speechwire Access</Divider>
       <p className="device-only-note">
-        🔒 Stored on this device only — never synced to your account or included in exports.
+        🔒 Stored on this device only — may need re-entry. Never synced to your account or included
+        in exports.
       </p>
       <div className="field-grid">
         <TextField

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OAP">
+  <rect width="64" height="64" rx="10" fill="#1565c0"/>
+  <text x="32" y="41" font-family="Arial Black, Arial, sans-serif" font-weight="900"
+        font-size="26" fill="#ffffff" text-anchor="middle">OAP</text>
+</svg>
