@@ -87,7 +87,7 @@ export function HistorySection({
   }
 
   return (
-    <Section title="🕘 Version History" defaultOpen={false}>
+    <Section title="💾 Manual Save" defaultOpen={false}>
       <div className="note-box">
         Save a named checkpoint to capture the contest at an important moment (e.g. “before judge change”).
         Restoring a checkpoint replaces your current data — but first saves the current state as an automatic

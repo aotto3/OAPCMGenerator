@@ -13,13 +13,15 @@ export function SchoolsSection({
   contest,
   completion,
   onChange,
+  defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  defaultOpen?: boolean;
 }) {
   return (
-    <Section title="🏫 Schools & Directors" badge="Enter As Known" completion={completion}>
+    <Section title="🏫 Schools & Directors" badge="Enter As Known" completion={completion} defaultOpen={defaultOpen}>
       <p className="note-box">
         Enter school names and director contact info as soon as you know who is participating. Set{' '}
         <strong>Number of Schools</strong> in Contest Details first. Play titles are entered in the

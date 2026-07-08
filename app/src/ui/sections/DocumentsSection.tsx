@@ -1,8 +1,12 @@
 import { setAllDocuments, setDocumentSelected, type Contest } from '../../model/contest';
 import { DOCUMENT_REGISTRY } from '../../documents/registry';
-import { Section } from './Section';
 
-export function DocumentsSection({
+/**
+ * Document checklist — the "which documents to generate" picker. Rendered bare
+ * (no Section wrapper) inside GenerateSection: the pick-then-generate steps live
+ * in one "Generate Documents" section (Slice 16, #29).
+ */
+export function DocumentsChecklist({
   contest,
   onChange,
 }: {
@@ -12,7 +16,7 @@ export function DocumentsSection({
   const selectedCount = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]).length;
 
   return (
-    <Section title="📦 Documents to Generate" badge="Select All That Apply">
+    <>
       <div className="doc-toolbar">
         <button type="button" className="btn-util" onClick={() => onChange(setAllDocuments(contest, true))}>
           ☑ Check All
@@ -39,6 +43,6 @@ export function DocumentsSection({
           </label>
         ))}
       </div>
-    </Section>
+    </>
   );
 }

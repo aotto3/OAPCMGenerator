@@ -31,10 +31,12 @@ export function DetailsSection({
   contest,
   completion,
   onChange,
+  defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  defaultOpen?: boolean;
 }) {
   const { details } = contest;
   const edit = (patch: Partial<ContestDetails>) => onChange(withDetails(contest, patch));
@@ -46,7 +48,7 @@ export function DetailsSection({
   const day1Options = Array.from({ length: n - 1 }, (_, i) => i + 1);
 
   return (
-    <Section title="📅 Contest Details" badge="After Planning Meeting" completion={completion} defaultOpen={false}>
+    <Section title="📅 Contest Details" badge="After Planning Meeting" completion={completion} defaultOpen={defaultOpen}>
       <Divider>Dates &amp; Times</Divider>
       <div className="field-grid">
         <TextField

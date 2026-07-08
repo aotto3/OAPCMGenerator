@@ -14,16 +14,18 @@ export function IdentitySection({
   contest,
   completion,
   onChange,
+  defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  defaultOpen?: boolean;
 }) {
   const { identity } = contest;
   const edit = (patch: Partial<ContestIdentity>) => onChange(withIdentity(contest, patch));
 
   return (
-    <Section title="📋 Contest Identity" badge="Upon Appointment" completion={completion}>
+    <Section title="📋 Contest Identity" badge="Upon Appointment" completion={completion} defaultOpen={defaultOpen}>
       <div className="field-grid">
         <TextField label="Contest Year" value={identity.contestYear} onChange={(v) => edit({ contestYear: v })} />
         <SelectField

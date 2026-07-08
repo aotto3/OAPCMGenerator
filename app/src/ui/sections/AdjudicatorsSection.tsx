@@ -12,16 +12,18 @@ export function AdjudicatorsSection({
   contest,
   completion,
   onChange,
+  defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  defaultOpen?: boolean;
 }) {
   // Like v12, judges beyond numJudges keep their data but are hidden.
   const active = contest.adjudicators.slice(0, contest.details.numJudges);
 
   return (
-    <Section title="⚖️ Adjudicators" badge="After Contracting" completion={completion} defaultOpen={false}>
+    <Section title="⚖️ Adjudicators" badge="After Contracting" completion={completion} defaultOpen={defaultOpen}>
       <p className="note-box">
         Mailing addresses are shared with directors for script submission. Include full address with
         city and ZIP.

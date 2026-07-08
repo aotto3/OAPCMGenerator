@@ -54,9 +54,9 @@ export function buildContestSchedule(contest: Contest): Uint8Array {
     ws['A' + row] = sc(minToFrac(dmMins - 120), null, false, true);
     ws['C' + row] = sc('CM Arrival', null, false, false);
     row++;
-    ws['A' + row] = sc(minToFrac(dmMins), SCHOOL_COLORS[0], false, true);
-    ws['B' + row] = sc(minToFrac(dmMins + 30), SCHOOL_COLORS[0], false, true);
-    ws['C' + row] = sc("Director's Meeting", SCHOOL_COLORS[0], false, false);
+    ws['A' + row] = sc(minToFrac(dmMins), THEME.xlsx.grey, false, true);
+    ws['B' + row] = sc(minToFrac(dmMins + 30), THEME.xlsx.grey, false, true);
+    ws['C' + row] = sc("Director's Meeting", THEME.xlsx.grey, false, false);
     row++;
   }
 
