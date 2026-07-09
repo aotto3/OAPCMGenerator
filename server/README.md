@@ -20,19 +20,22 @@ and nothing more.
 ```
 src/
   env.ts           Env access (nothing throws at import; callers require values)
-  db.ts            Postgres pool + our contests migration
+  db.ts            Postgres pool + our migrations (contests + events)
   contestPayload.ts  Opaque envelope validation (pure, fully tested)
   contestRepo.ts   Data access — every query scoped by ownerId
-  contestRoutes.ts Express CRUD router; auth injected as resolveUserId(req)
-  app.ts           App factory (DI: repo + resolveUserId + optional auth mount)
+  eventLog.ts      Append-only activity log (recordEvent / queryEvents)
+  contestRoutes.ts Express CRUD router; auth injected as resolveUser(req)
+  app.ts           App factory (DI: repo + eventLog + resolveUser + optional auth mount)
   auth.ts          Better Auth instance (Google + magic link + MailerSend)
   email.ts         MailerSend magic-link sender (logs link in dev if no API key)
   server.ts        Production entrypoint — wires real Postgres + Better Auth
 db/
-  contests.sql     Our one table (Better Auth owns its own tables)
+  contests.sql     Per-account contest storage (Better Auth owns its own tables)
+  events.sql       Append-only activity log
 test/
   contestPayload.test.ts  Opaque-validation unit tests
   contestCrud.test.ts     Auth-gated CRUD integration tests (pg-mem + supertest)
+  eventLog.test.ts        Activity-log integration tests (pg-mem + supertest)
 ```
 
 The app factory is dependency-injected so the integration tests run the real

@@ -1,18 +1,21 @@
 /**
  * Express app factory. Dependency-injected so the integration tests can build
  * the exact production app minus the two things they cannot exercise offline:
- * a real Postgres (they pass an in-memory one via `repo`) and a real Better
- * Auth session (they pass a fake `resolveUserId`). There is no test-only branch
- * in this file — the seams are the constructor arguments.
+ * a real Postgres (they pass an in-memory one via `repo` and `eventLog`) and a
+ * real Better Auth session (they pass a fake `resolveUser`). There is no
+ * test-only branch in this file — the seams are the constructor arguments.
  */
 import cors from 'cors';
 import express, { type Express } from 'express';
-import { createContestRoutes, type ResolveUserId } from './contestRoutes';
+import { createContestRoutes, type ResolveUser } from './contestRoutes';
 import type { ContestRepo } from './contestRepo';
+import type { EventLog } from './eventLog';
 
 export interface AppDeps {
   repo: ContestRepo;
-  resolveUserId: ResolveUserId;
+  /** Append-only activity log the contest routes write to, best-effort. */
+  eventLog: EventLog;
+  resolveUser: ResolveUser;
   /** Allowed browser origin for CORS (the deployed frontend). Omitted in tests. */
   corsOrigin?: string;
   /**
@@ -57,7 +60,10 @@ export function createApp(deps: AppDeps): Express {
     res.json({ status: 'ok' });
   });
 
-  app.use('/api/contests', createContestRoutes({ repo: deps.repo, resolveUserId: deps.resolveUserId }));
+  app.use(
+    '/api/contests',
+    createContestRoutes({ repo: deps.repo, eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
+  );
 
   return app;
 }

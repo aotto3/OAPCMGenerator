@@ -1,7 +1,7 @@
 /**
- * Postgres connection and our own migration. Better Auth manages its own
+ * Postgres connection and our own migrations. Better Auth manages its own
  * tables (user/session/account/verification) via the Better Auth CLI — see
- * README; this module owns only the `contests` table.
+ * README; this module owns the `contests` and `events` tables.
  *
  * The pool is a lazily-created singleton so importing this module never opens a
  * connection until something actually needs one (node-postgres connects on
@@ -27,11 +27,17 @@ export function getPool(): Pool {
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Applies our contests-table migration. Idempotent (CREATE TABLE IF NOT
- * EXISTS), so it is safe to run on every boot. Better Auth's tables are
- * applied separately by its CLI (`npm run migrate:auth`).
+ * Applies our own migrations. Each is idempotent (CREATE TABLE / INDEX IF NOT
+ * EXISTS), so running the whole set on every boot is safe. Better Auth's tables
+ * are applied separately by its CLI (`npm run migrate:auth`).
+ *
+ * Ordering is not significant — the migrations are self-contained and declare
+ * no cross-table foreign keys — but they are applied one at a time so a syntax
+ * error names the offending file.
  */
 export async function migrate(target: Pool): Promise<void> {
-  const sql = await readFile(join(here, '..', 'db', 'contests.sql'), 'utf8');
-  await target.query(sql);
+  for (const file of ['contests.sql', 'events.sql']) {
+    const sql = await readFile(join(here, '..', 'db', file), 'utf8');
+    await target.query(sql);
+  }
 }
