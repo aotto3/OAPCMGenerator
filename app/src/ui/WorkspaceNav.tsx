@@ -87,7 +87,15 @@ function useActiveSection(ids: string[]): string | null {
   return active;
 }
 
-export function WorkspaceNav({ progress }: { progress: Record<SectionId, SectionCompletion> }) {
+export function WorkspaceNav({
+  progress,
+  onExpandAll,
+  onCollapseAll,
+}: {
+  progress: Record<SectionId, SectionCompletion>;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+}) {
   const ids = SECTIONS.map((s) => s.id);
   const active = useActiveSection(ids);
   const phases = phaseTotals(progress);
@@ -130,6 +138,7 @@ export function WorkspaceNav({ progress }: { progress: Record<SectionId, Section
         ))}
       </ol>
 
+      <div className="ws-nav-actions">
       <div className="ws-nav-jump" ref={jumpRef}>
         <button
           type="button"
@@ -178,6 +187,19 @@ export function WorkspaceNav({ progress }: { progress: Record<SectionId, Section
             })}
           </ul>
         )}
+      </div>
+
+        <div className="ws-nav-toggle-all">
+          <button type="button" onClick={onExpandAll}>
+            Expand all
+          </button>
+          <span className="sep" aria-hidden>
+            ·
+          </span>
+          <button type="button" onClick={onCollapseAll}>
+            Collapse all
+          </button>
+        </div>
       </div>
     </nav>
   );

@@ -60,10 +60,60 @@
   /* Interaction. */
   --focus-ring: 2px solid var(--c-blue);
 
+  /* Background for free-text areas (email subject/body). Light by default. */
+  --c-input-bg: #fafafa;
+
+  /* Native form controls / scrollbars render in the light scheme by default. */
+  color-scheme: light;
+
   /* Height reserved for the sticky workspace nav, used as the scroll offset so
      jumping to a section doesn't tuck its heading under the nav. */
   --ws-nav-h: 92px;
 }
+
+/* --- Dark theme (Slice 18, #50) ------------------------------------------
+   Manual light/dark/system toggle (ui/theme.ts) sets data-theme on <html>;
+   an inline script in index.html sets it before first paint to avoid a flash.
+   Only the color tokens change — every component reads them, so the whole app
+   themes from this one block. Warm-dark to match the parchment/taupe brand.
+   The teal accent is BRIGHTENED for legibility on dark surfaces; the few solid
+   accent buttons (which pair the accent with white text in light mode) get a
+   dark-text override below so contrast stays AA in both modes. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-blue: #5cc4b9;
+  --c-blue-border: #3c6f6b;
+  --c-red: #e88f84;
+  --c-bg-blue: #123634;
+  --c-bg-red: #3a221f;
+  --c-border: #39352f;
+  --c-muted: #a89e91;
+
+  --c-surface: #24221e;
+  --c-page-bg: #1a1815;
+  --c-text: #ece6db;
+
+  --c-success: #7fc98a;
+  --c-success-bg: #16301b;
+  --c-success-border: #2f5e37;
+  --c-warn: #e3c063;
+  --c-warn-bg: #302914;
+  --c-warn-border: #5a4c22;
+  --c-note-bg: #2a2617;
+  --c-critique: #d0a3d8;
+  --c-critique-bg: #2c2033;
+  --c-critique-border: #5a3f63;
+
+  --c-input-bg: #201e1a;
+}
+
+/* Solid accent buttons pair the accent fill with white text in light mode; on
+   dark the accent brightens, so those flip to dark text to keep AA contrast. */
+:root[data-theme='dark'] .btn-primary { color: #06201e; }
+:root[data-theme='dark'] .critique-lock-btn { color: #052610; }
+/* Critique header is a light-purple fill in dark mode — dark text reads on it. */
+:root[data-theme='dark'] .critique-table th { color: #1c1420; }
 
 * { box-sizing: border-box; }
 
@@ -310,7 +360,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .advancing-check {
   display: flex; align-items: center; gap: 6px; cursor: pointer;
   background: var(--c-surface); border: 1.5px solid var(--c-warn-border); border-radius: var(--radius-sm);
-  padding: 5px 11px; font-size: var(--fs-sm); font-weight: 600; color: #4a3500;
+  padding: 5px 11px; font-size: var(--fs-sm); font-weight: 600; color: var(--c-text);
 }
 .advancing-generate-btn { padding: 7px 18px; }
 .advancing-to {
@@ -321,11 +371,11 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .email-subject-row { display: flex; gap: 6px; align-items: center; margin-bottom: var(--space-3); }
 .email-subject {
   flex: 1; min-width: 0; font: inherit; padding: var(--space-2);
-  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: #fafafa;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-input-bg);
 }
 .email-body {
   width: 100%; min-height: 220px; font: inherit; padding: 9px var(--space-3);
-  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: #fafafa;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-input-bg);
   resize: vertical; margin-bottom: var(--space-2);
 }
 
@@ -339,7 +389,9 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .critique-table th {
   background: var(--c-critique); color: #fff; padding: 6px var(--space-3); text-align: left; font-weight: 700;
 }
-.critique-table td { padding: 5px var(--space-3); border-bottom: 1px solid #ddd; }
+/* Like the schedule, rows carry fixed light judge-color fills, so cell text
+   stays dark in both themes rather than following the dark text token. */
+.critique-table td { padding: 5px var(--space-3); border-bottom: 1px solid #ddd; color: #1e1e1e; }
 .critique-col-num { width: 36px; text-align: center; font-weight: 700; color: #555; }
 .critique-col-move { width: 64px; text-align: center; white-space: nowrap; }
 .critique-play { font-style: italic; color: #555; }
@@ -390,7 +442,9 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   background: #222; color: #fff; padding: 5px var(--space-2); text-align: left; font-weight: 600;
 }
 .schedule-preview th:first-child, .schedule-preview th:nth-child(2) { width: 80px; }
-.schedule-preview td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid #ccc; }
+/* Rows carry fixed light pastel/grey fills (SchedulePreview.tsx), so the cell
+   text stays dark in both themes — it must never follow the dark text token. */
+.schedule-preview td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid #ccc; color: #1e1e1e; }
 .schedule-empty { font-style: italic; }
 
 .generate-row { margin-top: var(--space-3); }
@@ -399,7 +453,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .status-info { color: var(--c-muted); }
 .status-success { color: var(--c-success); }
 .status-error { color: var(--c-red); }
-.status-warning { color: #b26a00; }
+.status-warning { color: var(--c-warn); }
 .status-warning p { margin: 6px 0 0; }
 
 /* Version History — checkpoint save row + list (v12 snapshot panel port). */
@@ -420,7 +474,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .checkpoint-info { flex: 1; min-width: 0; }
 .checkpoint-name { font-weight: 600; }
 .checkpoint-meta { font-size: 0.78rem; color: var(--c-muted); }
-.checkpoint-note { font-size: 0.8rem; color: #777; font-style: italic; margin-top: 2px; }
+.checkpoint-note { font-size: 0.8rem; color: var(--c-muted); font-style: italic; margin-top: 2px; }
 .checkpoint-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
 
 /* Sign-in gate (Slice 13 — server auth). */
@@ -448,7 +502,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%);
   z-index: 50; display: inline-flex; align-items: center; gap: var(--space-3);
   max-width: calc(100vw - 24px);
-  background: var(--c-surface); color: #24292f;
+  background: var(--c-surface); color: var(--c-text);
   border: 1px solid var(--c-border); border-radius: var(--radius-pill);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); font-size: var(--fs-sm);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
@@ -560,3 +614,28 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   .admin-stats { grid-template-columns: repeat(2, 1fr); }
   .admin-grid { grid-template-columns: 1fr; }
 }
+
+/* --- Theme toggle (Slice 18, #50) ----------------------------------------
+   Compact segmented light/dark/system control in the account bar. */
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: var(--radius-pill); padding: 2px;
+}
+.theme-toggle button {
+  border: none; background: none; border-radius: var(--radius-pill);
+  padding: 3px 8px; font-size: 0.9rem; line-height: 1; color: var(--c-muted);
+}
+.theme-toggle button.is-active {
+  background: var(--c-bg-blue); color: var(--c-blue); font-weight: 700;
+}
+
+/* --- Expand / collapse all (Slice 18, #50) -------------------------------
+   Text controls beside the jump-to menu that drive every workspace section. */
+.ws-nav-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.ws-nav-toggle-all { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ws-nav-toggle-all button {
+  background: none; border: none; color: var(--c-blue);
+  font-size: var(--fs-sm); font-weight: 600; padding: var(--space-1) 2px;
+}
+.ws-nav-toggle-all .sep { color: var(--c-border); font-size: var(--fs-sm); }

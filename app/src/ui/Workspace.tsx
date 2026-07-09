@@ -19,6 +19,7 @@ import { HistorySection } from './sections/HistorySection';
 import { IdentitySection } from './sections/IdentitySection';
 import { PlaysSection } from './sections/PlaysSection';
 import { SchoolsSection } from './sections/SchoolsSection';
+import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { SchedulePreview } from './SchedulePreview';
 import { WorkspaceNav } from './WorkspaceNav';
 
@@ -40,6 +41,10 @@ export function Workspace({
 }) {
   const [contest, setContest] = useState<Contest>();
   const [missing, setMissing] = useState(false);
+  // Global expand/collapse-all signal broadcast to every Section via context.
+  const [openSignal, setOpenSignal] = useState<SectionOpenSignal | null>(null);
+  const setAllSections = (open: boolean) =>
+    setOpenSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
 
   useEffect(() => {
     if (draft && draft.id === contestId) {
@@ -74,6 +79,7 @@ export function Workspace({
   const openFirst = (k: SectionId) => k === firstIncomplete;
 
   return (
+    <SectionOpenContext.Provider value={openSignal}>
     <main className="page">
       <header className="page-header">
         <button className="btn-ghost" onClick={onBack}>← All contests</button>
@@ -81,7 +87,11 @@ export function Workspace({
         <p className="subtitle">Every change saves automatically.</p>
       </header>
 
-      <WorkspaceNav progress={progress} />
+      <WorkspaceNav
+        progress={progress}
+        onExpandAll={() => setAllSections(true)}
+        onCollapseAll={() => setAllSections(false)}
+      />
 
       {issues.length > 0 && (
         <ul className="issues">
@@ -126,5 +136,6 @@ export function Workspace({
       </div>
       <EmailListBox contest={contest} />
     </main>
+    </SectionOpenContext.Provider>
   );
 }
