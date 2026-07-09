@@ -34,12 +34,18 @@ From here you can:
 - **Open** a contest to edit it.
 - **Duplicate** last year's contest to roll it forward — schools, directors, and your
   CM info carry over, so you're not retyping stable data.
+- **Export** a contest to a small `.json` backup file you can re-import later or on
+  another machine (the same file that's bundled in every generated ZIP).
 - **Delete** a contest you no longer need.
+
+A **light / dark / system** theme switch sits in the top bar — pick whichever is
+easier on your eyes; your choice is remembered on that device.
 
 ## 3. Fill in your contest
 
 Inside a contest, you fill the same information as always, organized into sections
-you expand one at a time, with progress indicators so you can see what's done:
+you expand one at a time (or **Expand all / Collapse all** from the section menu),
+with progress indicators so you can see what's done:
 
 1. **CM Info** — your name, contact details (pre-filled once and remembered).
 2. **Contest Identity** — year, classification, level, host school/venue.

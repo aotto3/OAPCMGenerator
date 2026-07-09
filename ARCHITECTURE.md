@@ -63,9 +63,12 @@ app/src/
   model/       contest, schedule, critique, checkpoint, syncBundle   (PURE — imports nothing app-local)
   documents/   registry + one builder per document + OOXML/xlsx/pdf helpers + golden harness
   storage/     IndexedDB working copy + background sync (last-write-wins)
-  ui/          dashboard → workspace → generate; auth gate
+  ui/          dashboard → workspace → generate; auth gate; light/dark/system theme
+  admin/       owner-only admin panel (rendered only after an am-I-admin probe)
+  telemetry/   fire-and-forget client telemetry + global error reporting
   auth/        Better Auth browser client + sign-in screen
-server/src/    Express factory, Better Auth, Postgres repo, contest routes
+server/src/    Express factory, Better Auth, Postgres repos (contests + events),
+               contest / telemetry / admin routes, user directory
 ```
 
 The dependency arrows point *inward* toward the model. `documents/`, `storage/`,
@@ -150,11 +153,11 @@ browser is the source of truth and the server is a backup/roaming layer.
 ## 6. Server
 
 `server/src/app.ts` is a **dependency-injected Express factory**. The integration
-tests build the exact production app minus the two things they can't run offline: a
-real Postgres (they inject an in-memory `repo`) and a real Better Auth session (they
-inject a fake `resolveUserId`). There is no test-only branch anywhere — the seams
-*are* the constructor arguments, which keeps the deployed code and the tested code
-identical.
+tests build the exact production app minus the things they can't run offline: a real
+Postgres (they inject an in-memory `repo` / `eventLog` / `userDirectory`) and a real
+Better Auth session (they inject a fake `resolveUser`). There is no test-only branch
+anywhere — the seams *are* the constructor arguments, which keeps the deployed code
+and the tested code identical.
 
 - **Auth** (`auth.ts`) is **Better Auth** — passwordless by design (Google OAuth +
   emailed magic link), never hand-rolled. Sessions/users/OAuth-accounts/magic-link
@@ -167,6 +170,22 @@ identical.
   generates a document, and rejects payloads carrying device-only credentials. Every
   query is scoped by the authenticated owner. This keeps hosting cheap and low-risk
   and leaves the door open to paid tiers without a data migration.
+- **Activity log + admin + telemetry** (PRD #54) layer on the same DI pattern —
+  each is an injected seam, in-memory in tests, Postgres/real in production, no
+  test-only branch. `eventLog.ts` is an append-only `events` table
+  (`db/events.sql`, applied on boot by `migrate()` alongside `contests.sql`);
+  contest routes append create/update/delete events **best-effort** — a logging
+  failure never fails the user's request, and delete events keep the contest name so
+  the trail outlives the deleted row. `telemetryRoutes.ts` accepts client events
+  (documents generated, contest export/import, uncaught errors) whose `type` must be
+  in a fixed allowlist (`eventTypes.ts`) — unknown types 400, `detail` is size-capped
+  — into the same log. `adminRoutes.ts` is a read-only admin API (stats, users,
+  paginated activity feed, per-user drill-down) gated by the `ADMIN_EMAILS`
+  allowlist; a non-admin (or unauthenticated) caller gets a flat **404** on every
+  admin route, so the surface can't be probed. `userDirectory.ts` is the *only*
+  reader of Better Auth's `user`/`session` tables — every other module treats auth as
+  opaque. The request-auth seam resolves `{ id, email }` (not just an id) so recorded
+  events carry both and stay readable after an account is removed.
 
 ## 7. Deployment and the single-origin auth architecture
 

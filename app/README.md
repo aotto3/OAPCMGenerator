@@ -1,8 +1,10 @@
 # OAP Contest Manager 2.0 (`app/`)
 
-**The live app is at https://oapmanager.allenotto.com** — sign in with Google or
-an emailed link; nothing to download. This is the primary tool of record
-(Slice 17, #30). The legacy v12 single-file app lives at
+**The live app is at https://allenotto.com/oapmanager** (a Wix 301 redirect to the
+Railway frontend URL — the `oapmanager.allenotto.com` custom domain was abandoned;
+see `memory/oap-2.0-deployment.md`) — sign in with Google or an emailed link;
+nothing to download. This is the primary tool of record (Slice 17, #30). The
+legacy v12 single-file app lives at
 `_Templates/OAP Contest Setup.html` and is the behavior spec — **never edit
 it**; it stays available as a fallback for one contest cycle, and
 `output/context.md` documents its conventions.
@@ -47,10 +49,19 @@ src/
              async flush, so typing never waits on the network.
   ui/        React components. They hold a Contest in state, edit it through
              model helpers, and persist via useAutosave. UI components never
-             import `idb` or build serialization formats themselves.
+             import `idb` or build serialization formats themselves. Also the
+             light/dark/system theme (theme.ts + ThemeToggle): token-driven, so
+             the dark override in styles.css re-colors the whole app at once.
+  admin/     Owner-only admin panel (stats, users, activity feed, per-user
+             drill-down). Rendered only after a positive am-I-admin probe against
+             the server; the server re-checks admin on every request behind it.
+  telemetry/ Fire-and-forget client telemetry (documents generated, contest
+             export/import) + global uncaught-error reporting. Swallows every
+             failure and is never awaited on a user-facing path.
 ```
 
-Dependency direction is one-way: `ui → storage → model`. Keep it that way —
+Dependency direction is one-way: `ui → storage → model` (admin/ and telemetry/
+call the server directly, like the sync client). Keep it that way —
 it is what makes the model reusable by the sync layer, the contest-file
 codec, and the server later.
 

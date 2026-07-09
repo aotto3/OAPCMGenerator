@@ -7,13 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 OAP Contest Manager **2.0** — a hosted, account-based rebuild of a UIL One-Act Play
 contest-document generator. It replaces a single 1.3 MB HTML file (v12) with a
 React SPA + thin Node API. All document generation stays **client-side**; the
-server is only auth + opaque contest storage. Source of truth for intent is the
-PRD (**issue #13**); the legacy v12 file is the behavior spec.
+server is auth + opaque contest storage, plus an append-only activity log, an
+admin API, and a telemetry sink (PRD **#54**). Source of truth for intent is the
+overall PRD (**issue #13**); the legacy v12 file is the behavior spec.
 
 Two npm workspaces, developed independently:
 - `app/` — React + Vite + TypeScript SPA (the whole product lives here, incl. the
-  document engine, schedule engine, contest model, local-first storage, and sync).
-- `server/` — Express + Better Auth + Postgres API (auth + per-account contest CRUD).
+  document engine, schedule engine, contest model, local-first storage, sync, the
+  owner-only admin panel, and client telemetry).
+- `server/` — Express + Better Auth + Postgres API (auth, per-account contest CRUD,
+  activity log, telemetry ingest, admin API).
 
 Also: `_Templates/OAP Contest Setup.html` (legacy v12 — **behavior spec, never
 edit**), `output/context.md` (v12 conventions: schedule colors, letter language,
@@ -92,15 +95,31 @@ verbatim everywhere:
    Device-only fields (Speechwire creds) are marked in the model and excluded from
    sync and contest-file export by construction.
 
-4. **Server API** (`server/`) — `app.ts` is a dependency-injected Express factory
-   (tests pass an in-memory `repo` + fake `resolveUserId`; there is no test-only
-   branch — the seams are constructor args). `auth.ts` is Better Auth (Google OAuth
-   + magic link; passwordless). The server stores the **opaque** `serializeContest`
-   envelope + metadata only — it never parses contest internals, generates
-   documents, or receives credentials. Every query is owner-scoped.
+4. **Server API** (`server/`) — `app.ts` is a dependency-injected Express factory;
+   the seams **are** the constructor args (tests inject in-memory `repo` /
+   `eventLog` / `userDirectory` and a fake `resolveUser`), so there is no test-only
+   branch. `auth.ts` is Better Auth (Google OAuth + magic link; passwordless).
+   Contest storage is **opaque**: the server keeps the `serializeContest` envelope
+   + metadata only, never parses contest internals, generates documents, or
+   receives credentials, and scopes every query to the owner. Three capabilities
+   layer on top (PRD #54): an **append-only activity log** (`eventLog.ts` +
+   `events.sql`, applied on boot by `migrate()` alongside `contests.sql`) that
+   contest routes append to best-effort; a **telemetry** endpoint
+   (`telemetryRoutes.ts`) accepting an allowlisted set of client events
+   (`eventTypes.ts`) into that log; and an **admin API** (`adminRoutes.ts`) gated by
+   the `ADMIN_EMAILS` allowlist — non-admins get a flat 404, and `userDirectory.ts`
+   is the sole reader of Better Auth's user/session tables. The request-auth seam
+   resolves `{ id, email }` so events carry both.
 
 5. **App UI** (`app/src/ui/`) — dashboard → workspace (`Workspace.tsx` +
-   `sections/`) → generate. `App.tsx` gates on auth (`auth/authClient.ts`).
+   `sections/`) → generate; `App.tsx` gates on auth (`auth/authClient.ts`).
+   Theming is light/dark/system, token-driven (`ui/theme.ts`; the whole app reads
+   CSS custom properties, so the dark override in `styles.css` flips everything at
+   once — never hard-code a color that a fixed palette doesn't require). `admin/`
+   is the owner-only admin panel, rendered only after a positive am-I-admin probe.
+   `telemetry/` is the fire-and-forget client (documents generated, contest
+   export/import, uncaught errors) — it swallows every failure and is never awaited
+   on a user-facing path.
 
 ### Deployment shape (important, and non-obvious)
 
@@ -118,6 +137,10 @@ same-origin ⇒ the Better Auth session cookie is first-party `SameSite=Lax`.
   browser uses, not the API's internal URL.
 - The frontend's `API_URL` (runtime, read by `serve.mjs`) is the API's internal
   Railway URL. `VITE_API_URL` is unset (the app calls relative `/api`).
+- **Admin access is the `ADMIN_EMAILS` env var on the API** (comma-separated). A
+  session is admin iff its email is listed; everyone else gets 404 on `/api/admin/*`
+  and never sees the panel. Additive — granting/revoking admin is a config change,
+  no migration and no auth cutover.
 - A live **service worker** (`vite-plugin-pwa`, `prompt` update flow) means an
   already-open client updates only when the user accepts the "new version" prompt —
   a hard refresh alone may serve the cached bundle. Frontend builds lag a merge by
@@ -131,8 +154,17 @@ same-origin ⇒ the Better Auth session cookie is first-party `SameSite=Lax`.
   checkboxes; cell colors/validation must survive import) — see `output/context.md`
   constraints.
 - Tests assert **observable behavior at module boundaries** (inputs → outputs),
-  never internals, so they survive refactors. No automated browser/UI tests.
+  never internals, so they survive refactors. No automated browser/UI tests — the
+  admin panel and theme UI are untested by convention; their server seams are not.
+- The **activity log is append-only and best-effort**: contest routes record
+  create/update/delete inline, but a logging failure must never fail or delay the
+  user's request; delete events keep the contest name so the trail outlives the row.
+- **Telemetry types are a fixed server allowlist** (`server/src/eventTypes.ts`,
+  mirrored in `app/src/telemetry/telemetryClient.ts`); the endpoint 400s unknown
+  types and size-caps `detail`. The admin surface is **dark to non-admins** (404,
+  never 401/403) so it cannot be probed.
 - **Commit messages: never add a `Co-Authored-By` trailer** (see
   `memory/no-coauthored-by.md`).
-- A `server/` change triggers an API redeploy and can require an auth/cookie
-  cutover — coordinate, don't merge auth changes blind.
+- A `server/` change triggers an API redeploy. Auth/cookie changes can require a
+  cutover — coordinate, don't merge them blind; additive routes (log, telemetry,
+  admin) do not.
