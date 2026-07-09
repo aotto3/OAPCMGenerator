@@ -17,12 +17,7 @@ import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
 import type { AuthUser, ResolveUser } from './contestRoutes';
-
-/**
- * Event type counted for the "documents generated" stat. The telemetry slice
- * (#58) records events of this exact type; until it lands the count is 0.
- */
-const DOCUMENTS_GENERATED_EVENT = 'documents.generated';
+import { DOCUMENTS_GENERATED_EVENT } from './eventTypes';
 
 /** A user is "active this week" if seen within this window. */
 const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;

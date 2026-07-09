@@ -1,6 +1,14 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// App version, stamped into the bundle at build time so client-error telemetry
+// can report which build a crash came from (Slice #58). Read from package.json
+// here (Node) and exposed as the compile-time constant __APP_VERSION__.
+const appVersion = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+).version as string;
 
 // `vite build` emits the static app shell (all document generation and storage
 // stay client-side). It is served in production by serve.mjs, a thin host that
@@ -8,6 +16,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 // (Slice 17, #46). In dev, the proxy below gives `vite dev` the same same-origin
 // shape, so the app calls relative /api paths everywhere.
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   server: {
     proxy: {
       '/api': {

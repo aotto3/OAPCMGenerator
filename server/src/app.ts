@@ -9,6 +9,7 @@ import cors from 'cors';
 import express, { type Express } from 'express';
 import { createAdminRoutes } from './adminRoutes';
 import { createContestRoutes, type ResolveUser } from './contestRoutes';
+import { createTelemetryRoutes } from './telemetryRoutes';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
@@ -69,6 +70,11 @@ export function createApp(deps: AppDeps): Express {
   app.use(
     '/api/contests',
     createContestRoutes({ repo: deps.repo, eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
+  );
+
+  app.use(
+    '/api/telemetry',
+    createTelemetryRoutes({ eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
   );
 
   app.use(

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { createContest, duplicateContest, importContest } from '../model/contest';
+import { contestDisplayName, createContest, duplicateContest, importContest } from '../model/contest';
 import type { Contest } from '../model/contest';
+import { triggerContestFileDownload } from '../documents/generate';
+import { reportContestExported, reportContestImported } from '../telemetry/telemetryClient';
 import {
   deleteContest,
   getContest,
@@ -76,6 +78,8 @@ export function Dashboard({
     try {
       const contest = importContest(await file.text());
       await onOpenSaved(contest);
+      // Best-effort telemetry — never awaited, never blocks the import.
+      reportContestImported(contest.id, contestDisplayName(contest.identity));
     } catch (err) {
       setImportError(
         `Couldn't import "${file.name}": ${err instanceof Error ? err.message : String(err)}`,
@@ -87,6 +91,16 @@ export function Dashboard({
     const source = await getContest(summary.id);
     if (!source) return; // deleted out from under us
     await onOpenSaved(duplicateContest(source));
+  }
+
+  // Export the portable contest file (the same JSON bundled in a generated ZIP),
+  // then record a best-effort export event. The download drives the action; the
+  // telemetry is fire-and-forget and never blocks it.
+  async function handleExport(summary: ContestSummary) {
+    const source = await getContest(summary.id);
+    if (!source) return; // deleted out from under us
+    triggerContestFileDownload(source);
+    reportContestExported(summary.id, summary.name);
   }
 
   async function handleDelete(summary: ContestSummary) {
@@ -149,6 +163,13 @@ export function Dashboard({
                 aria-label={`Duplicate ${c.name}`}
               >
                 Duplicate
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => void handleExport(c)}
+                aria-label={`Export ${c.name}`}
+              >
+                Export
               </button>
               <button
                 className="btn-danger"
