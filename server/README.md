@@ -23,9 +23,11 @@ src/
   db.ts            Postgres pool + our migrations (contests + events)
   contestPayload.ts  Opaque envelope validation (pure, fully tested)
   contestRepo.ts   Data access — every query scoped by ownerId
-  eventLog.ts      Append-only activity log (recordEvent / queryEvents)
+  eventLog.ts      Append-only activity log (recordEvent / queryEvents / countEvents)
+  userDirectory.ts Read-only account directory over Better Auth's tables (admin)
   contestRoutes.ts Express CRUD router; auth injected as resolveUser(req)
-  app.ts           App factory (DI: repo + eventLog + resolveUser + optional auth mount)
+  adminRoutes.ts   Admin API (stats/users/feed/drill-down); 404-gated by ADMIN_EMAILS
+  app.ts           App factory (DI: repo + eventLog + userDirectory + resolveUser + auth mount)
   auth.ts          Better Auth instance (Google + magic link + MailerSend)
   email.ts         MailerSend magic-link sender (logs link in dev if no API key)
   server.ts        Production entrypoint — wires real Postgres + Better Auth
@@ -36,6 +38,7 @@ test/
   contestPayload.test.ts  Opaque-validation unit tests
   contestCrud.test.ts     Auth-gated CRUD integration tests (pg-mem + supertest)
   eventLog.test.ts        Activity-log integration tests (pg-mem + supertest)
+  adminApi.test.ts        Admin gate + stats/users/feed/drill-down integration tests
 ```
 
 The app factory is dependency-injected so the integration tests run the real

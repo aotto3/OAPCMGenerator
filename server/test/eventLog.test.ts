@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
 import { createEventLog, type EventInput, type EventLog } from '../src/eventLog';
+import { createInMemoryUserDirectory } from '../src/userDirectory';
 import { migrate, type Pool } from '../src/db';
 
 /**
@@ -32,6 +33,8 @@ async function buildApp(overrideLog?: EventLog) {
   const app = createApp({
     repo: createContestRepo(pool),
     eventLog,
+    userDirectory: createInMemoryUserDirectory([]),
+    adminEmails: new Set(),
     resolveUser: (req) => {
       const id = req.header('x-user-id');
       return id ? { id, email: `${id}@example.test` } : null;
@@ -162,6 +165,7 @@ describe('log-failure tolerance', () => {
         throw new Error('event log is down');
       },
       queryEvents: async () => [],
+      countEvents: async () => 0,
     };
     const failing = await buildApp(throwing);
 

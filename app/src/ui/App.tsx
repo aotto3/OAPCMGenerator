@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { Contest } from '../model/contest';
 import { saveContest } from '../storage/contestStore';
 import { requestPersistentStorage } from '../storage/persist';
+import { AdminPanel } from '../admin/AdminPanel';
+import { useIsAdmin } from '../admin/useIsAdmin';
 import { signOut, useSession } from '../auth/authClient';
 import { SignIn } from '../auth/SignIn';
 import { Dashboard } from './Dashboard';
@@ -50,6 +52,11 @@ function ContestFlow() {
 export function App() {
   const { data: session, isPending } = useSession();
   const syncStatus = useSync(!!session);
+  // Admin gate: probe the server once signed in. Non-admins get a 404 → false,
+  // so nothing below ever renders for them (PRD user story 13). The server
+  // re-checks admin on every request behind the panel regardless.
+  const isAdmin = useIsAdmin(!!session);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // Ask the browser to make this origin's IndexedDB persistent once the user is
   // signed in and actually has contests to protect (Slice 15, #28). Best-effort
@@ -72,11 +79,16 @@ export function App() {
       <div className="account-bar">
         <SyncStatus status={syncStatus} />
         <span className="muted">{session.user.email}</span>
+        {isAdmin && (
+          <button className="btn-ghost" onClick={() => setShowAdmin((v) => !v)}>
+            {showAdmin ? 'Contests' : 'Admin'}
+          </button>
+        )}
         <button className="btn-ghost" onClick={() => void signOut()}>
           Sign out
         </button>
       </div>
-      <ContestFlow />
+      {isAdmin && showAdmin ? <AdminPanel onBack={() => setShowAdmin(false)} /> : <ContestFlow />}
     </>
   );
 

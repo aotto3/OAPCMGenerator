@@ -43,11 +43,19 @@ export interface EventQuery {
   offset?: number;
 }
 
+/** Filters for {@link EventLog.countEvents}. All optional; omit for a grand total. */
+export interface EventCountFilter {
+  userId?: string;
+  type?: string;
+}
+
 export interface EventLog {
   /** Appends one event. Callers treat this as best-effort (see contest routes). */
   recordEvent(event: EventInput): Promise<void>;
   /** Returns a newest-first page of events, optionally scoped to one user. */
   queryEvents(query?: EventQuery): Promise<EventRecord[]>;
+  /** Counts events matching the filter (admin stats, e.g. documents generated). */
+  countEvents(filter?: EventCountFilter): Promise<number>;
 }
 
 /** Clamp paging to sane bounds so a caller can never ask for a runaway page. */
@@ -92,6 +100,25 @@ export function createEventLog(pool: Pool): EventLog {
         params,
       );
       return rows.map(mapRow);
+    },
+
+    async countEvents(filter = {}) {
+      const conds: string[] = [];
+      const params: unknown[] = [];
+      if (filter.userId !== undefined) {
+        params.push(filter.userId);
+        conds.push(`user_id = $${params.length}`);
+      }
+      if (filter.type !== undefined) {
+        params.push(filter.type);
+        conds.push(`type = $${params.length}`);
+      }
+      const where = conds.length ? `where ${conds.join(' and ')}` : '';
+      const { rows } = await pool.query(
+        `select count(*)::int as n from events ${where}`,
+        params,
+      );
+      return rows[0]?.n ?? 0;
     },
   };
 }

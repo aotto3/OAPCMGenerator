@@ -7,14 +7,20 @@
  */
 import cors from 'cors';
 import express, { type Express } from 'express';
+import { createAdminRoutes } from './adminRoutes';
 import { createContestRoutes, type ResolveUser } from './contestRoutes';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
+import type { UserDirectory } from './userDirectory';
 
 export interface AppDeps {
   repo: ContestRepo;
   /** Append-only activity log the contest routes write to, best-effort. */
   eventLog: EventLog;
+  /** Read-only account directory (Better Auth tables) for the admin API. */
+  userDirectory: UserDirectory;
+  /** Lowercased admin email allowlist; empty means the admin API is dark. */
+  adminEmails: ReadonlySet<string>;
   resolveUser: ResolveUser;
   /** Allowed browser origin for CORS (the deployed frontend). Omitted in tests. */
   corsOrigin?: string;
@@ -63,6 +69,17 @@ export function createApp(deps: AppDeps): Express {
   app.use(
     '/api/contests',
     createContestRoutes({ repo: deps.repo, eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
+  );
+
+  app.use(
+    '/api/admin',
+    createAdminRoutes({
+      repo: deps.repo,
+      eventLog: deps.eventLog,
+      userDirectory: deps.userDirectory,
+      resolveUser: deps.resolveUser,
+      adminEmails: deps.adminEmails,
+    }),
   );
 
   return app;

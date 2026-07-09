@@ -41,6 +41,10 @@ export interface ContestRepo {
   update(ownerId: string, id: string, patch: ContestPatch): Promise<boolean>;
   /** Returns false when no owned row matched. */
   remove(ownerId: string, id: string): Promise<boolean>;
+  /** Total contest count across all owners (admin stats). */
+  countAll(): Promise<number>;
+  /** Contest count per owner id (admin users table). Owners with none are absent. */
+  countsByOwner(): Promise<Record<string, number>>;
 }
 
 export function createContestRepo(pool: Pool): ContestRepo {
@@ -94,6 +98,20 @@ export function createContestRepo(pool: Pool): ContestRepo {
         [ownerId, id],
       );
       return (rowCount ?? 0) > 0;
+    },
+
+    async countAll() {
+      const { rows } = await pool.query('select count(*)::int as n from contests');
+      return rows[0]?.n ?? 0;
+    },
+
+    async countsByOwner() {
+      const { rows } = await pool.query(
+        'select owner_id, count(*)::int as n from contests group by owner_id',
+      );
+      const counts: Record<string, number> = {};
+      for (const r of rows) counts[r.owner_id] = r.n;
+      return counts;
     },
   };
 }

@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
 import { createEventLog } from '../src/eventLog';
+import { createInMemoryUserDirectory } from '../src/userDirectory';
 import { migrate, type Pool } from '../src/db';
 
 /** Builds a fresh app backed by an isolated in-memory database per test. */
@@ -28,6 +29,8 @@ async function buildApp() {
   const app = createApp({
     repo: createContestRepo(pool),
     eventLog: createEventLog(pool),
+    userDirectory: createInMemoryUserDirectory([]),
+    adminEmails: new Set(),
     // Fake session: authenticated iff the request carries an x-user-id header.
     // The email is derived from the id so events have both without a real user.
     resolveUser: (req) => {
