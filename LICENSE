@@ -1,0 +1,26 @@
+Copyright © 2026 Allen Otto. All rights reserved.
+
+OAP Contest Manager (the "Software") — including its source code, design, and
+document-generation logic — is proprietary and confidential. It is NOT open
+source.
+
+No permission is granted to any person to use, copy, modify, merge, publish,
+distribute, sublicense, sell, host, or create derivative works of the Software,
+in whole or in part, without the prior written consent of the copyright holder.
+
+Use of the hosted service is governed separately by the Terms of Use
+(app/public/terms.html): end users receive a personal, revocable permission to
+generate their own contest documents, and no rights in the Software itself.
+
+Bundled third-party materials are the property of their respective owners and are
+used under their own terms:
+  - Official UIL One-Act Play ballot PDFs (Adjudicator Packet Templates/) are the
+    property of the University Interscholastic League.
+  - Open-source dependencies listed in the package manifests remain under their
+    respective licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES,
+OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+Contact: aotto3@gmail.com
