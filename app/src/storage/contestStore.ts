@@ -26,6 +26,14 @@ interface ContestRecord {
   /** Denormalized for dashboard listing; recomputed on every save. */
   name: string;
   updatedAt: string;
+  /**
+   * Denormalized for dashboard listing alongside `name`; recomputed on every
+   * save. Optional because records written before this field existed lack it —
+   * `contestSummaryFromRecord` falls back to parsing the payload for those.
+   */
+  contestDate?: string;
+  /** Denormalized host school name; see `contestDate` for the optionality note. */
+  hostSchoolName?: string;
   /** Versioned envelope from serializeContest(). */
   payload: string;
   /**
@@ -137,13 +145,35 @@ export interface ContestSummary {
   id: string;
   name: string;
   updatedAt: string;
+  /** Denormalized contest date (ISO yyyy-mm-dd) or '' when unset. */
+  contestDate: string;
+  /** Denormalized host school name, or '' when unset. */
+  hostSchoolName: string;
+}
+
+/**
+ * Builds a dashboard summary from a stored record. The date and host school are
+ * denormalized onto the record at save time (like `name`), but records written
+ * before that denormalization existed lack those fields — for them, parse the
+ * payload once to recover the values so they still display without a re-save.
+ * Pure and exported so the summary/fallback logic is testable without IndexedDB.
+ */
+export function contestSummaryFromRecord(record: ContestRecord): ContestSummary {
+  let contestDate = record.contestDate;
+  let hostSchoolName = record.hostSchoolName;
+  if (contestDate === undefined || hostSchoolName === undefined) {
+    const contest = parseContest(record.payload);
+    contestDate ??= contest.details.contestDate;
+    hostSchoolName ??= contest.identity.hostSchoolName;
+  }
+  return { id: record.id, name: record.name, updatedAt: record.updatedAt, contestDate, hostSchoolName };
 }
 
 /** Newest-edited first, for the dashboard. */
 export async function listContests(): Promise<ContestSummary[]> {
   const records = await (await db()).getAll('contests');
   return records
-    .map(({ id, name, updatedAt }) => ({ id, name, updatedAt }))
+    .map(contestSummaryFromRecord)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
@@ -160,6 +190,8 @@ export async function saveContest(contest: Contest): Promise<void> {
     id: contest.id,
     name: contestDisplayName(contest.identity),
     updatedAt: contest.updatedAt,
+    contestDate: contest.details.contestDate,
+    hostSchoolName: contest.identity.hostSchoolName,
     payload: serializeContest(contest),
     deviceOnly: contest.speechwire,
   });
@@ -224,6 +256,8 @@ export async function putPulledContest(
     id: contest.id,
     name: contestDisplayName(contest.identity),
     updatedAt,
+    contestDate: contest.details.contestDate,
+    hostSchoolName: contest.identity.hostSchoolName,
     // Store the contest-only envelope locally; checkpoints live in their store.
     payload: serializeContest(contest),
     deviceOnly: existing?.deviceOnly ?? contest.speechwire,

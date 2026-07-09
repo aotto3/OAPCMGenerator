@@ -14,6 +14,26 @@ function lastEdited(iso: string): string {
   return isNaN(date.getTime()) ? '' : `last edited ${date.toLocaleString()}`;
 }
 
+// The contest date is a bare ISO yyyy-mm-dd; anchor it at local noon so parsing
+// never lands on the previous day in timezones behind UTC (the model uses the
+// same T12:00:00 trick — see autoDeadlineFor).
+function contestDate(iso: string): string {
+  if (!iso) return '';
+  const date = new Date(iso + 'T12:00:00');
+  return isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+// The row's secondary line: contest date, host school, and last-edited note,
+// each shown only when present and joined so no separator ever dangles.
+function rowMeta({ contestDate: iso, hostSchoolName, updatedAt }: ContestSummary): string {
+  const school = hostSchoolName.trim();
+  return [contestDate(iso), school ? `Hosted at ${school}` : '', lastEdited(updatedAt)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 export function Dashboard({
   onOpen,
   onCreate,
@@ -121,7 +141,7 @@ export function Dashboard({
             <li key={c.id} className="contest-row">
               <button className="contest-open" onClick={() => onOpen(c.id)}>
                 <span className="contest-name">{c.name}</span>
-                <span className="muted"> · {lastEdited(c.updatedAt)}</span>
+                <span className="muted"> · {rowMeta(c)}</span>
               </button>
               <button
                 className="btn-secondary"
