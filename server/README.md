@@ -24,8 +24,10 @@ src/
   contestPayload.ts  Opaque envelope validation (pure, fully tested)
   contestRepo.ts   Data access — every query scoped by ownerId
   eventLog.ts      Append-only activity log (recordEvent / queryEvents / countEvents)
+  eventTypes.ts    Telemetry event allowlist (shared by telemetry + admin stats)
   userDirectory.ts Read-only account directory over Better Auth's tables (admin)
   contestRoutes.ts Express CRUD router; auth injected as resolveUser(req)
+  telemetryRoutes.ts Authed telemetry ingest (allowlisted types, size-capped detail)
   adminRoutes.ts   Admin API (stats/users/feed/drill-down); 404-gated by ADMIN_EMAILS
   app.ts           App factory (DI: repo + eventLog + userDirectory + resolveUser + auth mount)
   auth.ts          Better Auth instance (Google + magic link + MailerSend)
@@ -38,6 +40,7 @@ test/
   contestPayload.test.ts  Opaque-validation unit tests
   contestCrud.test.ts     Auth-gated CRUD integration tests (pg-mem + supertest)
   eventLog.test.ts        Activity-log integration tests (pg-mem + supertest)
+  telemetry.test.ts       Telemetry ingest tests (allowlist / auth / size cap)
   adminApi.test.ts        Admin gate + stats/users/feed/drill-down integration tests
 ```
 

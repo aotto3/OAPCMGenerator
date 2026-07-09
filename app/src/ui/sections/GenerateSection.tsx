@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { generationWarnings, type Contest } from '../../model/contest';
+import { contestDisplayName, generationWarnings, type Contest } from '../../model/contest';
 import { DOCUMENT_REGISTRY } from '../../documents/registry';
 import {
   buildContestArchive,
   triggerZipDownload,
   type DocumentWarning,
 } from '../../documents/generate';
+import { reportDocumentsGenerated } from '../../telemetry/telemetryClient';
 import { Section } from './Section';
 import { Divider } from './fields';
 import { DocumentsChecklist } from './DocumentsSection';
@@ -64,6 +65,9 @@ export function GenerateSection({
           setStatus({ kind: 'info', text: `📄 Building ${label}… (${current}/${total})` }),
       });
       triggerZipDownload(archive);
+      // Best-effort, fire-and-forget: record the fact of generation (no document
+      // selections or contents) — never awaited, so it can't delay the download.
+      reportDocumentsGenerated(contest.id, contestDisplayName(contest.identity));
       const n = archive.documentCount;
       setStatus({
         kind: 'success',

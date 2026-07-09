@@ -116,10 +116,26 @@ export async function buildContestArchive(
  */
 export function triggerZipDownload(archive: ContestArchive): void {
   const blob = new Blob([archive.bytes as BlobPart], { type: 'application/zip' });
+  triggerDownload(blob, `${archive.folderName}.zip`);
+}
+
+/**
+ * Exports just the portable contest file — the same versioned serializeContest()
+ * JSON bundled in every ZIP, downloaded on its own (a backup / handoff that
+ * re-imports on any machine). serializeContest() strips device-only Speechwire
+ * credentials by construction, so an exported file can never leak them.
+ */
+export function triggerContestFileDownload(contest: Contest): void {
+  const blob = new Blob([serializeContest(contest)], { type: 'application/json' });
+  triggerDownload(blob, contestFileName(contest.identity));
+}
+
+/** Shared anchor-click download (v12 behavior), used by both exports above. */
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${archive.folderName}.zip`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
