@@ -9,8 +9,9 @@ import { createApp } from './app';
 import { auth } from './auth';
 import { createContestRepo } from './contestRepo';
 import { createEventLog } from './eventLog';
+import { createUserDirectory } from './userDirectory';
 import { getPool, migrate } from './db';
-import { port, requireEnv } from './env';
+import { adminEmails, port, requireEnv } from './env';
 
 async function main(): Promise<void> {
   const pool = getPool();
@@ -19,6 +20,8 @@ async function main(): Promise<void> {
   const app = createApp({
     repo: createContestRepo(pool),
     eventLog: createEventLog(pool),
+    userDirectory: createUserDirectory(pool),
+    adminEmails: adminEmails(),
     corsOrigin: requireEnv('WEB_ORIGIN'),
     webOrigin: requireEnv('WEB_ORIGIN'),
     // Mount Better Auth at /api/auth (before the JSON body parser — see app.ts).
