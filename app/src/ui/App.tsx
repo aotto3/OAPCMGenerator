@@ -83,6 +83,14 @@ export function App() {
   return (
     <>
       {content}
+      {/* Ownership/attribution notice — shown in every state (loading, sign-in,
+          app). Links to the hosted Terms and Privacy pages (app/public/). */}
+      <footer className="app-footer">
+        <span>© 2026 Allen Otto · OAP Contest Manager</span>
+        <span aria-hidden="true" className="app-footer-sep">·</span>
+        <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms</a>
+        <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
+      </footer>
       {/* Registers the service worker (once, stable across auth state) and
           surfaces new deploys via a subtle update banner. */}
       <UpdatePrompt />

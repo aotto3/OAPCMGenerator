@@ -15,6 +15,7 @@
  */
 
 import JSZip from 'jszip';
+import { DOCUMENT_APP, DOCUMENT_AUTHOR, DOCUMENT_AUTHOR_FULL } from './attribution';
 
 /** Named styling constants for OOXML docs and XLSX sheets (v12 THEME). */
 export const THEME = {
@@ -201,12 +202,31 @@ export async function makeDocx(bodyXml: string): Promise<Uint8Array> {
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
     '<Default Extension="xml" ContentType="application/xml"/>' +
     '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
     '</Types>';
   const RELS =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
     '</Relationships>';
+  // Authorship metadata (hidden document properties) — provenance, not visible
+  // content. Static strings only, so output stays deterministic. See attribution.ts.
+  const CORE =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+    'xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+    '<dc:creator>' + xe(DOCUMENT_AUTHOR_FULL) + '</dc:creator>' +
+    '<cp:lastModifiedBy>' + xe(DOCUMENT_APP) + '</cp:lastModifiedBy>' +
+    '</cp:coreProperties>';
+  const APP =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">' +
+    '<Application>' + xe(DOCUMENT_APP) + '</Application>' +
+    '<Company>' + xe(DOCUMENT_AUTHOR) + '</Company>' +
+    '</Properties>';
   const DOC =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<w:document xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
@@ -219,6 +239,8 @@ export async function makeDocx(bodyXml: string): Promise<Uint8Array> {
   const zip = new JSZip();
   zip.file('[Content_Types].xml', CT);
   zip.folder('_rels')!.file('.rels', RELS);
+  zip.folder('docProps')!.file('core.xml', CORE);
+  zip.folder('docProps')!.file('app.xml', APP);
   zip.folder('word')!.file('document.xml', DOC);
   zip
     .folder('word/_rels')!

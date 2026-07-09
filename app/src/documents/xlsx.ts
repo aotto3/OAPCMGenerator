@@ -23,6 +23,7 @@
 
 import * as XLSX from 'xlsx-js-style';
 import { THEME } from './ooxml';
+import { DOCUMENT_APP, DOCUMENT_AUTHOR, DOCUMENT_AUTHOR_FULL } from './attribution';
 
 /**
  * The 8-color school palette, in draw order (v12 SCHOOL_COLORS_XLSX). Bare hex,
@@ -99,6 +100,16 @@ export function sc(
  * writeFileSync in the golden harness) get a consistent, byte-addressable view.
  */
 export function xlsxBuf(wb: XLSX.WorkBook): Uint8Array {
+  // Authorship metadata (hidden workbook properties) — provenance, not visible
+  // content. Static strings only; we deliberately do NOT set CreatedDate, so no
+  // timestamp leaks into docProps and the output stays deterministic. See
+  // attribution.ts.
+  wb.Props = {
+    ...wb.Props,
+    Author: DOCUMENT_AUTHOR_FULL,
+    LastAuthor: DOCUMENT_APP,
+    Company: DOCUMENT_AUTHOR,
+  };
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
   return out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 }

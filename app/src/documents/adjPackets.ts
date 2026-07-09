@@ -25,6 +25,7 @@
 
 import { PDFDocument, type PDFForm } from 'pdf-lib';
 import { MAX_SCHOOLS, type Contest } from '../model/contest';
+import { DOCUMENT_APP, DOCUMENT_AUTHOR_FULL } from './attribution';
 import { docSchools, type DocSchool } from './docVars';
 import { fmtDateShort } from './format';
 
@@ -197,11 +198,16 @@ export function fillRankingForm(form: PDFForm, values: RankingValues): string[] 
   return errors;
 }
 
-/** Pins date/producer metadata so the merged bytes are deterministic. */
+/**
+ * Pins date/producer metadata so the merged bytes are deterministic, and stamps
+ * authorship (hidden PDF Author — provenance, not visible content; the ballot
+ * pages themselves are untouched). Static strings only. See attribution.ts.
+ */
 function pinMetadata(doc: PDFDocument): void {
   const EPOCH = new Date(0);
-  doc.setProducer('OAP Contest Manager');
-  doc.setCreator('OAP Contest Manager');
+  doc.setAuthor(DOCUMENT_AUTHOR_FULL);
+  doc.setProducer(DOCUMENT_APP);
+  doc.setCreator(DOCUMENT_APP);
   doc.setCreationDate(EPOCH);
   doc.setModificationDate(EPOCH);
 }
