@@ -16,6 +16,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
+import { createEventLog } from '../src/eventLog';
 import { migrate, type Pool } from '../src/db';
 
 /** Builds a fresh app backed by an isolated in-memory database per test. */
@@ -26,8 +27,13 @@ async function buildApp() {
   await migrate(pool);
   const app = createApp({
     repo: createContestRepo(pool),
+    eventLog: createEventLog(pool),
     // Fake session: authenticated iff the request carries an x-user-id header.
-    resolveUserId: (req) => req.header('x-user-id') ?? null,
+    // The email is derived from the id so events have both without a real user.
+    resolveUser: (req) => {
+      const id = req.header('x-user-id');
+      return id ? { id, email: `${id}@example.test` } : null;
+    },
   });
   return app;
 }
