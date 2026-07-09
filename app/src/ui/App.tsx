@@ -8,6 +8,7 @@ import { signOut, useSession } from '../auth/authClient';
 import { SignIn } from '../auth/SignIn';
 import { Dashboard } from './Dashboard';
 import { SyncStatus } from './SyncStatus';
+import { ThemeToggle } from './ThemeToggle';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useSync } from './useSync';
 import { Workspace } from './Workspace';
@@ -78,6 +79,7 @@ export function App() {
     <>
       <div className="account-bar">
         <SyncStatus status={syncStatus} />
+        <ThemeToggle />
         <span className="muted">{session.user.email}</span>
         {isAdmin && (
           <button className="btn-ghost" onClick={() => setShowAdmin((v) => !v)}>

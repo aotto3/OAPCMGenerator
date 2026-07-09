@@ -12,7 +12,24 @@
          at build time; these are the bits it does not manage. -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#1565c0" />
+    <meta name="theme-color" content="#00555a" />
+    <!-- Set the theme before first paint so a dark-mode user never sees a light
+         flash (Slice 18, #50). ui/theme.ts keeps it in sync afterwards, and also
+         updates the theme-color meta above to match the resolved theme. -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('oap-theme') || 'system';
+          var dark =
+            p === 'dark' ||
+            (p === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+          document
+            .querySelector('meta[name="theme-color"]')
+            .setAttribute('content', dark ? '#14201d' : '#00555a');
+        } catch (e) {}
+      })();
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="OAP CM" />

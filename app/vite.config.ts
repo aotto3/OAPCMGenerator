@@ -65,8 +65,10 @@ export default defineConfig({
         short_name: 'OAP CM',
         description:
           'Generate UIL One-Act Play contest documents. Works fully offline on contest day.',
-        theme_color: '#1565c0',
-        background_color: '#eef2f7',
+        // Match the current brand palette (Slice 18, #50): teal accent + greige
+        // splash. Was the pre-Slice-16 blue/grey.
+        theme_color: '#00555a',
+        background_color: '#e2ddd0',
         display: 'standalone',
         orientation: 'portrait-primary',
         start_url: '/',
