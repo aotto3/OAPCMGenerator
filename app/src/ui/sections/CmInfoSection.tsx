@@ -1,6 +1,6 @@
 import { withCmInfo, type Contest, type SectionCompletion } from '../../model/contest';
 import { Section } from './Section';
-import { TextField } from './fields';
+import { TextAreaField, TextField } from './fields';
 
 export function CmInfoSection({
   contest,
@@ -39,6 +39,13 @@ export function CmInfoSection({
           placeholder="e.g. Brian Hamlin, Reece Dealmeida"
           value={cm.techContact}
           onChange={(v) => edit({ techContact: v })}
+        />
+        <TextAreaField
+          label="Bio (optional — printed on the Audience Program)"
+          wide
+          placeholder="A short bio for the printed program. Leave blank to omit."
+          value={cm.bio}
+          onChange={(v) => edit({ bio: v })}
         />
       </div>
     </Section>

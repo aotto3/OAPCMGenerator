@@ -9,7 +9,7 @@ import {
   type SectionCompletion,
 } from '../../model/contest';
 import { Section } from './Section';
-import { SelectField, TextField } from './fields';
+import { SelectField, TextAreaField, TextField } from './fields';
 
 export function AdjudicatorsSection({
   contest,
@@ -107,6 +107,13 @@ function JudgeFields({
           placeholder="e.g. vegetarian, no shellfish"
           value={judge.dietary}
           onChange={(v) => edit({ dietary: v })}
+        />
+        <TextAreaField
+          label="Bio (optional — printed on the Audience Program)"
+          wide
+          placeholder="A short adjudicator bio for the printed program. Leave blank to omit."
+          value={judge.bio}
+          onChange={(v) => edit({ bio: v })}
         />
       </div>
       <div className="judge-milestones">
