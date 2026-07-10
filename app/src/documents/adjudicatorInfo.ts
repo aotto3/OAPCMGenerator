@@ -11,7 +11,7 @@
  */
 
 import * as XLSX from 'xlsx-js-style';
-import { contestTitleLong, type Contest } from '../model/contest';
+import { adjudicatorMilestoneStatus, contestTitleLong, type Contest } from '../model/contest';
 import { fmtDate } from './format';
 import { xlsxBuf } from './xlsx';
 
@@ -29,6 +29,15 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
     if (j && j.needsHotel) extras.push('Hotel: ' + j.hotelNights + ' night(s)');
     if (j && j.dietary) extras.push('Dietary/Other: ' + j.dietary);
     if (extras.length) panelRows.push(['', extras.join('  |  '), '']);
+    // Contracting milestones (PRD #67), a snapshot as of generation: a completed
+    // one shows a check + its stored date, a pending one shows 'pending'. Renders
+    // from the shared derivation so labels/order match the Judges UI exactly.
+    if (j) {
+      adjudicatorMilestoneStatus(j).forEach((m, mi) => {
+        const text = m.done ? '✓ ' + m.label + ': ' + fmtDate(m.date) : m.label + ': pending';
+        panelRows.push([mi === 0 ? 'Contracting' : '', text, '']);
+      });
+    }
   }
 
   const cmName = cm.name || 'Allen Otto';
