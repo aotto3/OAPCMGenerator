@@ -11,6 +11,8 @@
 
 import {
   addAwardWinner,
+  addDirector,
+  addRosterMember,
   createContest,
   setAdvancing,
   setAlternate,
@@ -138,5 +140,58 @@ export function fixtureContestWithResults(): Contest {
     },
     FIXTURE_NOW,
   );
+  return c;
+}
+
+/**
+ * The shared fixture with company rosters, production metadata, and bios (PRD #68),
+ * for the Audience Program's "full" golden. Chosen to exercise every branch of the
+ * program builder:
+ *
+ * - Bravo HS (index 1, performance slot 1 → first school page): a full PLAY with
+ *   author/publisher/setting/runtime/music, TWO directors ("Directed by A, B"), and
+ *   a cast + crew + alternate roster.
+ * - Alpha HS (index 0, slot 3): a SCENES production of "Romeo & Juliet" — proves the
+ *   "Presents scenes from {title}" title line AND XML-escaping of the "&".
+ * - Judges 1 and 2 have bios; judge 3 does NOT (proving a blank bio is skipped). The
+ *   Contest Manager has a bio (proving the CM entry renders after the adjudicators).
+ *
+ * Every other school keeps the base fixture's blank company data, so the same golden
+ * also covers pages that degrade gracefully to just a name + plain title.
+ */
+export function fixtureContestWithCompany(): Contest {
+  let c = fixtureContest();
+
+  // Bios: two adjudicators + the CM; judge 3 deliberately left blank.
+  c = withAdjudicator(c, 0, { bio: 'Dr. Jane Judge has directed competitive theatre for 20 years.' }, FIXTURE_NOW);
+  c = withAdjudicator(c, 1, { bio: 'Prof. John Critic teaches dramatic literature at State University.' }, FIXTURE_NOW);
+  c = withCmInfo(c, { bio: 'Allen Otto is a longtime UIL contest manager and theatre educator.' }, FIXTURE_NOW);
+
+  // Bravo HS — a full play with two directors and a complete roster.
+  c = withSchool(
+    c,
+    1,
+    {
+      productionType: 'play',
+      author: 'Arthur Miller',
+      publisher: 'Dramatists Play Service',
+      setting: 'Salem, Massachusetts, 1692',
+      runtime: '40 minutes',
+      musicCredits: 'Original underscore by Sam Composer',
+    },
+    FIXTURE_NOW,
+  );
+  c = addDirector(c, 1, FIXTURE_NOW);
+  c = withDirector(c, 1, 1, { name: 'Bravo HS Assistant Director', email: 'asst@example.com' }, FIXTURE_NOW);
+  c = addRosterMember(c, 1, { name: 'Jordan Lee', role: 'John Proctor', category: 'cast' }, FIXTURE_NOW);
+  c = addRosterMember(c, 1, { name: 'Riley Fox', role: 'Abigail Williams', category: 'cast' }, FIXTURE_NOW);
+  c = addRosterMember(c, 1, { name: 'Sam Rivera', role: 'Stage Manager', category: 'crew' }, FIXTURE_NOW);
+  c = addRosterMember(c, 1, { name: 'Alexis Stone', role: 'Lighting Designer', category: 'crew' }, FIXTURE_NOW);
+  c = addRosterMember(c, 1, { name: 'Casey Park', role: '', category: 'alternate' }, FIXTURE_NOW);
+
+  // Alpha HS — a Scenes production; "Romeo & Juliet" exercises escaping + scenes line.
+  c = withSchool(c, 0, { productionType: 'scenes', author: 'William Shakespeare', publisher: 'Public Domain' }, FIXTURE_NOW);
+  c = addRosterMember(c, 0, { name: 'Taylor Cruz', role: 'Juliet', category: 'cast' }, FIXTURE_NOW);
+
   return c;
 }
