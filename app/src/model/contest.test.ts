@@ -29,11 +29,14 @@ import {
   defaultDocumentSelection,
   entryFeeDisplay,
   lockCritique,
+  lockDraw,
   moveCritiqueAssignment,
   numSchools,
   parseContest,
+  runDraw,
   setCritiqueAssignment,
   unlockCritique,
+  unlockDraw,
   rehearsalDay1Count,
   rehearsalDay2Count,
   removeDirector,
@@ -53,9 +56,21 @@ import {
   withSpeechwire,
   type Contest,
 } from './contest';
+import { drawOrder, type Rng } from './draw';
 
 const NOW = '2026-07-05T12:00:00.000Z';
 const LATER = '2026-07-06T00:00:00.000Z';
+
+/** Deterministic seeded RNG (mulberry32) for the draw-generator integration test. */
+function seededDraw(seed: number): Rng {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 function contest(identity: Partial<Contest['identity']> = {}): Contest {
   return createContest({ id: 'test-id', now: NOW, identity });
@@ -475,6 +490,79 @@ describe('critique assignment helpers', () => {
   });
 });
 
+describe('performance-order draw lifecycle (PRD #65)', () => {
+  /** A 4-school contest with a known starting order (1,2,3,4). */
+  function drawContest(): Contest {
+    let c = setNumSchools(contest(), 4, NOW);
+    for (let i = 0; i < 4; i++) c = withSchool(c, i, { name: `School ${i + 1}` }, NOW);
+    return c;
+  }
+
+  it('a new contest has no draw record; order is fully hand-editable', () => {
+    expect(contest().draw).toBeNull();
+  });
+
+  it('runDraw writes the permutation into performanceOrder AND records order + timestamp, unlocked', () => {
+    const c = runDraw(drawContest(), [3, 1, 4, 2], LATER);
+    // School i gets slot order[i].
+    expect(c.schools.map((s) => s.performanceOrder)).toEqual([3, 1, 4, 2]);
+    expect(c.draw).toEqual({ order: [3, 1, 4, 2], drawnAt: LATER, locked: false });
+    expect(c.updatedAt).toBe(LATER);
+  });
+
+  it('always covers exactly the schools in the contest (slots match the field)', () => {
+    const c = runDraw(drawContest(), [4, 3, 2, 1], NOW);
+    expect(c.schools).toHaveLength(4);
+    expect(c.draw?.order).toHaveLength(4);
+    expect([...c.schools.map((s) => s.performanceOrder)].sort()).toEqual([1, 2, 3, 4]);
+  });
+
+  it('stores a copy of the order — mutating the caller array does not leak in', () => {
+    const source = [2, 1, 4, 3];
+    const c = runDraw(drawContest(), source, NOW);
+    source[0] = 9;
+    expect(c.draw?.order[0]).toBe(2);
+    expect(c.schools[0].performanceOrder).toBe(2);
+  });
+
+  it('re-run while unlocked replaces both the order and the timestamp', () => {
+    const first = runDraw(drawContest(), [1, 2, 3, 4], NOW);
+    const second = runDraw(first, [4, 3, 2, 1], LATER);
+    expect(second.schools.map((s) => s.performanceOrder)).toEqual([4, 3, 2, 1]);
+    expect(second.draw).toEqual({ order: [4, 3, 2, 1], drawnAt: LATER, locked: false });
+  });
+
+  it('lockDraw freezes the record; running against a locked draw is a no-op', () => {
+    const run = runDraw(drawContest(), [2, 4, 1, 3], NOW);
+    const locked = lockDraw(run, LATER);
+    expect(locked.draw).toEqual({ order: [2, 4, 1, 3], drawnAt: NOW, locked: true });
+    expect(locked.updatedAt).toBe(LATER);
+    // A run while locked changes nothing (the CM must unlock first).
+    expect(runDraw(locked, [1, 2, 3, 4], '2026-08-01T00:00:00.000Z')).toBe(locked);
+  });
+
+  it('unlockDraw VOIDS the record but leaves the drawn slots in the fields (now editable)', () => {
+    const locked = lockDraw(runDraw(drawContest(), [3, 1, 4, 2], NOW), NOW);
+    const unlocked = unlockDraw(locked, LATER);
+    expect(unlocked.draw).toBeNull();
+    // The order values remain — only the record is voided.
+    expect(unlocked.schools.map((s) => s.performanceOrder)).toEqual([3, 1, 4, 2]);
+    expect(unlocked.updatedAt).toBe(LATER);
+  });
+
+  it('lockDraw / unlockDraw are no-ops when there is no draw record', () => {
+    const none = drawContest();
+    expect(lockDraw(none)).toBe(none);
+    expect(unlockDraw(none)).toBe(none);
+  });
+
+  it('integrates with the pure drawOrder generator (a run stores a valid permutation)', () => {
+    const c = runDraw(drawContest(), drawOrder(4, seededDraw(7)), NOW);
+    expect([...(c.draw?.order ?? [])].sort()).toEqual([1, 2, 3, 4]);
+    expect(c.schools.map((s) => s.performanceOrder).sort()).toEqual([1, 2, 3, 4]);
+  });
+});
+
 describe('serialize / parse', () => {
   it('round-trips a fully filled contest exactly (minus device-only fields)', () => {
     let c = contest({ districtNumber: '20', hostSchoolName: 'Friendswood High School' });
@@ -502,6 +590,14 @@ describe('serialize / parse', () => {
     const unlocked = setCritiqueAssignment(contest(), [2, 1, 3], NOW);
     expect(parseContest(serializeContest(unlocked)).critique).toEqual({ judgeByPosition: [2, 1, 3], locked: false });
     expect(parseContest(serializeContest(contest())).critique).toBeNull();
+  });
+
+  it('preserves a LOCKED draw record through serialize → parse, and null when none was run', () => {
+    const c = lockDraw(runDraw(contest(), [3, 1, 2, 6, 4, 5], NOW), NOW);
+    const back = parseContest(serializeContest(c));
+    expect(back.draw).toEqual({ order: [3, 1, 2, 6, 4, 5], drawnAt: NOW, locked: true });
+    expect(back).toEqual(c);
+    expect(parseContest(serializeContest(contest())).draw).toBeNull();
   });
 
   it('DEVICE-ONLY: Speechwire credentials never enter the serialized payload', () => {
@@ -983,6 +1079,22 @@ describe('v3 → v4 migration (compliance tracker)', () => {
     expect(migrated.identity.districtNumber).toBe('20');
     // A migrated contest reads as all-Pending and re-serializes at the new version.
     expect(complianceProgress(migrated.schools[0], complianceItems(migrated)).color).toBe('red');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+});
+
+describe('v4 → v5 migration (performance-order draw)', () => {
+  it('migrates a pre-draw (v4) payload to no draw record, order fully editable', () => {
+    // A full current contest minus the field #78 added: strip `draw` from the envelope.
+    const { draw: _dropped, speechwire: _dev, ...v4Contest } = filledContest();
+    const v4 = JSON.stringify({ schemaVersion: 4, contest: v4Contest });
+
+    const migrated = parseContest(v4);
+    expect(migrated.draw).toBeNull(); // no draw ⇒ order stays hand-editable
+    // Pre-existing data (including the hand-entered performance order) is preserved.
+    expect(migrated.schools[0].name).toBe('Westlake HS');
+    expect(migrated.schools[0].performanceOrder).toBe(3);
+    expect(migrated.identity.districtNumber).toBe('20');
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });

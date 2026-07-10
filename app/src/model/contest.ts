@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 4;
+export const CONTEST_SCHEMA_VERSION = 5;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -223,6 +223,34 @@ export interface CritiqueAssignment {
   locked: boolean;
 }
 
+/**
+ * Locked-in performance-order draw (PRD #65). Mirrors CritiqueAssignment: the
+ * randomizer's output is the ONE thing that persists, stored IN the contest
+ * record so it autosaves, syncs, and exports like every other field.
+ *
+ * The drawn slots ALSO live in the schools' `performanceOrder` fields — the
+ * single source of truth every downstream consumer (schedule, letters, critique,
+ * documents) already reads, so the draw needs no special wiring downstream. This
+ * record is the audit snapshot: `order[i]` is the 1-based slot drawn for the
+ * school at form-order index i (the same permutation runDraw wrote into the
+ * fields), `drawnAt` is when the draw ran (injected `now`, never the clock), and
+ * `locked` freezes the result.
+ *
+ * `null` on Contest ⇒ no draw has produced the current order — the order is fully
+ * hand-editable (pre-#65 contests, and any contest whose draw was voided). While
+ * unlocked the CM may re-run the draw freely; only a LOCKED draw is authoritative,
+ * and it disables the Plays-section order inputs. Unlocking VOIDS the record
+ * (clears it to null) so a hand-edited order is never passed off as a blind draw.
+ */
+export interface PerformanceDraw {
+  /** 1-based drawn slot per school, indexed by form-order position. */
+  order: number[];
+  /** ISO timestamp the draw ran (injected `now`). */
+  drawnAt: string;
+  /** Frozen once locked; the Plays-section order inputs disable while true. */
+  locked: boolean;
+}
+
 export interface Contest {
   /** Stable unique id; never changes after creation. */
   id: string;
@@ -244,6 +272,8 @@ export interface Contest {
   documents: DocumentSelection;
   /** Randomized critique-to-judge assignment; null until first generated. */
   critique: CritiqueAssignment | null;
+  /** Blind performance-order draw record (PRD #65); null until first run/voided. */
+  draw: PerformanceDraw | null;
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -345,6 +375,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     customComplianceItems: [],
     documents: defaultDocumentSelection(),
     critique: null,
+    draw: null,
     speechwire: defaultSpeechwire(),
   };
 }
@@ -429,8 +460,10 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
       performanceOrder: i + 1,
       compliance: {},
     })),
-    // Judges and the draw both change every contest — drop last year's assignment.
+    // Judges and the draw both change every contest — drop last year's assignment
+    // and blind-draw record (performanceOrder is reset to form order above).
     critique: null,
+    draw: null,
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -605,6 +638,48 @@ export function moveCritiqueAssignment(contest: Contest, index: number, directio
   const swapped = [...judges];
   [swapped[index], swapped[target]] = [swapped[target], swapped[index]];
   return { ...touch(contest, now), critique: { ...critique, judgeByPosition: swapped } };
+}
+
+/* ─────────────────────── performance-order draw ───────────────────────
+ * PRD #65. The blind-draw lifecycle, mirroring the critique randomizer: the pure
+ * model/draw.ts generator produces the permutation; these helpers WRITE it into
+ * the schools' performanceOrder fields (the single source of truth downstream)
+ * and record the audit snapshot, then freeze or void it. Every edit is immutable
+ * and bumps updatedAt so it autosaves.
+ */
+
+/**
+ * Runs a draw: writes the permutation into the schools' performanceOrder fields
+ * (school i ⇒ slot `order[i]`) and records the audit snapshot, UNLOCKED. Re-running
+ * while unlocked replaces both the order and the timestamp — a misfire is costless.
+ * A LOCKED draw is frozen: running against it is a no-op (unlock first). `order` is
+ * normally drawOrder(numSchools(contest)); schools beyond its length keep their slot.
+ */
+export function runDraw(contest: Contest, order: number[], now?: string): Contest {
+  if (contest.draw?.locked) return contest;
+  const stamp = now ?? new Date().toISOString();
+  const schools = contest.schools.map((s, i) => (i < order.length ? { ...s, performanceOrder: order[i] } : s));
+  return { ...touch(contest, stamp), schools, draw: { order: [...order], drawnAt: stamp, locked: false } };
+}
+
+/**
+ * Freezes the current draw, disabling the Plays-section order inputs. No-op when
+ * there is no draw record.
+ */
+export function lockDraw(contest: Contest, now?: string): Contest {
+  if (!contest.draw) return contest;
+  return { ...touch(contest, now), draw: { ...contest.draw, locked: true } };
+}
+
+/**
+ * VOIDS the draw record (clears it to null) and re-enables manual order edits.
+ * The drawn slots stay in the schools' fields — they simply become editable
+ * again; the audit record is gone, so a subsequent hand-edit is never presented
+ * as the product of a blind draw. No-op when there is no draw record.
+ */
+export function unlockDraw(contest: Contest, now?: string): Contest {
+  if (!contest.draw) return contest;
+  return { ...touch(contest, now), draw: null };
 }
 
 /* ────────────────────────── compliance tracker ──────────────────────────
@@ -973,6 +1048,9 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
       ? (raw.schools as Record<string, unknown>[]).map((s) => ({ ...s, compliance: {} }))
       : raw.schools,
   }),
+  // v4 (Group A / compliance tracker) predates the performance-order draw (PRD
+  // #65): no draw record, so the order inputs stay fully hand-editable.
+  4: (raw) => ({ ...raw, draw: null }),
 };
 
 export function parseContest(json: string): Contest {
