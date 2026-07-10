@@ -5,6 +5,9 @@ import {
   MAX_BEST_PERFORMERS,
   MAX_ALL_STAR_CAST,
   MAX_HONORABLE_MENTION,
+  advanceContest,
+  canAdvanceContest,
+  nextContestLevel,
   advancingPlaceCount,
   addAwardWinner,
   removeAwardWinner,
@@ -1110,6 +1113,131 @@ describe('v4 → v5 migration (performance-order draw)', () => {
     expect(migrated.schools[0].performanceOrder).toBe(3);
     expect(migrated.identity.districtNumber).toBe('20');
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+});
+
+describe('advanceContest', () => {
+  /** filledContest + recorded results: idx1 & idx0 advance, idx2 is the alternate. */
+  function advancing(): Contest {
+    let c = filledContest();
+    c = setAdvancing(c, [1, 0]); // Anderson (idx1) 1st, Westlake (idx0) 2nd (rank order)
+    c = setAlternate(c, 2);
+    c = withNextContest(c, {
+      date: '2026-04-25',
+      location: 'Region Venue',
+      cmName: 'Next Manager',
+      cmEmail: 'next@x.org',
+      cmPhone: '555-0000',
+    });
+    return c;
+  }
+
+  it('bumps the level one step via NEXT_CONTEST_LEVEL', () => {
+    expect(nextContestLevel('Zone')).toBe('District');
+    expect(nextContestLevel('District')).toBe('BiDistrict');
+    expect(nextContestLevel('BiDistrict')).toBe('Area');
+    expect(nextContestLevel('Area')).toBe('Region');
+    expect(nextContestLevel('Region')).toBeNull();
+    const adv = advanceContest(advancing(), { id: 'adv', now: LATER })!;
+    expect(adv.identity.contestLevel).toBe('BiDistrict'); // District → BiDistrict
+  });
+
+  it('is unavailable (returns null) at Region — no managed next level', () => {
+    const region = withIdentity(advancing(), { contestLevel: 'Region' });
+    expect(canAdvanceContest(region)).toBe(false);
+    expect(advanceContest(region)).toBeNull();
+    expect(canAdvanceContest(advancing())).toBe(true);
+  });
+
+  it('carries ONLY advancing companies (play title + directors kept, order reset, alternate excluded)', () => {
+    const adv = advanceContest(advancing(), { id: 'adv', now: LATER })!;
+    expect(adv.schools).toHaveLength(2);
+    // Carried in school FORM order (idx0, idx1), not advancing/rank order.
+    expect(adv.schools.map((s) => s.name)).toEqual(['Westlake HS', 'Anderson HS']);
+    expect(adv.schools.map((s) => s.playTitle)).toEqual(['Our Town', 'Proof']); // shows kept
+    expect(adv.schools.map((s) => s.performanceOrder)).toEqual([1, 2]); // reset
+    expect(adv.schools[0].directors).toEqual(filledContest().schools[0].directors); // directors kept
+    expect(adv.schools[0].compliance).toEqual({}); // last year's paperwork dropped
+    // The alternate (idx2) and every non-advancing school are gone.
+    expect(adv.schools.some((s) => s.name === 'School 3')).toBe(false);
+  });
+
+  it('carries no schools when no results were recorded', () => {
+    const adv = advanceContest(filledContest(), { id: 'adv' })!;
+    expect(adv.schools).toEqual([]);
+  });
+
+  it('drops stale advancing indices (schools removed after recording)', () => {
+    let c = filledContest();
+    c = setAdvancing(c, [0, 1, 5]); // idx5 advances
+    c = setNumSchools(c, 3); // idx5 no longer exists
+    const adv = advanceContest(c, { id: 'adv' })!;
+    expect(adv.schools.map((s) => s.name)).toEqual(['Westlake HS', 'Anderson HS']); // idx5 dropped
+  });
+
+  it('clears season data and next-level info; identity keeps classification + year, clears host/district', () => {
+    const src = advancing();
+    const adv = advanceContest(src, { id: 'adv', now: LATER, seedFromNextContest: false })!;
+    // Identity carry vs clear.
+    expect(adv.identity.classification).toBe(src.identity.classification);
+    expect(adv.identity.contestYear).toBe(src.identity.contestYear);
+    expect(adv.identity.districtNumber).toBe('');
+    expect(adv.identity.hostSchoolName).toBe('');
+    expect(adv.identity.hostVenueName).toBe('');
+    expect(adv.identity.hostAddress).toBe('');
+    // Judges / critique / draw / results / next-level / credentials cleared.
+    expect(adv.adjudicators).toEqual(defaultAdjudicators());
+    expect(adv.critique).toBeNull();
+    expect(adv.draw).toBeNull();
+    expect(adv.results).toBeNull();
+    expect(adv.nextContest).toEqual(defaultNextContest());
+    expect(adv.speechwire).toEqual({ username: '', password: '' });
+    // Season detail fields cleared; the CM's own info carried (no seeding).
+    expect(adv.details.contestDate).toBe('');
+    expect(adv.details.directorsMeetingTime).toBe('');
+    expect(adv.details.firstShowTime).toBe('');
+    expect(adv.details.rehearsalDate1).toBe('');
+    expect(adv.details.rehearsalDate2).toBe('');
+    expect(adv.details.entrySystemDeadline).toBe('');
+    expect(adv.cmInfo).toEqual(src.cmInfo);
+    // Stable settings carry (like duplicateContest).
+    expect(adv.details.critiqueFormat).toBe(src.details.critiqueFormat);
+    expect(adv.details.numJudges).toBe(src.details.numJudges);
+    expect(adv.details.entryFee).toBe(src.details.entryFee);
+    expect(adv.documents).toEqual(src.documents);
+  });
+
+  it('pre-seeds date / location / next-CM from nextContest when present (default)', () => {
+    const adv = advanceContest(advancing(), { id: 'adv', now: LATER })!;
+    expect(adv.details.contestDate).toBe('2026-04-25');
+    expect(adv.identity.hostVenueName).toBe('Region Venue');
+    expect(adv.cmInfo.name).toBe('Next Manager');
+    expect(adv.cmInfo.email).toBe('next@x.org');
+    expect(adv.cmInfo.phone).toBe('555-0000');
+    // Other CM fields still carry from the source (only name/email/phone seeded).
+    expect(adv.cmInfo.mailingAddress).toBe(filledContest().cmInfo.mailingAddress);
+  });
+
+  it('honors identity carry-forward overrides, and they win over nextContest seeding', () => {
+    const adv = advanceContest(advancing(), {
+      id: 'adv',
+      identity: { hostSchoolName: 'Carried Host', districtNumber: '5', hostVenueName: 'Explicit Venue' },
+    })!;
+    expect(adv.identity.hostSchoolName).toBe('Carried Host');
+    expect(adv.identity.districtNumber).toBe('5');
+    expect(adv.identity.hostVenueName).toBe('Explicit Venue'); // override beats the seeded location
+    expect(adv.identity.contestLevel).toBe('BiDistrict'); // still bumped
+  });
+
+  it('is non-destructive: new id/timestamps, source untouched', () => {
+    const src = advancing();
+    const before = JSON.stringify(src);
+    const adv = advanceContest(src, { id: 'adv', now: LATER })!;
+    expect(adv.id).toBe('adv');
+    expect(adv.createdAt).toBe(LATER);
+    expect(adv.updatedAt).toBe(LATER);
+    expect(adv.id).not.toBe(src.id);
+    expect(JSON.stringify(src)).toBe(before); // source contest is unchanged
   });
 });
 

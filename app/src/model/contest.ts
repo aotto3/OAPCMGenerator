@@ -583,6 +583,141 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
   };
 }
 
+/* ────────────────── advancing a contest to the next level ──────────────────
+ * PRD #66 (user stories 18–27). The post-contest sibling of duplicateContest:
+ * a NEW record pre-filled with only the companies that advanced, the same show
+ * (play title + directors) carried up one level. Pure and total, so the policy
+ * is tested here, not in the advance-clone dialog (C5).
+ */
+
+/**
+ * The level each contest advances TO. The chain follows CONTEST_LEVELS; Region
+ * has no managed next level (it advances to State, which this app does not
+ * manage — PRD user story 26), so it maps to null.
+ */
+export const NEXT_CONTEST_LEVEL: Record<ContestLevel, ContestLevel | null> = {
+  Zone: 'District',
+  District: 'BiDistrict',
+  BiDistrict: 'Area',
+  Area: 'Region',
+  Region: null,
+};
+
+/** The level up from `level`, or null at Region (advances to unmanaged State). */
+export function nextContestLevel(level: ContestLevel): ContestLevel | null {
+  return NEXT_CONTEST_LEVEL[level];
+}
+
+/** True when this contest can advance (false only at Region). Guards the C5 action. */
+export function canAdvanceContest(contest: Contest): boolean {
+  return nextContestLevel(contest.identity.contestLevel) !== null;
+}
+
+export interface AdvanceContestOptions {
+  id?: string;
+  /** ISO timestamp for createdAt/updatedAt; defaults to now. */
+  now?: string;
+  /**
+   * Identity overrides applied on top of the advance defaults (bumped level,
+   * carried classification + year, cleared district + host fields). The C5
+   * dialog uses this to let the CM choose what identity carries forward.
+   */
+  identity?: Partial<ContestIdentity>;
+  /**
+   * Pre-seed the next contest's date/location/CM from `contest.nextContest`
+   * when those fields are filled (PRD user story 23). Default true.
+   */
+  seedFromNextContest?: boolean;
+}
+
+/**
+ * Advances a contest to the next level as a NEW record. Keeps ONLY the companies
+ * in `results.advancing` — each with its play title and directors intact (the
+ * same show goes up a level) — bumps the level one step, and resets performance
+ * order. Returns **null at Region** (no managed next level ⇒ the action is
+ * unavailable), so callers guard on the null.
+ *
+ * Everything tied to this occurrence is cleared: contest date, deadlines,
+ * meeting/show times, rehearsal dates, judges, critique/draw, results,
+ * next-level info, and device-only credentials. The alternate is excluded (only
+ * advancing companies carry). By default the identity carries the classification
+ * and year and the CM's own info, clearing the host/district fields; `options`
+ * override the carried identity and toggle nextContest pre-seeding. The advancing
+ * companies are carried in school FORM order (not rank), so no placement leaks
+ * into the new contest's initial order. The source contest is untouched.
+ */
+export function advanceContest(contest: Contest, options: AdvanceContestOptions = {}): Contest | null {
+  const nextLevel = nextContestLevel(contest.identity.contestLevel);
+  if (nextLevel === null) return null;
+
+  const now = options.now ?? new Date().toISOString();
+  const seed = options.seedFromNextContest ?? true;
+  const next = contest.nextContest;
+
+  // Advancing companies only — drop stale indices, then carry in school form
+  // order so the reset performance order reveals no rank. The alternate and every
+  // non-advancing company are simply not referenced here.
+  const advancingSchools = (contest.results?.advancing ?? [])
+    .filter((i) => i >= 0 && i < contest.schools.length)
+    .slice()
+    .sort((a, b) => a - b)
+    .map((i) => contest.schools[i]);
+
+  // Identity: bump the level, carry classification + year, clear district + host
+  // fields; nextContest.location seeds the venue; the caller's overrides win last.
+  const identity: ContestIdentity = {
+    contestYear: contest.identity.contestYear,
+    contestLevel: nextLevel,
+    classification: contest.identity.classification,
+    districtNumber: '',
+    hostSchoolName: '',
+    hostVenueName: seed && next.location ? next.location : '',
+    hostAddress: '',
+    ...options.identity,
+  };
+
+  // CM info carries; when the CM recorded the next-level manager, it overrides the
+  // carried name/email/phone (a different person usually runs the next level).
+  const cmInfo: CmInfo = { ...contest.cmInfo };
+  if (seed) {
+    if (next.cmName) cmInfo.name = next.cmName;
+    if (next.cmEmail) cmInfo.email = next.cmEmail;
+    if (next.cmPhone) cmInfo.phone = next.cmPhone;
+  }
+
+  const details: ContestDetails = { ...contest.details, ...CLEARED_DETAIL_FIELDS };
+  if (seed && next.date) details.contestDate = next.date;
+
+  return {
+    ...contest,
+    id: options.id ?? crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    identity,
+    cmInfo,
+    details,
+    // Judges change every contest — start fresh.
+    adjudicators: defaultAdjudicators(),
+    // Custom compliance item DEFINITIONS carry; per-school status resets below.
+    customComplianceItems: contest.customComplianceItems.map((it) => ({ ...it })),
+    // Only advancing companies, the same show (playTitle + directors) intact.
+    // Performance order resets to form position; last year's paperwork drops.
+    schools: advancingSchools.map((s, i) => ({
+      ...s,
+      directors: s.directors.map((d) => ({ ...d })),
+      performanceOrder: i + 1,
+      compliance: {},
+    })),
+    critique: null,
+    draw: null,
+    // Season-specific — the next contest records its own outcome and next level.
+    results: null,
+    nextContest: defaultNextContest(),
+    // Device-only credentials are per-contest; never carry them across.
+    speechwire: defaultSpeechwire(),
+  };
+}
+
 /* ────────────────────────── update helpers ──────────────────────────
  * All edits go through these: they are immutable and bump updatedAt, which
  * is also what arms autosave (a brand-new contest with updatedAt ===
