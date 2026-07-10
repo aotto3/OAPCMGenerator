@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BUILT_IN_COMPLIANCE_ITEMS,
   CONTEST_SCHEMA_VERSION,
   DEFAULT_JUDGES,
   DEFAULT_SCHOOLS,
   DOCUMENT_TYPES,
   MAX_SCHOOLS,
   MIN_SCHOOLS,
+  addComplianceItem,
   addDirector,
+  complianceItems,
+  complianceProgress,
+  removeComplianceItem,
+  setComplianceStatus,
   admissionFeeDisplay,
   allDirectorEmails,
   autoDeadlineFor,
@@ -764,5 +770,219 @@ describe('duplicateContest (roll-forward)', () => {
       ...dup,
       speechwire: { username: '', password: '' },
     });
+  });
+});
+
+/* ────────────────────────── compliance tracker (PRD #64) ────────────────────────── */
+
+describe('compliance model foundation', () => {
+  it('encodes the 8 fixed handbook items with stable ids', () => {
+    expect(BUILT_IN_COMPLIANCE_ITEMS).toHaveLength(8);
+    expect(BUILT_IN_COMPLIANCE_ITEMS.map((i) => i.id)).toEqual([
+      'community_standards',
+      'performance_license',
+      'royalty_payment',
+      'cutting_permission',
+      'play_approval',
+      'scenic_approval',
+      'online_entry',
+      'title_registration',
+    ]);
+  });
+
+  it('a new contest starts with an empty tracker (no custom items, blank school maps)', () => {
+    const c = contest();
+    expect(c.customComplianceItems).toEqual([]);
+    expect(c.schools.every((s) => Object.keys(s.compliance).length === 0)).toBe(true);
+    expect(complianceItems(c)).toEqual([...BUILT_IN_COMPLIANCE_ITEMS]);
+  });
+
+  describe('complianceProgress derivation', () => {
+    const c = contest();
+    const items = complianceItems(c); // 8 built-ins
+
+    it('all pending ⇒ red, 0/8', () => {
+      const p = complianceProgress(c.schools[0], items);
+      expect(p).toEqual({ done: 0, applicable: 8, color: 'red' });
+    });
+
+    it('mixed (some received, rest pending) ⇒ yellow', () => {
+      let c2 = setComplianceStatus(c, 0, 'community_standards', 'received');
+      c2 = setComplianceStatus(c2, 0, 'performance_license', 'received');
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 2, applicable: 8, color: 'yellow' });
+    });
+
+    it('every applicable item received ⇒ green', () => {
+      let c2 = c;
+      for (const item of BUILT_IN_COMPLIANCE_ITEMS) {
+        c2 = setComplianceStatus(c2, 0, item.id, 'received');
+      }
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 8, applicable: 8, color: 'green' });
+    });
+
+    it('all items N/A ⇒ green 0/0 (nothing to collect)', () => {
+      let c2 = c;
+      for (const item of BUILT_IN_COMPLIANCE_ITEMS) {
+        c2 = setComplianceStatus(c2, 0, item.id, 'na');
+      }
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 0, applicable: 0, color: 'green' });
+    });
+
+    it('mixed N/A: N/A items drop out of the denominator', () => {
+      // 2 N/A, 3 received, 3 pending ⇒ applicable 6, done 3, yellow.
+      let c2 = c;
+      c2 = setComplianceStatus(c2, 0, 'cutting_permission', 'na');
+      c2 = setComplianceStatus(c2, 0, 'play_approval', 'na');
+      c2 = setComplianceStatus(c2, 0, 'community_standards', 'received');
+      c2 = setComplianceStatus(c2, 0, 'performance_license', 'received');
+      c2 = setComplianceStatus(c2, 0, 'royalty_payment', 'received');
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 3, applicable: 6, color: 'yellow' });
+    });
+
+    it('N/A everything except one received item ⇒ green (all applicable resolved)', () => {
+      let c2 = c;
+      for (const item of BUILT_IN_COMPLIANCE_ITEMS) {
+        c2 = setComplianceStatus(c2, 0, item.id, 'na');
+      }
+      c2 = setComplianceStatus(c2, 0, 'title_registration', 'received');
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 1, applicable: 1, color: 'green' });
+    });
+
+    it('counts custom items alongside built-ins', () => {
+      let c2 = addComplianceItem(c, { id: 'custom-1', label: 'Proof of insurance' });
+      const items2 = complianceItems(c2);
+      expect(items2).toHaveLength(9);
+      c2 = setComplianceStatus(c2, 0, 'custom-1', 'received');
+      expect(complianceProgress(c2.schools[0], items2)).toEqual({ done: 1, applicable: 9, color: 'yellow' });
+    });
+  });
+
+  describe('setComplianceStatus', () => {
+    it('is immutable and bumps updatedAt', () => {
+      const c = contest();
+      const next = setComplianceStatus(c, 0, 'royalty_payment', 'received', LATER);
+      expect(next).not.toBe(c);
+      expect(c.schools[0].compliance).toEqual({}); // source untouched
+      expect(next.schools[0].compliance).toEqual({ royalty_payment: 'received' });
+      expect(next.updatedAt).toBe(LATER);
+    });
+
+    it("writing 'pending' drops the key so an untouched item serializes to nothing", () => {
+      let c = setComplianceStatus(contest(), 0, 'royalty_payment', 'received');
+      c = setComplianceStatus(c, 0, 'royalty_payment', 'pending');
+      expect(c.schools[0].compliance).toEqual({});
+    });
+
+    it('only touches the targeted school', () => {
+      const c = setComplianceStatus(contest(), 1, 'online_entry', 'na');
+      expect(c.schools[1].compliance).toEqual({ online_entry: 'na' });
+      expect(c.schools[0].compliance).toEqual({});
+    });
+
+    it('out-of-range school index is a no-op', () => {
+      const c = contest();
+      expect(setComplianceStatus(c, 99, 'online_entry', 'received')).toBe(c);
+      expect(setComplianceStatus(c, -1, 'online_entry', 'received')).toBe(c);
+    });
+  });
+
+  describe('add / remove custom items', () => {
+    it('a custom item applies to every school (defined once)', () => {
+      const c = addComplianceItem(contest(), { id: 'ins', label: 'Proof of insurance' }, LATER);
+      expect(c.customComplianceItems).toEqual([{ id: 'ins', label: 'Proof of insurance' }]);
+      expect(c.updatedAt).toBe(LATER);
+      // Every school can hold a status for it, all starting Pending (absent).
+      const items = complianceItems(c);
+      expect(c.schools.every((s) => complianceProgress(s, items).applicable === 9)).toBe(true);
+    });
+
+    it('removing a custom item drops its status from every school', () => {
+      let c = addComplianceItem(contest(), { id: 'ins', label: 'Proof of insurance' });
+      c = setComplianceStatus(c, 0, 'ins', 'received');
+      c = setComplianceStatus(c, 2, 'ins', 'na');
+      c = removeComplianceItem(c, 'ins', LATER);
+      expect(c.customComplianceItems).toEqual([]);
+      expect(c.schools[0].compliance).toEqual({});
+      expect(c.schools[2].compliance).toEqual({});
+      expect(c.updatedAt).toBe(LATER);
+    });
+
+    it('removing preserves other items and other custom items', () => {
+      let c = addComplianceItem(contest(), { id: 'a', label: 'A' });
+      c = addComplianceItem(c, { id: 'b', label: 'B' });
+      c = setComplianceStatus(c, 0, 'community_standards', 'received');
+      c = setComplianceStatus(c, 0, 'a', 'received');
+      c = removeComplianceItem(c, 'a');
+      expect(c.customComplianceItems).toEqual([{ id: 'b', label: 'B' }]);
+      expect(c.schools[0].compliance).toEqual({ community_standards: 'received' });
+    });
+
+    it('removing a non-custom / unknown id is a no-op', () => {
+      const c = addComplianceItem(contest(), { id: 'a', label: 'A' });
+      expect(removeComplianceItem(c, 'community_standards')).toBe(c); // built-in, not removable
+      expect(removeComplianceItem(c, 'nope')).toBe(c);
+    });
+  });
+
+  it('compliance state is keyed to the school, surviving reordering and school-count changes', () => {
+    let c = contest();
+    c = setComplianceStatus(c, 0, 'community_standards', 'received');
+    c = setComplianceStatus(c, 1, 'online_entry', 'na');
+    // Rename school 0 — its status stays put (keyed to the school record).
+    c = withSchool(c, 0, { name: 'Renamed HS' });
+    expect(c.schools[0].compliance).toEqual({ community_standards: 'received' });
+    // Grow then shrink back — surviving schools keep their state.
+    const grown = setNumSchools(c, MAX_SCHOOLS);
+    expect(grown.schools[0].compliance).toEqual({ community_standards: 'received' });
+    expect(grown.schools[1].compliance).toEqual({ online_entry: 'na' });
+    const shrunk = setNumSchools(grown, 4);
+    expect(shrunk.schools[0].compliance).toEqual({ community_standards: 'received' });
+    expect(shrunk.schools[1].compliance).toEqual({ online_entry: 'na' });
+  });
+
+  it('round-trips through serialize/parse, including custom items and statuses', () => {
+    let c = contest();
+    c = addComplianceItem(c, { id: 'ins', label: 'Proof of insurance' });
+    c = setComplianceStatus(c, 0, 'community_standards', 'received');
+    c = setComplianceStatus(c, 0, 'ins', 'na');
+    const back = parseContest(serializeContest(c));
+    expect(back.customComplianceItems).toEqual([{ id: 'ins', label: 'Proof of insurance' }]);
+    expect(back.schools[0].compliance).toEqual({ community_standards: 'received', ins: 'na' });
+  });
+
+  it('duplicateContest carries custom item DEFINITIONS but clears every school status', () => {
+    let source = filledContest();
+    source = addComplianceItem(source, { id: 'ins', label: 'Proof of insurance' });
+    source = setComplianceStatus(source, 0, 'community_standards', 'received');
+    source = setComplianceStatus(source, 0, 'ins', 'received');
+    const dup = duplicateContest(source, { id: 'dup-id', now: LATER });
+    expect(dup.customComplianceItems).toEqual([{ id: 'ins', label: 'Proof of insurance' }]);
+    expect(dup.schools.every((s) => Object.keys(s.compliance).length === 0)).toBe(true);
+    // Source untouched.
+    expect(source.schools[0].compliance).toEqual({ community_standards: 'received', ins: 'received' });
+  });
+});
+
+describe('v3 → v4 migration (compliance tracker)', () => {
+  it('migrates a pre-compliance (v3) payload to an all-Pending tracker', () => {
+    const v3Contest = {
+      ...contest({ districtNumber: '20' }),
+      schools: [
+        { name: 'Westlake HS', directors: [{ name: 'Pat', email: 'pat@x.org' }], playTitle: 'Our Town', performanceOrder: 1 },
+        { name: 'Anderson HS', directors: [{ name: '', email: '' }], playTitle: '', performanceOrder: 2 },
+      ],
+    };
+    // Strip the fields v3 didn't have so the fixture is honest.
+    delete (v3Contest as Record<string, unknown>).customComplianceItems;
+    const v3 = JSON.stringify({ schemaVersion: 3, contest: v3Contest });
+
+    const migrated = parseContest(v3);
+    expect(migrated.customComplianceItems).toEqual([]);
+    expect(migrated.schools.map((s) => s.compliance)).toEqual([{}, {}]);
+    expect(migrated.schools[0].name).toBe('Westlake HS'); // pre-existing data preserved
+    expect(migrated.identity.districtNumber).toBe('20');
+    // A migrated contest reads as all-Pending and re-serializes at the new version.
+    expect(complianceProgress(migrated.schools[0], complianceItems(migrated)).color).toBe('red');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });

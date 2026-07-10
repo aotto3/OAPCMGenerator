@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 3;
+export const CONTEST_SCHEMA_VERSION = 4;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -114,6 +114,42 @@ export interface Director {
   email: string;
 }
 
+/* ────────────────────────── compliance items ──────────────────────────
+ * PRD #64. The per-school paperwork checklist. Both built-in and custom items
+ * are just { id, label }; a school's status for an item is looked up by id, so
+ * status travels with the school (not its list position). Absent ⇒ 'pending'.
+ */
+
+export const COMPLIANCE_STATUSES = ['pending', 'received', 'na'] as const;
+/** Tri-state per (school, item). Absent from a school's map ⇒ 'pending'. */
+export type ComplianceStatus = (typeof COMPLIANCE_STATUSES)[number];
+
+/** A compliance checklist item — built-in or custom; both are just id + label. */
+export interface ComplianceItem {
+  id: string;
+  label: string;
+}
+
+/**
+ * The fixed handbook compliance items (2025–26 UIL OAP Handbook, PRD #64).
+ * Built-ins are never editable or removable — conditionality (a cut script,
+ * an off-list title, special scenery) is expressed per-school with an 'na'
+ * status, not by hiding items. The `id`s are stable keys stored in every
+ * school's status map: never rename or renumber them, only append. If a future
+ * handbook drops an item, removing it here simply orphans that item's stored
+ * statuses (they stop being referenced), which is harmless.
+ */
+export const BUILT_IN_COMPLIANCE_ITEMS: readonly ComplianceItem[] = [
+  { id: 'community_standards', label: 'Community Standards & Copyright Compliance form (signed)' },
+  { id: 'performance_license', label: 'Performance license from publisher' },
+  { id: 'royalty_payment', label: 'Written proof of royalty payment' },
+  { id: 'cutting_permission', label: '"Scenes from" / cutting permission' },
+  { id: 'play_approval', label: 'Play approval (off-list titles)' },
+  { id: 'scenic_approval', label: 'Scenic approval' },
+  { id: 'online_entry', label: 'Contestant entry in the Online Entry System' },
+  { id: 'title_registration', label: 'Title registration' },
+] as const;
+
 /** One competing school (v12 school_N_* + play_N_* fields). */
 export interface School {
   name: string;
@@ -122,6 +158,12 @@ export interface School {
   playTitle: string;
   /** 1-based slot from the blind draw. Defaults to the school's position. */
   performanceOrder: number;
+  /**
+   * Compliance status per item id (built-in or custom). Absent id ⇒ 'pending',
+   * so an untouched tracker is `{}` and costs nothing in the serialized record.
+   * Keyed to the school so it survives reordering and renaming (PRD #64).
+   */
+  compliance: Record<string, ComplianceStatus>;
 }
 
 /**
@@ -194,6 +236,11 @@ export interface Contest {
   adjudicators: Adjudicator[];
   /** Length is the "Number of Schools" (MIN_SCHOOLS–MAX_SCHOOLS). Form order. */
   schools: School[];
+  /**
+   * Per-contest custom compliance items (PRD #64), defined once and applied to
+   * every school. Built-ins are not stored here — see BUILT_IN_COMPLIANCE_ITEMS.
+   */
+  customComplianceItems: ComplianceItem[];
   documents: DocumentSelection;
   /** Randomized critique-to-judge assignment; null until first generated. */
   critique: CritiqueAssignment | null;
@@ -250,7 +297,7 @@ export function defaultAdjudicators(): Adjudicator[] {
 }
 
 function blankSchool(position: number): School {
-  return { name: '', directors: [{ name: '', email: '' }], playTitle: '', performanceOrder: position };
+  return { name: '', directors: [{ name: '', email: '' }], playTitle: '', performanceOrder: position, compliance: {} };
 }
 
 export function defaultSchools(count: number = DEFAULT_SCHOOLS): School[] {
@@ -295,6 +342,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     details: defaultDetails(),
     adjudicators: defaultAdjudicators(),
     schools: defaultSchools(),
+    customComplianceItems: [],
     documents: defaultDocumentSelection(),
     critique: null,
     speechwire: defaultSpeechwire(),
@@ -368,12 +416,18 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     details: { ...contest.details, ...CLEARED_DETAIL_FIELDS },
     // Judges change every contest — start fresh.
     adjudicators: defaultAdjudicators(),
-    // Keep each school and its directors; drop this year's play + draw order.
+    // Custom compliance item DEFINITIONS carry forward (a district requirement
+    // recurs year to year); the per-school status they collected does not —
+    // each school's tracker resets to empty (all-Pending) below.
+    customComplianceItems: contest.customComplianceItems.map((it) => ({ ...it })),
+    // Keep each school and its directors; drop this year's play + draw order and
+    // last year's collected compliance paperwork.
     schools: contest.schools.map((s, i) => ({
       ...s,
       directors: s.directors.map((d) => ({ ...d })),
       playTitle: '',
       performanceOrder: i + 1,
+      compliance: {},
     })),
     // Judges and the draw both change every contest — drop last year's assignment.
     critique: null,
@@ -551,6 +605,102 @@ export function moveCritiqueAssignment(contest: Contest, index: number, directio
   const swapped = [...judges];
   [swapped[index], swapped[target]] = [swapped[target], swapped[index]];
   return { ...touch(contest, now), critique: { ...critique, judgeByPosition: swapped } };
+}
+
+/* ────────────────────────── compliance tracker ──────────────────────────
+ * PRD #64. Per-school paperwork checklist. Status lives on each School (keyed
+ * to the item id, absent ⇒ pending); custom item definitions live on the
+ * contest and apply to every school. Fully additive — nothing outside the
+ * Compliance UI section reads any of this, and an untouched tracker adds
+ * nothing to the serialized record.
+ */
+
+/** All compliance items in display order: the fixed built-ins, then customs. */
+export function complianceItems(contest: Contest): ComplianceItem[] {
+  return [...BUILT_IN_COMPLIANCE_ITEMS, ...contest.customComplianceItems];
+}
+
+/**
+ * Sets one school's status for one item. Writing 'pending' DROPS the key (the
+ * default), so a school's map only ever holds meaningful 'received'/'na' entries
+ * and an untouched tracker stays `{}`. Out-of-range school index is a no-op.
+ * Works for built-in and custom item ids alike.
+ */
+export function setComplianceStatus(
+  contest: Contest,
+  schoolIndex: number,
+  itemId: string,
+  status: ComplianceStatus,
+  now?: string,
+): Contest {
+  if (schoolIndex < 0 || schoolIndex >= contest.schools.length) return contest;
+  const schools = contest.schools.map((s, i) => {
+    if (i !== schoolIndex) return s;
+    const compliance = { ...s.compliance };
+    if (status === 'pending') delete compliance[itemId];
+    else compliance[itemId] = status;
+    return { ...s, compliance };
+  });
+  return { ...touch(contest, now), schools };
+}
+
+/**
+ * Adds a custom compliance item. The caller supplies the id (the model stays
+ * pure — no id generation, no clock/RNG); the UI mints a uuid. The item applies
+ * to every school automatically just by entering the shared list — no per-school
+ * write, since an absent status already reads as Pending.
+ */
+export function addComplianceItem(contest: Contest, item: ComplianceItem, now?: string): Contest {
+  return { ...touch(contest, now), customComplianceItems: [...contest.customComplianceItems, item] };
+}
+
+/**
+ * Removes a custom compliance item and DROPS its status from every school, so no
+ * orphaned entries linger. Built-in ids are never in customComplianceItems, so a
+ * built-in can't be removed; an id that isn't a current custom item is a no-op.
+ */
+export function removeComplianceItem(contest: Contest, itemId: string, now?: string): Contest {
+  if (!contest.customComplianceItems.some((it) => it.id === itemId)) return contest;
+  const customComplianceItems = contest.customComplianceItems.filter((it) => it.id !== itemId);
+  const schools = contest.schools.map((s) => {
+    if (!(itemId in s.compliance)) return s;
+    const compliance = { ...s.compliance };
+    delete compliance[itemId];
+    return { ...s, compliance };
+  });
+  return { ...touch(contest, now), customComplianceItems, schools };
+}
+
+export const COMPLIANCE_COLORS = ['red', 'yellow', 'green'] as const;
+export type ComplianceColor = (typeof COMPLIANCE_COLORS)[number];
+
+export interface ComplianceProgress {
+  /** Items marked Received. */
+  done: number;
+  /** Items not marked N/A — the counter's denominator. */
+  applicable: number;
+  color: ComplianceColor;
+}
+
+/**
+ * Per-school progress over the given item list (pass complianceItems(contest)).
+ * An item is applicable unless the school marked it N/A; `done` counts Received.
+ * Green when nothing applicable is still pending — every applicable item is
+ * Received (all-N/A ⇒ green 0/0, nothing to collect); red at zero Received;
+ * yellow in between. Absent status ⇒ Pending. Pure derivation, no mutation.
+ */
+export function complianceProgress(school: School, items: readonly ComplianceItem[]): ComplianceProgress {
+  let applicable = 0;
+  let done = 0;
+  for (const item of items) {
+    const status = school.compliance[item.id] ?? 'pending';
+    if (status === 'na') continue;
+    applicable++;
+    if (status === 'received') done++;
+  }
+  const pending = applicable - done;
+  const color: ComplianceColor = pending === 0 ? 'green' : done === 0 ? 'red' : 'yellow';
+  return { done, applicable, color };
 }
 
 /* ────────────────────────── derived values ────────────────────────── */
@@ -814,6 +964,15 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   }),
   // v2 (Slices 2–9) had no critique assignment — start with none.
   2: (raw) => ({ ...raw, critique: null }),
+  // v3 (Slices 10–18) predate the compliance tracker (PRD #64): give every
+  // school an empty (all-Pending) status map and the contest no custom items.
+  3: (raw) => ({
+    ...raw,
+    customComplianceItems: [],
+    schools: Array.isArray(raw.schools)
+      ? (raw.schools as Record<string, unknown>[]).map((s) => ({ ...s, compliance: {} }))
+      : raw.schools,
+  }),
 };
 
 export function parseContest(json: string): Contest {
