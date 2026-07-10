@@ -39,7 +39,7 @@ function ContestFlow() {
       onOpenSaved={openSaved}
     />
   ) : (
-    <Workspace contestId={open.id} draft={open.draft} onBack={() => setOpen(null)} />
+    <Workspace contestId={open.id} draft={open.draft} onBack={() => setOpen(null)} onOpenSaved={openSaved} />
   );
 }
 

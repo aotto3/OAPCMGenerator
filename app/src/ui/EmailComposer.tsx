@@ -47,9 +47,17 @@ export function EmailComposer({ contest }: { contest: Contest }) {
   }
 
   function toggleAdvancing() {
-    // Reopening starts a fresh selection, mirroring v12's rebuild-on-open.
+    // Reopening rebuilds the selection (v12 pattern), now PRE-SEEDED with the
+    // advancing companies recorded in Results & Advancement (PRD #66, user story
+    // 16): a UI-only default the CM can still adjust. Stale indices are filtered
+    // to the current school list; emailTemplates stays pure and unchanged.
     setShowPicker((open) => {
-      if (!open) setSelected(new Set());
+      if (!open) {
+        const advancing = (contest.results?.advancing ?? []).filter(
+          (i) => i >= 0 && i < contest.schools.length,
+        );
+        setSelected(new Set(advancing));
+      }
       return !open;
     });
   }

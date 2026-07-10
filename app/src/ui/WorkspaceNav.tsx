@@ -44,6 +44,9 @@ const SECTIONS: NavSection[] = [
   { id: 'sec-compliance', emoji: '✅', label: 'Compliance' },
   { id: 'sec-schedule', emoji: '🗓️', label: 'Schedule' },
   { id: 'sec-critique', emoji: '🎲', label: 'Critique' },
+  // No `data` ⇒ no completion dot: results are a post-contest tool, not a fill-in
+  // section (PRD #66) — like the draw and compliance sections.
+  { id: 'sec-results', emoji: '🏆', label: 'Results & Advancement' },
   { id: 'sec-generate', emoji: '⬇️', label: 'Generate Documents' },
   { id: 'sec-history', emoji: '💾', label: 'Manual Save' },
   { id: 'sec-email', emoji: '✉️', label: 'Email' },

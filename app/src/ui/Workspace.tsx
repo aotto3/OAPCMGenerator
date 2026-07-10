@@ -20,6 +20,7 @@ import { GenerateSection } from './sections/GenerateSection';
 import { HistorySection } from './sections/HistorySection';
 import { IdentitySection } from './sections/IdentitySection';
 import { PlaysSection } from './sections/PlaysSection';
+import { ResultsSection } from './sections/ResultsSection';
 import { SchoolsSection } from './sections/SchoolsSection';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { SchedulePreview } from './SchedulePreview';
@@ -35,11 +36,14 @@ export function Workspace({
   contestId,
   draft,
   onBack,
+  onOpenSaved,
 }: {
   contestId: string;
   /** Fresh unsaved contest from "+ New Contest" — not in storage yet. */
   draft?: Contest;
   onBack: () => void;
+  /** Persist a brand-new contest (e.g. the advance-clone) and open it. */
+  onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
   const [contest, setContest] = useState<Contest>();
   const [missing, setMissing] = useState(false);
@@ -132,6 +136,9 @@ export function Workspace({
       </div>
       <div id="sec-critique" className="ws-section-anchor">
         <CritiqueSection contest={contest} onChange={setContest} />
+      </div>
+      <div id="sec-results" className="ws-section-anchor">
+        <ResultsSection contest={contest} onChange={setContest} onAdvance={onOpenSaved} />
       </div>
       <div id="sec-generate" className="ws-section-anchor">
         <GenerateSection contest={contest} onChange={setContest} />
