@@ -1,7 +1,10 @@
 import {
   HOTEL_NIGHTS_OPTIONS,
+  adjudicatorMilestoneStatus,
+  setAdjudicatorMilestone,
   withAdjudicator,
   type Adjudicator,
+  type AdjudicatorMilestoneKey,
   type Contest,
   type SectionCompletion,
 } from '../../model/contest';
@@ -23,10 +26,11 @@ export function AdjudicatorsSection({
   const active = contest.adjudicators.slice(0, contest.details.numJudges);
 
   return (
-    <Section title="⚖️ Adjudicators" badge="After Contracting" completion={completion} defaultOpen={defaultOpen}>
+    <Section title="⚖️ Judges" badge="After Contracting" completion={completion} defaultOpen={defaultOpen}>
       <p className="note-box">
         Mailing addresses are shared with directors for script submission. Include full address with
-        city and ZIP.
+        city and ZIP. The contracting checklist tracks paperwork — it never counts toward section
+        completion.
       </p>
       {active.map((judge, i) => (
         <JudgeFields
@@ -34,6 +38,10 @@ export function AdjudicatorsSection({
           index={i}
           judge={judge}
           edit={(patch) => onChange(withAdjudicator(contest, i, patch))}
+          // Checking stamps today's date (UI supplies `now`); unchecking clears it.
+          setMilestone={(key, done) =>
+            onChange(setAdjudicatorMilestone(contest, i, key, done, new Date().toISOString()))
+          }
         />
       ))}
     </Section>
@@ -44,10 +52,12 @@ function JudgeFields({
   index,
   judge,
   edit,
+  setMilestone,
 }: {
   index: number;
   judge: Adjudicator;
   edit: (patch: Partial<Adjudicator>) => void;
+  setMilestone: (key: AdjudicatorMilestoneKey, done: boolean) => void;
 }) {
   const label = `Judge ${index + 1}`;
   return (
@@ -98,6 +108,31 @@ function JudgeFields({
           value={judge.dietary}
           onChange={(v) => edit({ dietary: v })}
         />
+      </div>
+      <div className="judge-milestones">
+        <span className="milestone-heading">Contracting checklist</span>
+        {adjudicatorMilestoneStatus(judge).map((m) => (
+          <div key={m.key} className="milestone-row">
+            <label className="check-option">
+              <input
+                type="checkbox"
+                checked={m.done}
+                onChange={(e) => setMilestone(m.key, e.target.checked)}
+              />
+              {m.label}
+            </label>
+            {m.done && (
+              <input
+                type="date"
+                className="milestone-date"
+                value={m.date}
+                aria-label={`${m.label} date`}
+                // Backdate/correct the stamped date; clearing it unchecks the milestone.
+                onChange={(e) => edit({ [m.key]: e.target.value } as Partial<Adjudicator>)}
+              />
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
