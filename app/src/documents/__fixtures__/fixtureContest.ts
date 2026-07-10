@@ -10,12 +10,18 @@
  */
 
 import {
+  addAwardWinner,
   createContest,
+  setAdvancing,
+  setAlternate,
+  setBestCrew,
+  setOutstandingTechnician,
   withAdjudicator,
   withCmInfo,
   withDetails,
   withDirector,
   withIdentity,
+  withNextContest,
   withSchool,
   type Contest,
 } from '../../model/contest';
@@ -77,5 +83,50 @@ export function fixtureContest(): Contest {
     c = withSchool(c, i, { name, playTitle: plays[i], performanceOrder: orders[i] }, FIXTURE_NOW);
     c = withDirector(c, i, 0, { name: `${name} Director`, email: `dir${i + 1}@example.com` }, FIXTURE_NOW);
   });
+  return c;
+}
+
+/**
+ * The shared fixture with recorded results + a next-level block (PRD #66), for
+ * the Awards Script "filled" golden. School indices: 0 Alpha / 1 Bravo /
+ * 2 Charlie / 3 Delta / 4 Echo / 5 Foxtrot.
+ *
+ * Advancing is entered in RANK order [3, 1, 5] (Delta 1st, Bravo 2nd, Foxtrot
+ * 3rd) precisely so the golden proves the derivation DROPS rank — the script
+ * announces them re-sorted into form order (Bravo, Delta, Foxtrot) with no
+ * placement. The alternate is Alpha HS, whose "Romeo & Juliet" also exercises XML
+ * escaping through the filled advancing path.
+ */
+export function fixtureContestWithResults(): Contest {
+  let c = fixtureContest();
+  c = setAdvancing(c, [3, 1, 5], FIXTURE_NOW); // rank order, deliberately not form order
+  c = setAlternate(c, 0, FIXTURE_NOW); // Alpha HS (Romeo & Juliet)
+
+  c = addAwardWinner(c, 'bestPerformers', { studentName: 'Jordan Lee', schoolIndex: 1 }, FIXTURE_NOW);
+  c = addAwardWinner(c, 'bestPerformers', { studentName: 'Sam Rivera', schoolIndex: 3 }, FIXTURE_NOW);
+
+  c = addAwardWinner(c, 'allStarCast', { studentName: 'Alex Kim', schoolIndex: 0 }, FIXTURE_NOW);
+  c = addAwardWinner(c, 'allStarCast', { studentName: 'Taylor Cruz', schoolIndex: 2 }, FIXTURE_NOW);
+  c = addAwardWinner(c, 'allStarCast', { studentName: 'Morgan Diaz', schoolIndex: 4 }, FIXTURE_NOW);
+
+  c = addAwardWinner(c, 'honorableMention', { studentName: 'Casey Park', schoolIndex: 5 }, FIXTURE_NOW);
+  c = addAwardWinner(c, 'honorableMention', { studentName: 'Riley Fox', schoolIndex: 1 }, FIXTURE_NOW);
+
+  c = setOutstandingTechnician(c, 0, 'Pat Nguyen', FIXTURE_NOW); // Alpha HS
+  c = setOutstandingTechnician(c, 2, 'Drew Carter', FIXTURE_NOW); // Charlie HS
+
+  c = setBestCrew(c, 4, FIXTURE_NOW); // Echo HS
+
+  c = withNextContest(
+    c,
+    {
+      date: '2026-03-28',
+      location: 'Regional Arts Center, Austin',
+      cmName: 'Dana Host',
+      cmEmail: 'dana@example.com',
+      cmPhone: '512-555-0142',
+    },
+    FIXTURE_NOW,
+  );
   return c;
 }

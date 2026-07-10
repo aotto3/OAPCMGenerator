@@ -13,7 +13,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { lockCritique, setCritiqueAssignment, withDetails, withIdentity, type Contest } from '../model/contest';
-import { fixtureContest, FIXTURE_LETTER_DATE, FIXTURE_NOW } from './__fixtures__/fixtureContest';
+import {
+  fixtureContest,
+  fixtureContestWithResults,
+  FIXTURE_LETTER_DATE,
+  FIXTURE_NOW,
+} from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildFallAgenda } from './fallAgenda';
 import { buildHostChecklist } from './hostChecklist';
@@ -214,6 +219,62 @@ describe('Awards Script — content', () => {
     const oneJudge = withDetails(fixtureContest(), { numJudges: 1 }, FIXTURE_NOW);
     const xml = await documentXml(await buildAwardsScript(oneJudge));
     expect(xml).toContain('recognized by our adjudicator for Outstanding');
+  });
+
+  it('leaves the blank fill-in template when no results are recorded', async () => {
+    // fixtureContest() has results === null, so the script must NOT fill.
+    const xml = await documentXml(await buildAwardsScript(fixtureContest()));
+    expect(xml).toContain('USE ACTING AWARDS FORM');
+    expect(xml).toContain('1st Place — Advancing:');
+    expect(xml).not.toContain('in no particular order');
+  });
+});
+
+describe('Awards Script (with results) — golden + content', () => {
+  const GOLDEN = 'Awards Script (With Results).docx';
+
+  it('matches the approved with-results golden file (content-normalized)', async () => {
+    const bytes = await buildAwardsScript(fixtureContestWithResults());
+    await expectArchiveMatchesGolden(bytes, goldenPath(GOLDEN));
+  });
+
+  it('fills the acting awards, technicians, and best crew with actual winners', async () => {
+    const xml = await documentXml(await buildAwardsScript(fixtureContestWithResults()));
+    // The blank-template reminders are gone.
+    expect(xml).not.toContain('USE ACTING AWARDS FORM');
+    // Best Performers / All-Star / Honorable Mention name their students + schools.
+    expect(xml).toContain('Jordan Lee — Bravo HS');
+    expect(xml).toContain('Alex Kim — Alpha HS');
+    expect(xml).toContain('Casey Park — Foxtrot HS');
+    // Outstanding Technicians (one per school) and Best Crew.
+    expect(xml).toContain('Pat Nguyen — Alpha HS');
+    expect(xml).toContain('Drew Carter — Charlie HS');
+    expect(xml).toContain('Best Crew');
+    expect(xml).toContain('Echo HS — Almost, Maine');
+  });
+
+  it('announces advancing companies unordered, with no placement labels', async () => {
+    const xml = await documentXml(await buildAwardsScript(fixtureContestWithResults()));
+    expect(xml).toContain('in no particular order');
+    // Advancing companies: Bravo, Delta, Foxtrot (rank order [3,1,5] dropped).
+    expect(xml).toContain('Bravo HS — The Crucible');
+    expect(xml).toContain('Delta HS — Metamorphoses');
+    expect(xml).toContain('Foxtrot HS — Radium Girls');
+    // Alternate named (Romeo & Juliet stays XML-escaped).
+    expect(xml).toContain('Alternate: Alpha HS — Romeo &amp; Juliet');
+    // No placement anywhere.
+    expect(xml).not.toContain('1st Place');
+    expect(xml).not.toContain('2nd Place');
+    expect(xml).not.toContain('3rd Place');
+  });
+
+  it('fills the Next Level of Competition section from nextContest (no clock read)', async () => {
+    const xml = await documentXml(await buildAwardsScript(fixtureContestWithResults()));
+    expect(xml).toContain('continue to the Bi-District contest'); // District → Bi-District
+    expect(xml).toContain('Regional Arts Center, Austin');
+    expect(xml).toContain('March 28, 2026'); // fmtDateShort(nextContest.date)
+    expect(xml).toContain('Dana Host');
+    expect(xml).not.toContain('[Announce the next contest level');
   });
 });
 
