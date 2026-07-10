@@ -10,13 +10,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { withCmInfo, withDetails, withIdentity } from '../model/contest';
+import { withAdjudicator, withCmInfo, withDetails, withIdentity } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import {
   advancingEmail,
   announcementEmail,
   dayBeforeEmail,
   deadlineEmail,
+  judgeNeedsEmail,
   judgesEmail,
 } from './emailTemplates';
 
@@ -123,6 +124,61 @@ describe('judgesEmail', () => {
   it('does not leak the critique assignment into the email', () => {
     // Judges must not learn the draw ahead of time (#23 deferred clause, decided out).
     expect(judgesEmail(fixtureContest()).body).not.toMatch(/Judge \d+ \(/);
+  });
+});
+
+describe('judgeNeedsEmail', () => {
+  it('opens with the contest name and the needs preamble', () => {
+    const { subject, body } = judgeNeedsEmail(fixtureContest());
+    expect(subject).toBe(`${CONTEST_NAME} — Judge Needs`);
+    expect(body.startsWith(`For the ${CONTEST_NAME}, the judges' needs are as follows:`)).toBe(true);
+  });
+
+  it('lists all three categories for a judge with every need set', () => {
+    const c = withAdjudicator(
+      fixtureContest(),
+      0,
+      { name: 'Dr. Jane Judge', needsHotel: true, hotelNights: 2, dietary: 'vegetarian', needsPower: true },
+      FIXTURE_NOW,
+    );
+    const { body } = judgeNeedsEmail(c);
+    expect(body).toContain('Dr. Jane Judge:');
+    expect(body).toContain('• Hotel: 2 nights');
+    expect(body).toContain('• Food/Dietary: vegetarian');
+    expect(body).toContain('• Power: yes — power needed at the judge table');
+  });
+
+  it('reads "none" for every category a judge does not need', () => {
+    // A single judge with no needs set (fixture judges default to no needs).
+    const c = withDetails(fixtureContest(), { numJudges: 1 }, FIXTURE_NOW);
+    const { body } = judgeNeedsEmail(c);
+    expect(body).toContain('• Hotel: none');
+    expect(body).toContain('• Food/Dietary: none');
+    expect(body).toContain('• Power: none');
+  });
+
+  it('lists only the active judges (per numJudges)', () => {
+    let c = withDetails(fixtureContest(), { numJudges: 2 }, FIXTURE_NOW);
+    c = withAdjudicator(c, 2, { name: 'Ms. Mary Adjudicator' }, FIXTURE_NOW);
+    const { body } = judgeNeedsEmail(c);
+    expect(body).toContain('Dr. Jane Judge:');
+    expect(body).toContain('Prof. John Critic:');
+    expect(body).not.toContain('Ms. Mary Adjudicator:'); // judge 3 hidden at numJudges = 2
+  });
+
+  it('falls back to "Judge N" for a blank judge name', () => {
+    let c = withDetails(fixtureContest(), { numJudges: 1 }, FIXTURE_NOW);
+    c = withAdjudicator(c, 0, { name: '' }, FIXTURE_NOW);
+    expect(judgeNeedsEmail(c).body).toContain('Judge 1:');
+  });
+
+  it('uses a singular "night" for a one-night hotel stay', () => {
+    const c = withDetails(
+      withAdjudicator(fixtureContest(), 0, { needsHotel: true, hotelNights: 1 }, FIXTURE_NOW),
+      { numJudges: 1 },
+      FIXTURE_NOW,
+    );
+    expect(judgeNeedsEmail(c).body).toContain('• Hotel: 1 night');
   });
 });
 
