@@ -422,6 +422,51 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   border-radius: var(--radius-md); padding: 6px var(--space-4); font-size: 0.82rem; font-weight: 700;
 }
 
+/* Compliance tracker (PRD #64). A schools × items grid; wide, so it scrolls
+   horizontally inside its own container rather than pushing the page. */
+.compliance-scroll { overflow-x: auto; margin-bottom: var(--space-3); }
+.compliance-grid { border-collapse: collapse; font-size: 0.82rem; }
+.compliance-grid th, .compliance-grid td {
+  border: 1px solid var(--c-border); padding: var(--space-1) var(--space-2); vertical-align: middle;
+}
+.compliance-corner, .compliance-school {
+  text-align: left; font-weight: 700; white-space: nowrap;
+  position: sticky; left: 0; background: var(--c-surface); z-index: 1;
+}
+.compliance-item-head {
+  min-width: 104px; max-width: 132px; text-align: left; font-weight: 600;
+  color: var(--c-muted); font-size: var(--fs-xs); line-height: 1.2; vertical-align: bottom;
+}
+.compliance-item-head span { display: inline; }
+.compliance-remove {
+  background: none; border: none; color: var(--c-red); font-size: 1rem; font-weight: 700;
+  line-height: 1; padding: 0 0 0 var(--space-1); cursor: pointer;
+}
+.compliance-progress-head { text-align: center; font-weight: 600; color: var(--c-muted); font-size: var(--fs-xs); }
+.compliance-cell { padding: 2px; }
+.compliance-select {
+  font: inherit; font-size: var(--fs-xs); width: 100%; padding: 3px var(--space-1);
+  border: 1px solid var(--c-border); border-radius: var(--radius-sm); background: var(--c-surface); color: var(--c-text);
+}
+/* Cell tint by state so the grid scans by color (story 6) — Received green,
+   N/A muted, Pending the neutral surface. */
+.compliance-select.is-received { background: var(--c-success-bg); border-color: var(--c-success-border); }
+.compliance-select.is-na { background: var(--c-page-bg); color: var(--c-muted); }
+.compliance-progress { text-align: center; }
+.compliance-counter {
+  display: inline-block; font-weight: 700; font-size: var(--fs-xs);
+  border-radius: var(--radius-pill); padding: 2px 9px; border: 1px solid transparent; white-space: nowrap;
+}
+.compliance-counter.is-red { color: var(--c-red); background: var(--c-bg-red); border-color: var(--c-red); }
+.compliance-counter.is-yellow { color: var(--c-warn); background: var(--c-warn-bg); border-color: var(--c-warn-border); }
+.compliance-counter.is-green { color: var(--c-success); background: var(--c-success-bg); border-color: var(--c-success-border); }
+.compliance-add { display: flex; gap: var(--space-2); align-items: center; }
+.compliance-add input {
+  flex: 1; min-width: 0; font: inherit; padding: var(--space-2);
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); color: var(--c-text);
+}
+.btn-util:disabled { opacity: 0.5; cursor: default; }
+
 .field-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--space-3);

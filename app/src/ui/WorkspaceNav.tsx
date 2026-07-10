@@ -38,6 +38,8 @@ const SECTIONS: NavSection[] = [
   { id: 'sec-adjudicators', emoji: '⚖️', label: 'Judges', data: { key: 'adjudicators', phase: 'contracting' } },
   { id: 'sec-schools', emoji: '🏫', label: 'Schools', data: { key: 'schools', phase: 'entry' } },
   { id: 'sec-plays', emoji: '🎭', label: 'Plays', data: { key: 'plays', phase: 'entry' } },
+  // No `data` ⇒ no completion dot: compliance progress stays inside its section (PRD #64).
+  { id: 'sec-compliance', emoji: '✅', label: 'Compliance' },
   { id: 'sec-schedule', emoji: '🗓️', label: 'Schedule' },
   { id: 'sec-critique', emoji: '🎲', label: 'Critique' },
   { id: 'sec-generate', emoji: '⬇️', label: 'Generate Documents' },
