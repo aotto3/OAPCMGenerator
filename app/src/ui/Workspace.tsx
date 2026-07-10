@@ -15,6 +15,7 @@ import { CmInfoSection } from './sections/CmInfoSection';
 import { ComplianceSection } from './sections/ComplianceSection';
 import { CritiqueSection } from './sections/CritiqueSection';
 import { DetailsSection } from './sections/DetailsSection';
+import { DrawSection } from './sections/DrawSection';
 import { GenerateSection } from './sections/GenerateSection';
 import { HistorySection } from './sections/HistorySection';
 import { IdentitySection } from './sections/IdentitySection';
@@ -119,6 +120,9 @@ export function Workspace({
       </div>
       <div id="sec-plays" className="ws-section-anchor">
         <PlaysSection contest={contest} completion={progress.plays} onChange={setContest} defaultOpen={openFirst('plays')} />
+      </div>
+      <div id="sec-draw" className="ws-section-anchor">
+        <DrawSection contest={contest} onChange={setContest} />
       </div>
       <div id="sec-compliance" className="ws-section-anchor">
         <ComplianceSection contest={contest} onChange={setContest} />
