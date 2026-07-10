@@ -38,6 +38,8 @@ const SECTIONS: NavSection[] = [
   { id: 'sec-adjudicators', emoji: '⚖️', label: 'Judges', data: { key: 'adjudicators', phase: 'contracting' } },
   { id: 'sec-schools', emoji: '🏫', label: 'Schools', data: { key: 'schools', phase: 'entry' } },
   { id: 'sec-plays', emoji: '🎭', label: 'Plays', data: { key: 'plays', phase: 'entry' } },
+  // No `data` ⇒ no completion dot: companies are optional, entered per-school (PRD #68).
+  { id: 'sec-companies', emoji: '👥', label: 'Companies' },
   // No `data` ⇒ no completion dot: the draw is a tool, not a fill-in section (PRD #65).
   { id: 'sec-draw', emoji: '🎟️', label: 'Performance Order Draw' },
   // No `data` ⇒ no completion dot: compliance progress stays inside its section (PRD #64).

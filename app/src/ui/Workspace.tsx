@@ -12,6 +12,7 @@ import { EmailComposer } from './EmailComposer';
 import { EmailListBox } from './EmailListBox';
 import { AdjudicatorsSection } from './sections/AdjudicatorsSection';
 import { CmInfoSection } from './sections/CmInfoSection';
+import { CompaniesSection } from './sections/CompaniesSection';
 import { ComplianceSection } from './sections/ComplianceSection';
 import { CritiqueSection } from './sections/CritiqueSection';
 import { DetailsSection } from './sections/DetailsSection';
@@ -124,6 +125,9 @@ export function Workspace({
       </div>
       <div id="sec-plays" className="ws-section-anchor">
         <PlaysSection contest={contest} completion={progress.plays} onChange={setContest} defaultOpen={openFirst('plays')} />
+      </div>
+      <div id="sec-companies" className="ws-section-anchor">
+        <CompaniesSection contest={contest} onChange={setContest} />
       </div>
       <div id="sec-draw" className="ws-section-anchor">
         <DrawSection contest={contest} onChange={setContest} />
