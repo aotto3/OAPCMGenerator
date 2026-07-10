@@ -74,6 +74,16 @@ export function fixtureContest(): Contest {
     { name: 'Ms. Mary Adjudicator', mailingAddress: '300 Elm Blvd, San Antonio, TX 78205' },
   ];
   judges.forEach((j, i) => (c = withAdjudicator(c, i, j, FIXTURE_NOW)));
+  // Contracting milestones (PRD #67) with a deliberate mix so the Adjudicator
+  // Info Sheet golden exercises both renderings: judge 1 all done (distinct
+  // dates), judge 2 partly done, judge 3 all pending.
+  c = withAdjudicator(
+    c,
+    0,
+    { ttaoContractDate: '2026-02-15', paymentPaperworkSentDate: '2026-03-01', paymentPaperworkReturnedDate: '2026-03-10' },
+    FIXTURE_NOW,
+  );
+  c = withAdjudicator(c, 1, { ttaoContractDate: '2026-02-20', paymentPaperworkSentDate: '2026-03-05' }, FIXTURE_NOW);
 
   const names = ['Alpha HS', 'Bravo HS', 'Charlie HS', 'Delta HS', 'Echo HS', 'Foxtrot HS'];
   // "Romeo & Juliet" exercises XML escaping through every school table.
