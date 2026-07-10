@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 6;
+export const CONTEST_SCHEMA_VERSION = 7;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -107,6 +107,17 @@ export interface Adjudicator {
   hotelNights: number;
   /** Dietary / other requests, free text. */
   dietary: string;
+  /* ── contracting milestones (PRD #67) ──
+   * Each is a nullable ISO-date ('YYYY-MM-DD'). The DATE is the record: '' ⇒
+   * not done, a date ⇒ done on that date. No separate boolean; "done" is derived
+   * from date presence (adjudicatorMilestoneStatus). Excluded from
+   * sectionCompletion. */
+  /** TTAO adjudication contract signed/on file. */
+  ttaoContractDate: string;
+  /** Payment paperwork (W-9 / vendor forms) sent to the judge. */
+  paymentPaperworkSentDate: string;
+  /** Payment paperwork received back from the judge. */
+  paymentPaperworkReturnedDate: string;
 }
 
 export interface Director {
@@ -405,7 +416,17 @@ export function defaultDetails(): ContestDetails {
 }
 
 function blankAdjudicator(): Adjudicator {
-  return { name: '', mailingAddress: '', needsPower: false, needsHotel: false, hotelNights: 1, dietary: '' };
+  return {
+    name: '',
+    mailingAddress: '',
+    needsPower: false,
+    needsHotel: false,
+    hotelNights: 1,
+    dietary: '',
+    ttaoContractDate: '',
+    paymentPaperworkSentDate: '',
+    paymentPaperworkReturnedDate: '',
+  };
 }
 
 export function defaultAdjudicators(): Adjudicator[] {
@@ -767,6 +788,62 @@ export function withAdjudicator(
 ): Contest {
   const adjudicators = contest.adjudicators.map((j, i) => (i === index ? { ...j, ...patch } : j));
   return { ...touch(contest, now), adjudicators };
+}
+
+/* ────────────────────── adjudicator contracting milestones ──────────────────────
+ * PRD #67. Three per-judge date fields tracked as a check-off list. The DATE is
+ * the record — '' ⇒ not done, a date ⇒ done. This ordered list is the single
+ * source of truth for the milestones' keys / labels / order, consumed by BOTH the
+ * Adjudicator Info Sheet (D2) and the Judges UI (D3) via adjudicatorMilestoneStatus,
+ * so nothing drifts. Milestone fields are Adjudicator string keys.
+ */
+export const ADJUDICATOR_MILESTONES = [
+  { key: 'ttaoContractDate', label: 'TTAO contract' },
+  { key: 'paymentPaperworkSentDate', label: 'Payment paperwork sent' },
+  { key: 'paymentPaperworkReturnedDate', label: 'Payment paperwork returned' },
+] as const satisfies readonly { key: keyof Adjudicator; label: string }[];
+
+/** The Adjudicator date fields that back a milestone. */
+export type AdjudicatorMilestoneKey = (typeof ADJUDICATOR_MILESTONES)[number]['key'];
+
+/** One milestone's derived state for a judge. `done` is date presence, nothing more. */
+export interface AdjudicatorMilestoneStatus {
+  key: AdjudicatorMilestoneKey;
+  label: string;
+  date: string;
+  done: boolean;
+}
+
+/**
+ * Shared pure derivation: an adjudicator → the ordered milestone rows. The one
+ * place the done-rule (a non-blank date) and the labels/order live, so the Info
+ * Sheet and the Judges UI can never disagree.
+ */
+export function adjudicatorMilestoneStatus(judge: Adjudicator): AdjudicatorMilestoneStatus[] {
+  return ADJUDICATOR_MILESTONES.map(({ key, label }) => {
+    const date = judge[key];
+    return { key, label, date, done: date.trim() !== '' };
+  });
+}
+
+/**
+ * Checks or unchecks one contracting milestone for a judge. Checking stamps the
+ * injected `now`'s date ('YYYY-MM-DD'); unchecking clears it back to ''. The stamp
+ * comes from `now` (same value that bumps updatedAt) — the model never reads the
+ * clock on its own for a document-visible value. Editing an already-stamped date
+ * goes through the regular withAdjudicator patch, not this updater.
+ */
+export function setAdjudicatorMilestone(
+  contest: Contest,
+  index: number,
+  key: AdjudicatorMilestoneKey,
+  done: boolean,
+  now?: string,
+): Contest {
+  const stamp = now ?? new Date().toISOString();
+  const date = done ? stamp.slice(0, 10) : '';
+  const adjudicators = contest.adjudicators.map((j, i) => (i === index ? { ...j, [key]: date } : j));
+  return { ...touch(contest, stamp), adjudicators };
 }
 
 export function withSchool(
@@ -1430,6 +1507,19 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // v5 (Group B / performance-order draw) predates results & advancement (PRD
   // #66): nothing recorded (results: null) and a blank next-level info block.
   5: (raw) => ({ ...raw, results: null, nextContest: defaultNextContest() }),
+  // v6 (Group C / results & advancement) predates the contracting checklist (PRD
+  // #67): every adjudicator gains three blank milestone dates (all not-done).
+  6: (raw) => ({
+    ...raw,
+    adjudicators: Array.isArray(raw.adjudicators)
+      ? (raw.adjudicators as Record<string, unknown>[]).map((j) => ({
+          ...j,
+          ttaoContractDate: '',
+          paymentPaperworkSentDate: '',
+          paymentPaperworkReturnedDate: '',
+        }))
+      : raw.adjudicators,
+  }),
 };
 
 export function parseContest(json: string): Contest {
