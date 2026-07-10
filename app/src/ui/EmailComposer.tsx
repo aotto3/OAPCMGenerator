@@ -28,6 +28,7 @@ const TEMPLATE_BUTTONS: { id: EmailTemplateId; label: string }[] = [
   { id: 'deadline', label: '⏰ Entry Deadline Reminder' },
   { id: 'daybefore', label: '🌅 Day-Before Reminder' },
   { id: 'judges', label: '⚖️ Judge Reminder' },
+  { id: 'judgeneeds', label: '🏨 Judge Needs' },
 ];
 
 export function EmailComposer({ contest }: { contest: Contest }) {

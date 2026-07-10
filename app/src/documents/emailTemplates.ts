@@ -40,8 +40,8 @@ export interface AdvancingDraft extends EmailDraft {
   to: string[];
 }
 
-/** Identifiers for the four one-click templates (the advancing picker is separate). */
-export type EmailTemplateId = 'announcement' | 'deadline' | 'daybefore' | 'judges';
+/** Identifiers for the one-click templates (the advancing picker is separate). */
+export type EmailTemplateId = 'announcement' | 'deadline' | 'daybefore' | 'judges' | 'judgeneeds';
 
 /**
  * Contest Announcement — the "congratulations, here's the contest" email sent
@@ -170,12 +170,38 @@ export function judgesEmail(contest: Contest): EmailDraft {
   };
 }
 
-/** The four one-click templates, keyed for the composer's button row. */
+/**
+ * Judge Needs — a logistics summary the CM sends to the host site (PRD #67).
+ * Lists every ACTIVE judge (per numJudges) with all three need categories —
+ * hotel, food/dietary, power — always naming a category and reading "none"
+ * where it doesn't apply, so the host has a complete picture. Reads only the
+ * existing need fields; blank names fall back to "Judge N" (the adjudicator
+ * packets' convention). Like the other one-click templates it carries no
+ * recipient list — the CM addresses it manually.
+ */
+export function judgeNeedsEmail(contest: Contest): EmailDraft {
+  const cn = contestFullName(contest.identity) || '[Contest Name]';
+  const active = contest.adjudicators.slice(0, contest.details.numJudges);
+  const blocks = active.map((j, i) => {
+    const name = j.name.trim() || `Judge ${i + 1}`;
+    const hotel = j.needsHotel ? `${j.hotelNights} night${j.hotelNights === 1 ? '' : 's'}` : 'none';
+    const food = j.dietary.trim() || 'none';
+    const power = j.needsPower ? 'yes — power needed at the judge table' : 'none';
+    return name + ':\n' + '  • Hotel: ' + hotel + '\n' + '  • Food/Dietary: ' + food + '\n' + '  • Power: ' + power;
+  });
+  return {
+    subject: cn + ' — Judge Needs',
+    body: 'For the ' + cn + ", the judges' needs are as follows:\n\n" + blocks.join('\n\n'),
+  };
+}
+
+/** The one-click templates, keyed for the composer's button row. */
 export const EMAIL_TEMPLATES: Record<EmailTemplateId, (contest: Contest) => EmailDraft> = {
   announcement: announcementEmail,
   deadline: deadlineEmail,
   daybefore: dayBeforeEmail,
   judges: judgesEmail,
+  judgeneeds: judgeNeedsEmail,
 };
 
 /**
