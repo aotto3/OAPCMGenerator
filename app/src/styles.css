@@ -436,6 +436,36 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .draw-empty { text-align: center; }
 .draw-lock-note { background: var(--c-bg-red); color: var(--c-red); border-color: var(--c-red); }
 
+/* Two draw modes side by side (instant + live reveal). */
+.draw-actions {
+  display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: center;
+  margin: 6px 0 14px;
+}
+.draw-live-btn { font-weight: 700; }
+
+/* Live-reveal ceremony (PRD #65) — ephemeral, projector-friendly. Slots reveal
+   slot 1 first; nothing persists until the last slot or "reveal all" lands. */
+.draw-ceremony { margin-top: var(--space-2); }
+.draw-ceremony-caption { text-align: center; font-weight: 700; color: var(--c-blue); margin: 0 0 var(--space-3); }
+.draw-reveal-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.draw-reveal-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+  border: 1px solid var(--c-border); background: var(--c-surface);
+}
+.draw-reveal-slot { flex: 0 0 auto; font-weight: 700; color: var(--c-muted); min-width: 64px; }
+.draw-reveal-school { font-size: 1.05rem; font-weight: 700; color: var(--c-text); }
+.draw-reveal-row.is-revealed { background: var(--c-bg-blue); border-color: var(--c-blue); }
+.draw-reveal-row.is-next { border-color: var(--c-blue); border-style: dashed; }
+.draw-reveal-row.is-next .draw-reveal-school { color: var(--c-muted); font-weight: 500; font-style: italic; font-size: var(--fs-sm); }
+.draw-reveal-row.is-hidden { opacity: 0.55; }
+.draw-reveal-row.is-hidden .draw-reveal-school { color: var(--c-muted); letter-spacing: 3px; }
+.draw-ceremony-actions {
+  display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: center; align-items: center;
+  margin-bottom: var(--space-2);
+}
+.draw-cancel { color: var(--c-red); border-color: var(--c-red); }
+
 /* Compliance tracker (PRD #64). A schools × items grid; wide, so it scrolls
    horizontally inside its own container rather than pushing the page. */
 .compliance-scroll { overflow-x: auto; margin-bottom: var(--space-3); }
