@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 5;
+export const CONTEST_SCHEMA_VERSION = 6;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -251,6 +251,88 @@ export interface PerformanceDraw {
   locked: boolean;
 }
 
+/* ────────────────────────── results & advancement ──────────────────────────
+ * PRD #66. Post-contest outcome recorded once and flowed into the Awards Script
+ * and the advance-clone. Like CritiqueAssignment/PerformanceDraw, the record
+ * stores only index references and typed names — school names and plays are
+ * re-derived from the contest at read time (a later rename flows through with no
+ * results edit). Algorithms (resolving indices into rows) live in a sibling
+ * module (model/results.ts, PRD slice C2), the established critique/schedule
+ * split; only the data shape and the capped updaters live here.
+ */
+
+/** Handbook maxima for the count-capped acting-award lists (2025–26 OAP Handbook). */
+export const MAX_BEST_PERFORMERS = 2;
+export const MAX_ALL_STAR_CAST = 8;
+export const MAX_HONORABLE_MENTION = 8;
+
+/**
+ * One individual acting/technical honor: a typed student name plus the school
+ * they represent (an index into `contest.schools`). The school name is derived
+ * at read time; only the index is stored.
+ */
+export interface AwardWinner {
+  studentName: string;
+  /** Index into contest.schools. */
+  schoolIndex: number;
+}
+
+/** The three acting-award lists that share the append-if-under-cap behavior. */
+export type AwardListCategory = 'bestPerformers' | 'allStarCast' | 'honorableMention';
+
+/** Per-category cap for the count-capped acting-award lists. */
+export const AWARD_LIST_CAPS: Record<AwardListCategory, number> = {
+  bestPerformers: MAX_BEST_PERFORMERS,
+  allStarCast: MAX_ALL_STAR_CAST,
+  honorableMention: MAX_HONORABLE_MENTION,
+};
+
+/**
+ * Recorded contest results (PRD #66). `null` on Contest ⇒ nothing recorded yet;
+ * the Awards Script uses that to fall back to its blank fill-in template.
+ *
+ * School references are indices into `contest.schools` (same as advancingEmail's
+ * selectedSchoolIndices and the critique position keying). Results are entered
+ * post-contest when the field is frozen, so index fragility under reordering is
+ * acceptable; the UI picks schools from a dropdown of entered schools.
+ */
+export interface ContestResults {
+  /**
+   * Advancing school indices in RANK order (slot 0 = 1st, …). Length is
+   * advancingPlaceCount(level) (3, or 2 at Region). Rank is stored but NEVER
+   * surfaced — every document announces the advancing companies unordered.
+   */
+  advancing: number[];
+  /** School index of the alternate, or null. Excluded from the advance-clone. */
+  alternate: number | null;
+  /** Best Performers — up to MAX_BEST_PERFORMERS. */
+  bestPerformers: AwardWinner[];
+  /** All-Star Cast — up to MAX_ALL_STAR_CAST. */
+  allStarCast: AwardWinner[];
+  /** Honorable Mention All-Star Cast — up to MAX_HONORABLE_MENTION. */
+  honorableMention: AwardWinner[];
+  /** Outstanding Technician — at most one per school (keyed by schoolIndex). */
+  outstandingTechnicians: AwardWinner[];
+  /** School index of the Best Crew, or null. */
+  bestCrew: number | null;
+}
+
+/**
+ * Next-level contest info (PRD #66). An always-present block (blank strings by
+ * default, like cmInfo/details) so it can be filled independently of results and
+ * needs no null-guarding. Fills the Awards Script's "Next Level of Competition"
+ * section and pre-seeds the advance-clone. Does NOT replace
+ * `details.bidcContestDate` (the mild overlap is noted for a future cleanup).
+ */
+export interface NextContestInfo {
+  /** ISO date (yyyy-mm-dd) or ''. */
+  date: string;
+  location: string;
+  cmName: string;
+  cmEmail: string;
+  cmPhone: string;
+}
+
 export interface Contest {
   /** Stable unique id; never changes after creation. */
   id: string;
@@ -274,6 +356,10 @@ export interface Contest {
   critique: CritiqueAssignment | null;
   /** Blind performance-order draw record (PRD #65); null until first run/voided. */
   draw: PerformanceDraw | null;
+  /** Recorded contest results (PRD #66); null until the CM records outcomes. */
+  results: ContestResults | null;
+  /** Next-level contest info (PRD #66); always present, blank strings by default. */
+  nextContest: NextContestInfo;
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -344,6 +430,28 @@ export function defaultSpeechwire(): SpeechwireCredentials {
   return { username: '', password: '' };
 }
 
+/** A blank next-level info block — all-empty strings (PRD #66). */
+export function defaultNextContest(): NextContestInfo {
+  return { date: '', location: '', cmName: '', cmEmail: '', cmPhone: '' };
+}
+
+/**
+ * An empty results record — no advancing/alternate, no awards. The updater
+ * helpers lazily materialize this from `results: null` on the first edit; it is
+ * never persisted directly (a contest with nothing recorded stays `null`).
+ */
+export function emptyResults(): ContestResults {
+  return {
+    advancing: [],
+    alternate: null,
+    bestPerformers: [],
+    allStarCast: [],
+    honorableMention: [],
+    outstandingTechnicians: [],
+    bestCrew: null,
+  };
+}
+
 export interface NewContestOptions {
   id?: string;
   /** ISO timestamp for createdAt/updatedAt; defaults to now. */
@@ -376,6 +484,8 @@ export function createContest(options: NewContestOptions = {}): Contest {
     documents: defaultDocumentSelection(),
     critique: null,
     draw: null,
+    results: null,
+    nextContest: defaultNextContest(),
     speechwire: defaultSpeechwire(),
   };
 }
@@ -464,6 +574,10 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     // and blind-draw record (performanceOrder is reset to form order above).
     critique: null,
     draw: null,
+    // Results and next-level info are single-occurrence data — a roll-forward
+    // starts with nothing recorded and a blank next-level block (PRD #66).
+    results: null,
+    nextContest: defaultNextContest(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -680,6 +794,133 @@ export function lockDraw(contest: Contest, now?: string): Contest {
 export function unlockDraw(contest: Contest, now?: string): Contest {
   if (!contest.draw) return contest;
   return { ...touch(contest, now), draw: null };
+}
+
+/* ────────────────────────── results & advancement ──────────────────────────
+ * PRD #66. Post-contest updaters. Every helper is immutable and bumps updatedAt;
+ * a no-op (an add past a cap, a remove of an absent entry) returns the contest
+ * unchanged so it neither mutates nor arms autosave. The nullable `results`
+ * record is lazily materialized from emptyResults() on the first meaningful edit.
+ */
+
+/**
+ * How many companies advance from this level — the handbook's 3-vs-2 rule
+ * centralized: 2 at Region (which advances to State, a 2-company field), 3
+ * everywhere else. Drives the default advancing-slot count.
+ */
+export function advancingPlaceCount(level: ContestLevel): number {
+  return level === 'Region' ? 2 : 3;
+}
+
+/**
+ * Applies a mutation to the (lazily materialized) results record. The mutator
+ * returns the next record, or `null` to signal a no-op (cap hit, out-of-range
+ * index) — in which case the contest is returned untouched (no updatedAt bump,
+ * no results record conjured from null).
+ */
+function updateResults(
+  contest: Contest,
+  mutate: (results: ContestResults) => ContestResults | null,
+  now?: string,
+): Contest {
+  const next = mutate(contest.results ?? emptyResults());
+  if (next === null) return contest;
+  return { ...touch(contest, now), results: next };
+}
+
+/**
+ * Sets the advancing schools, in RANK order (slot 0 = 1st). Truncated to
+ * advancingPlaceCount(level) — indices past the cap are dropped. Rank is stored
+ * but never surfaced downstream.
+ */
+export function setAdvancing(contest: Contest, schoolIndices: number[], now?: string): Contest {
+  const cap = advancingPlaceCount(contest.identity.contestLevel);
+  return updateResults(contest, (r) => ({ ...r, advancing: schoolIndices.slice(0, cap) }), now);
+}
+
+/** Sets (or clears, with null) the alternate school index. */
+export function setAlternate(contest: Contest, schoolIndex: number | null, now?: string): Contest {
+  return updateResults(contest, (r) => ({ ...r, alternate: schoolIndex }), now);
+}
+
+/** Sets (or clears, with null) the Best Crew school index. */
+export function setBestCrew(contest: Contest, schoolIndex: number | null, now?: string): Contest {
+  return updateResults(contest, (r) => ({ ...r, bestCrew: schoolIndex }), now);
+}
+
+/**
+ * Appends an acting-award winner to one of the count-capped lists (Best
+ * Performers / All-Star / Honorable Mention). An add past the category's cap
+ * (AWARD_LIST_CAPS) is a no-op.
+ */
+export function addAwardWinner(
+  contest: Contest,
+  category: AwardListCategory,
+  winner: AwardWinner,
+  now?: string,
+): Contest {
+  return updateResults(contest, (r) => {
+    if (r[category].length >= AWARD_LIST_CAPS[category]) return null;
+    return { ...r, [category]: [...r[category], { ...winner }] };
+  }, now);
+}
+
+/** Removes the acting-award winner at `index` from a capped list. Out-of-range ⇒ no-op. */
+export function removeAwardWinner(
+  contest: Contest,
+  category: AwardListCategory,
+  index: number,
+  now?: string,
+): Contest {
+  return updateResults(contest, (r) => {
+    if (index < 0 || index >= r[category].length) return null;
+    return { ...r, [category]: r[category].filter((_, i) => i !== index) };
+  }, now);
+}
+
+/**
+ * Records the Outstanding Technician for a school (student name typed, school
+ * from a dropdown). At most ONE per school: if the school already has a
+ * technician recorded, this updates that entry's name rather than adding a
+ * second — the one-per-school cap enforced by construction.
+ */
+export function setOutstandingTechnician(
+  contest: Contest,
+  schoolIndex: number,
+  studentName: string,
+  now?: string,
+): Contest {
+  return updateResults(contest, (r) => {
+    const winner: AwardWinner = { studentName, schoolIndex };
+    const at = r.outstandingTechnicians.findIndex((w) => w.schoolIndex === schoolIndex);
+    const outstandingTechnicians =
+      at >= 0
+        ? r.outstandingTechnicians.map((w, i) => (i === at ? winner : w))
+        : [...r.outstandingTechnicians, winner];
+    return { ...r, outstandingTechnicians };
+  }, now);
+}
+
+/** Removes a school's Outstanding Technician. No entry for that school ⇒ no-op. */
+export function removeOutstandingTechnician(contest: Contest, schoolIndex: number, now?: string): Contest {
+  return updateResults(contest, (r) => {
+    if (!r.outstandingTechnicians.some((w) => w.schoolIndex === schoolIndex)) return null;
+    return {
+      ...r,
+      outstandingTechnicians: r.outstandingTechnicians.filter((w) => w.schoolIndex !== schoolIndex),
+    };
+  }, now);
+}
+
+/** Clears all recorded results back to null (the Awards Script reverts to blanks). No-op if already null. */
+export function clearResults(contest: Contest, now?: string): Contest {
+  if (contest.results === null) return contest;
+  return { ...touch(contest, now), results: null };
+}
+
+/** Patches the next-level contest info block. */
+export function withNextContest(contest: Contest, patch: Partial<NextContestInfo>, now?: string): Contest {
+  return { ...touch(contest, now), nextContest: { ...contest.nextContest, ...patch } };
 }
 
 /* ────────────────────────── compliance tracker ──────────────────────────
@@ -1051,6 +1292,9 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // v4 (Group A / compliance tracker) predates the performance-order draw (PRD
   // #65): no draw record, so the order inputs stay fully hand-editable.
   4: (raw) => ({ ...raw, draw: null }),
+  // v5 (Group B / performance-order draw) predates results & advancement (PRD
+  // #66): nothing recorded (results: null) and a blank next-level info block.
+  5: (raw) => ({ ...raw, results: null, nextContest: defaultNextContest() }),
 };
 
 export function parseContest(json: string): Contest {

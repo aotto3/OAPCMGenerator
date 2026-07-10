@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILT_IN_COMPLIANCE_ITEMS,
   CONTEST_SCHEMA_VERSION,
+  MAX_BEST_PERFORMERS,
+  MAX_ALL_STAR_CAST,
+  MAX_HONORABLE_MENTION,
+  advancingPlaceCount,
+  addAwardWinner,
+  removeAwardWinner,
+  setAdvancing,
+  setAlternate,
+  setBestCrew,
+  setOutstandingTechnician,
+  removeOutstandingTechnician,
+  clearResults,
+  withNextContest,
+  defaultNextContest,
   DEFAULT_JUDGES,
   DEFAULT_SCHOOLS,
   DOCUMENT_TYPES,
@@ -1094,6 +1108,190 @@ describe('v4 → v5 migration (performance-order draw)', () => {
     // Pre-existing data (including the hand-entered performance order) is preserved.
     expect(migrated.schools[0].name).toBe('Westlake HS');
     expect(migrated.schools[0].performanceOrder).toBe(3);
+    expect(migrated.identity.districtNumber).toBe('20');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+});
+
+/* ────────────────────────── results & advancement (PRD #66) ────────────────────────── */
+
+describe('results & next-level defaults', () => {
+  it('a new contest has no results and a blank next-level block', () => {
+    const c = contest();
+    expect(c.results).toBeNull();
+    expect(c.nextContest).toEqual({ date: '', location: '', cmName: '', cmEmail: '', cmPhone: '' });
+    expect(c.nextContest).toEqual(defaultNextContest());
+  });
+});
+
+describe('advancingPlaceCount', () => {
+  it('is 3 at every level except Region', () => {
+    expect(advancingPlaceCount('Zone')).toBe(3);
+    expect(advancingPlaceCount('District')).toBe(3);
+    expect(advancingPlaceCount('BiDistrict')).toBe(3);
+    expect(advancingPlaceCount('Area')).toBe(3);
+  });
+
+  it('is 2 at Region (which advances to a two-company State field)', () => {
+    expect(advancingPlaceCount('Region')).toBe(2);
+  });
+});
+
+describe('setAdvancing', () => {
+  it('stores the advancing indices in rank order and materializes the record', () => {
+    const c = setAdvancing(contest(), [4, 1, 2], NOW);
+    expect(c.results?.advancing).toEqual([4, 1, 2]); // slot 0 = 1st, rank preserved
+    expect(c.updatedAt).toBe(NOW);
+  });
+
+  it('truncates to advancingPlaceCount — 3 normally, 2 at Region', () => {
+    expect(setAdvancing(contest(), [0, 1, 2, 3]).results?.advancing).toEqual([0, 1, 2]);
+    const region = setAdvancing(contest({ contestLevel: 'Region' }), [0, 1, 2, 3]);
+    expect(region.results?.advancing).toEqual([0, 1]);
+  });
+
+  it('is immutable and does not touch the source contest', () => {
+    const before = contest();
+    const after = setAdvancing(before, [1, 0]);
+    expect(before.results).toBeNull();
+    expect(after).not.toBe(before);
+  });
+});
+
+describe('setAlternate / setBestCrew', () => {
+  it('records and clears the alternate', () => {
+    const withAlt = setAlternate(contest(), 3, NOW);
+    expect(withAlt.results?.alternate).toBe(3);
+    expect(setAlternate(withAlt, null).results?.alternate).toBeNull();
+  });
+
+  it('records and clears Best Crew', () => {
+    const withCrew = setBestCrew(contest(), 2);
+    expect(withCrew.results?.bestCrew).toBe(2);
+    expect(setBestCrew(withCrew, null).results?.bestCrew).toBeNull();
+  });
+});
+
+describe('addAwardWinner / removeAwardWinner cap enforcement', () => {
+  it('appends Best Performers up to the cap (2), then adds are no-ops', () => {
+    let c = contest();
+    c = addAwardWinner(c, 'bestPerformers', { studentName: 'A', schoolIndex: 0 });
+    c = addAwardWinner(c, 'bestPerformers', { studentName: 'B', schoolIndex: 1 });
+    expect(c.results?.bestPerformers).toHaveLength(MAX_BEST_PERFORMERS);
+    const capped = addAwardWinner(c, 'bestPerformers', { studentName: 'C', schoolIndex: 2 });
+    expect(capped).toBe(c); // add past the cap is a no-op — same reference, no updatedAt bump
+    expect(capped.results?.bestPerformers).toHaveLength(2);
+  });
+
+  it('caps All-Star Cast at 8 and Honorable Mention at 8', () => {
+    const fill = (category: 'allStarCast' | 'honorableMention', cap: number) => {
+      let c = contest();
+      for (let i = 0; i < cap + 3; i++) {
+        c = addAwardWinner(c, category, { studentName: `S${i}`, schoolIndex: i % 6 });
+      }
+      return c.results?.[category];
+    };
+    expect(fill('allStarCast', MAX_ALL_STAR_CAST)).toHaveLength(8);
+    expect(fill('honorableMention', MAX_HONORABLE_MENTION)).toHaveLength(8);
+  });
+
+  it('removes by index and no-ops on an out-of-range index', () => {
+    let c = contest();
+    c = addAwardWinner(c, 'allStarCast', { studentName: 'A', schoolIndex: 0 });
+    c = addAwardWinner(c, 'allStarCast', { studentName: 'B', schoolIndex: 1 });
+    const removed = removeAwardWinner(c, 'allStarCast', 0);
+    expect(removed.results?.allStarCast).toEqual([{ studentName: 'B', schoolIndex: 1 }]);
+    expect(removeAwardWinner(c, 'allStarCast', 5)).toBe(c); // no-op
+  });
+
+  it('bumps updatedAt on a real add and leaves the source untouched', () => {
+    const before = contest();
+    const after = addAwardWinner(before, 'bestPerformers', { studentName: 'A', schoolIndex: 0 }, LATER);
+    expect(after.updatedAt).toBe(LATER);
+    expect(before.results).toBeNull();
+  });
+});
+
+describe('Outstanding Technician (one per school)', () => {
+  it('records one technician per school and UPDATES rather than duplicating for the same school', () => {
+    let c = contest();
+    c = setOutstandingTechnician(c, 0, 'Alex');
+    c = setOutstandingTechnician(c, 1, 'Bailey');
+    expect(c.results?.outstandingTechnicians).toHaveLength(2);
+    // A second set for school 0 overwrites the name — still one entry per school.
+    c = setOutstandingTechnician(c, 0, 'Casey');
+    expect(c.results?.outstandingTechnicians).toEqual([
+      { studentName: 'Casey', schoolIndex: 0 },
+      { studentName: 'Bailey', schoolIndex: 1 },
+    ]);
+  });
+
+  it('removes a school technician and no-ops when the school has none', () => {
+    let c = setOutstandingTechnician(contest(), 2, 'Drew');
+    expect(removeOutstandingTechnician(c, 2).results?.outstandingTechnicians).toEqual([]);
+    expect(removeOutstandingTechnician(c, 5)).toBe(c); // school 5 has no technician ⇒ no-op
+  });
+});
+
+describe('clearResults / withNextContest', () => {
+  it('clears a recorded results block back to null and no-ops when already null', () => {
+    const withResults = setAdvancing(contest(), [0, 1, 2]);
+    expect(clearResults(withResults, LATER).results).toBeNull();
+    const blank = contest();
+    expect(clearResults(blank)).toBe(blank); // already null ⇒ no-op
+  });
+
+  it('patches the next-level info block and bumps updatedAt', () => {
+    const c = withNextContest(contest(), { location: 'Region HS', cmName: 'Sam Manager' }, LATER);
+    expect(c.nextContest).toEqual({
+      date: '',
+      location: 'Region HS',
+      cmName: 'Sam Manager',
+      cmEmail: '',
+      cmPhone: '',
+    });
+    expect(c.updatedAt).toBe(LATER);
+  });
+});
+
+describe('duplicateContest clears results & next-level info', () => {
+  it('a roll-forward starts with nothing recorded and a blank next-level block', () => {
+    let source = setAdvancing(filledContest(), [1, 0]);
+    source = setOutstandingTechnician(source, 0, 'Alex');
+    source = withNextContest(source, { location: 'Region HS' });
+    const dup = duplicateContest(source, { id: 'dup', now: LATER });
+    expect(dup.results).toBeNull();
+    expect(dup.nextContest).toEqual(defaultNextContest());
+  });
+});
+
+describe('results serialization round-trip', () => {
+  it('preserves the results record and next-level info through serialize → parse', () => {
+    let c = filledContest();
+    c = setAdvancing(c, [1, 0]);
+    c = setAlternate(c, 3);
+    c = addAwardWinner(c, 'bestPerformers', { studentName: 'Alex', schoolIndex: 1 });
+    c = setOutstandingTechnician(c, 0, 'Bailey');
+    c = setBestCrew(c, 1);
+    c = withNextContest(c, { date: '2026-04-20', location: 'Region HS', cmName: 'Sam' });
+
+    const restored = parseContest(serializeContest(c));
+    expect(restored.results).toEqual(c.results);
+    expect(restored.nextContest).toEqual(c.nextContest);
+  });
+});
+
+describe('v5 → v6 migration (results & advancement)', () => {
+  it('migrates a pre-results (v5) payload to no results and a blank next-level block', () => {
+    // A full current contest minus the fields #81 added: strip results/nextContest.
+    const { results: _r, nextContest: _n, speechwire: _dev, ...v5Contest } = filledContest();
+    const v5 = JSON.stringify({ schemaVersion: 5, contest: v5Contest });
+
+    const migrated = parseContest(v5);
+    expect(migrated.results).toBeNull();
+    expect(migrated.nextContest).toEqual(defaultNextContest());
+    // Pre-existing data is preserved and it re-serializes at the current version.
+    expect(migrated.schools[0].name).toBe('Westlake HS');
     expect(migrated.identity.districtNumber).toBe('20');
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
