@@ -65,6 +65,8 @@ import {
   setNumSchools,
   validateContest,
   withAdjudicator,
+  adjudicatorMilestoneStatus,
+  setAdjudicatorMilestone,
   withCmInfo,
   withDetails,
   withDirector,
@@ -147,6 +149,9 @@ describe('createContest', () => {
       needsHotel: false,
       hotelNights: 1,
       dietary: '',
+      ttaoContractDate: '',
+      paymentPaperworkSentDate: '',
+      paymentPaperworkReturnedDate: '',
     });
   });
 
@@ -205,6 +210,69 @@ describe('update helpers', () => {
   it('withDirector patches one director row', () => {
     const c = withDirector(contest(), 0, 0, { name: 'Pat Director', email: 'pat@district.org' }, LATER);
     expect(c.schools[0].directors[0]).toEqual({ name: 'Pat Director', email: 'pat@district.org' });
+  });
+});
+
+describe('adjudicator contracting milestones (PRD #67)', () => {
+  it('adjudicatorMilestoneStatus reports order, labels, dates and derived done for a fresh judge (none done)', () => {
+    const rows = adjudicatorMilestoneStatus(contest().adjudicators[0]);
+    expect(rows.map((r) => r.key)).toEqual([
+      'ttaoContractDate',
+      'paymentPaperworkSentDate',
+      'paymentPaperworkReturnedDate',
+    ]);
+    expect(rows.map((r) => r.label)).toEqual([
+      'TTAO contract',
+      'Payment paperwork sent',
+      'Payment paperwork returned',
+    ]);
+    expect(rows.every((r) => r.date === '' && r.done === false)).toBe(true);
+  });
+
+  it('derives done from date presence across a mixed judge (some set, some blank)', () => {
+    const judge = {
+      ...contest().adjudicators[0],
+      ttaoContractDate: '2026-04-01',
+      paymentPaperworkSentDate: '',
+      paymentPaperworkReturnedDate: '2026-04-20',
+    };
+    expect(adjudicatorMilestoneStatus(judge)).toEqual([
+      { key: 'ttaoContractDate', label: 'TTAO contract', date: '2026-04-01', done: true },
+      { key: 'paymentPaperworkSentDate', label: 'Payment paperwork sent', date: '', done: false },
+      { key: 'paymentPaperworkReturnedDate', label: 'Payment paperwork returned', date: '2026-04-20', done: true },
+    ]);
+  });
+
+  it('setAdjudicatorMilestone check stamps the injected now DATE and bumps updatedAt; others untouched', () => {
+    const before = contest();
+    const after = setAdjudicatorMilestone(before, 1, 'paymentPaperworkSentDate', true, NOW);
+    expect(after.adjudicators[1].paymentPaperworkSentDate).toBe('2026-07-05'); // date portion of NOW
+    expect(after.updatedAt).toBe(NOW);
+    expect(after.adjudicators[0].paymentPaperworkSentDate).toBe(''); // sibling judge untouched
+    expect(before.adjudicators[1].paymentPaperworkSentDate).toBe(''); // immutable — original unchanged
+  });
+
+  it('setAdjudicatorMilestone uncheck clears the date back to blank', () => {
+    let c = setAdjudicatorMilestone(contest(), 0, 'ttaoContractDate', true, NOW);
+    expect(c.adjudicators[0].ttaoContractDate).toBe('2026-07-05');
+    c = setAdjudicatorMilestone(c, 0, 'ttaoContractDate', false, LATER);
+    expect(c.adjudicators[0].ttaoContractDate).toBe('');
+    expect(c.updatedAt).toBe(LATER);
+  });
+
+  it('editing a stamped milestone date goes through withAdjudicator and is preserved', () => {
+    let c = setAdjudicatorMilestone(contest(), 0, 'ttaoContractDate', true, NOW);
+    c = withAdjudicator(c, 0, { ttaoContractDate: '2026-03-15', name: 'Jane Judge' }, LATER);
+    expect(c.adjudicators[0].ttaoContractDate).toBe('2026-03-15'); // hand-edited date kept
+    expect(c.adjudicators[0].name).toBe('Jane Judge'); // and unrelated edits coexist
+    expect(adjudicatorMilestoneStatus(c.adjudicators[0])[0].done).toBe(true);
+  });
+
+  it('milestones are excluded from sectionCompletion (name+address only)', () => {
+    let c = withDetails(contest(), { numJudges: 1 });
+    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St' });
+    c = setAdjudicatorMilestone(c, 0, 'ttaoContractDate', true, NOW);
+    expect(sectionCompletion(c).adjudicators).toEqual({ done: 2, total: 2 });
   });
 });
 
@@ -617,6 +685,16 @@ describe('serialize / parse', () => {
     expect(parseContest(serializeContest(contest())).draw).toBeNull();
   });
 
+  it('preserves adjudicator milestone dates through serialize → parse', () => {
+    let c = setAdjudicatorMilestone(contest(), 0, 'ttaoContractDate', true, NOW);
+    c = setAdjudicatorMilestone(c, 0, 'paymentPaperworkSentDate', true, LATER);
+    const back = parseContest(serializeContest(c));
+    expect(back.adjudicators[0].ttaoContractDate).toBe('2026-07-05');
+    expect(back.adjudicators[0].paymentPaperworkSentDate).toBe('2026-07-06');
+    expect(back.adjudicators[0].paymentPaperworkReturnedDate).toBe('');
+    expect(back).toEqual(c);
+  });
+
   it('DEVICE-ONLY: Speechwire credentials never enter the serialized payload', () => {
     const c = withSpeechwire(contest(), { username: 'district20-5a', password: 's3cr3t-pw' });
     const json = serializeContest(c);
@@ -659,6 +737,27 @@ describe('serialize / parse', () => {
     expect(migrated.critique).toBeNull();
     expect(migrated.schools[0].name).toBe('Westlake HS'); // pre-existing data preserved
     expect(migrated.identity.districtNumber).toBe('20');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('MIGRATION: a v6 (Group C) payload gains three blank milestone dates on every adjudicator', () => {
+    // A v6 contest: strip the Group-D milestone fields the migration will add back.
+    const full = withAdjudicator(contest({ districtNumber: '20' }), 0, { name: 'Jane Judge' });
+    const { speechwire: _dev, ...syncable } = full;
+    const adjudicators = syncable.adjudicators.map((j) => {
+      const { ttaoContractDate, paymentPaperworkSentDate, paymentPaperworkReturnedDate, ...rest } = j;
+      return rest;
+    });
+    const v6 = JSON.stringify({ schemaVersion: 6, contest: { ...syncable, adjudicators } });
+
+    const migrated = parseContest(v6);
+    expect(migrated.adjudicators[0].name).toBe('Jane Judge'); // pre-existing data preserved
+    for (const j of migrated.adjudicators) {
+      expect(j.ttaoContractDate).toBe('');
+      expect(j.paymentPaperworkSentDate).toBe('');
+      expect(j.paymentPaperworkReturnedDate).toBe('');
+    }
+    expect(adjudicatorMilestoneStatus(migrated.adjudicators[0]).every((r) => !r.done)).toBe(true);
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 
