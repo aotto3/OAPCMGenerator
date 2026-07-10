@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 7;
+export const CONTEST_SCHEMA_VERSION = 8;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -61,6 +61,8 @@ export interface CmInfo {
   website: string;
   /** Lighting tech contact at the host school. Docs fall back to a placeholder. */
   techContact: string;
+  /** Optional free-text bio printed on the Audience Program front matter (PRD #68). */
+  bio: string;
 }
 
 /** Contest Details — the "After Planning Meeting" fields (v12 sec-t2). */
@@ -118,6 +120,8 @@ export interface Adjudicator {
   paymentPaperworkSentDate: string;
   /** Payment paperwork received back from the judge. */
   paymentPaperworkReturnedDate: string;
+  /** Optional free-text bio printed on the Audience Program front matter (PRD #68). */
+  bio: string;
 }
 
 export interface Director {
@@ -161,6 +165,33 @@ export const BUILT_IN_COMPLIANCE_ITEMS: readonly ComplianceItem[] = [
   { id: 'title_registration', label: 'Title registration' },
 ] as const;
 
+/* ────────────────────────── company roster ──────────────────────────
+ * PRD #68. The competing company's students — its cast, crew, and alternates —
+ * captured once (ideally by pasting the director-submitted block, parsed by E2's
+ * parseCompanyBlock) and printed on the Audience Program (E5). Additive and
+ * blank-safe: a school with no roster behaves exactly as before.
+ */
+
+export const ROSTER_CATEGORIES = ['cast', 'crew', 'alternate'] as const;
+/** Cast (characters), Crew (positions), or Alternate — how the program groups a member. */
+export type RosterCategory = (typeof ROSTER_CATEGORIES)[number];
+
+/**
+ * One company member: a student `name`, a free-text `role` (the character for
+ * cast, the job for crew, blank for alternates), and a `category`. Ordered
+ * within the school's roster.
+ */
+export interface RosterMember {
+  name: string;
+  role: string;
+  category: RosterCategory;
+}
+
+/** Selectable production types; '' means unspecified (the parser/UI default). */
+export const PRODUCTION_TYPES = ['play', 'scenes'] as const;
+/** Whether the company performs a full Play or Scenes — drives the program's title line. */
+export type ProductionType = (typeof PRODUCTION_TYPES)[number] | '';
+
 /** One competing school (v12 school_N_* + play_N_* fields). */
 export interface School {
   name: string;
@@ -175,6 +206,24 @@ export interface School {
    * Keyed to the school so it survives reordering and renaming (PRD #64).
    */
   compliance: Record<string, ComplianceStatus>;
+  /* ── company roster + production metadata (PRD #68) ──
+   * All additive and blank-safe: an empty roster + blank metadata is the
+   * pre-feature shape and prints nothing. Play title stays canonical in
+   * `playTitle` (the Plays section); the parser writes there, not here. */
+  /** The company's cast/crew/alternate members, in display order. */
+  roster: RosterMember[];
+  /** Playwright, for the program's "By {author}" credit. */
+  author: string;
+  /** Publisher, printed in the program's production credits. */
+  publisher: string;
+  /** Full play vs. scenes; '' ⇒ unspecified. Drives "Presents scenes from …". */
+  productionType: ProductionType;
+  /** The setting note printed on the program page. */
+  setting: string;
+  /** Free-text running time (e.g. "38 minutes"). */
+  runtime: string;
+  /** Music / other credits note printed on the program page. */
+  musicCredits: string;
 }
 
 /**
@@ -390,6 +439,7 @@ export function defaultCmInfo(): CmInfo {
     mailingAddress: '8010 Sharpcrest Street, Houston, TX 77036',
     website: 'www.allenotto.com',
     techContact: '',
+    bio: '',
   };
 }
 
@@ -426,6 +476,7 @@ function blankAdjudicator(): Adjudicator {
     ttaoContractDate: '',
     paymentPaperworkSentDate: '',
     paymentPaperworkReturnedDate: '',
+    bio: '',
   };
 }
 
@@ -434,11 +485,43 @@ export function defaultAdjudicators(): Adjudicator[] {
 }
 
 function blankSchool(position: number): School {
-  return { name: '', directors: [{ name: '', email: '' }], playTitle: '', performanceOrder: position, compliance: {} };
+  return {
+    name: '',
+    directors: [{ name: '', email: '' }],
+    playTitle: '',
+    performanceOrder: position,
+    compliance: {},
+    roster: [],
+    author: '',
+    publisher: '',
+    productionType: '',
+    setting: '',
+    runtime: '',
+    musicCredits: '',
+  };
 }
 
 export function defaultSchools(count: number = DEFAULT_SCHOOLS): School[] {
   return Array.from({ length: count }, (_, i) => blankSchool(i + 1));
+}
+
+/** The production-metadata scalars on a School (everything the paste fills except the roster). */
+export type CompanyMetadata = Pick<
+  School,
+  'author' | 'publisher' | 'productionType' | 'setting' | 'runtime' | 'musicCredits'
+>;
+
+/** The company fields on a School — the roster plus the production metadata (PRD #68). */
+type CompanyFields = CompanyMetadata & Pick<School, 'roster'>;
+
+/**
+ * A fresh empty company shape — no roster + blank production metadata. Returns a
+ * NEW object (and a new roster array) each call, so callers never share a roster
+ * reference. Reused by the roll-forward duplicate (which CLEARS the cast, like the
+ * play title) and by the v7→v8 migration (which back-fills pre-feature schools).
+ */
+function blankCompanyFields(): CompanyFields {
+  return { roster: [], author: '', publisher: '', productionType: '', setting: '', runtime: '', musicCredits: '' };
 }
 
 export function defaultDocumentSelection(): DocumentSelection {
@@ -582,14 +665,17 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     // recurs year to year); the per-school status they collected does not —
     // each school's tracker resets to empty (all-Pending) below.
     customComplianceItems: contest.customComplianceItems.map((it) => ({ ...it })),
-    // Keep each school and its directors; drop this year's play + draw order and
-    // last year's collected compliance paperwork.
+    // Keep each school and its directors; drop this year's play + draw order,
+    // last year's collected compliance paperwork, and the company roster +
+    // production metadata (the cast is per-production, like the play title —
+    // PRD #68). Director names still carry.
     schools: contest.schools.map((s, i) => ({
       ...s,
       directors: s.directors.map((d) => ({ ...d })),
       playTitle: '',
       performanceOrder: i + 1,
       compliance: {},
+      ...blankCompanyFields(),
     })),
     // Judges and the draw both change every contest — drop last year's assignment
     // and blind-draw record (performanceOrder is reset to form order above).
@@ -722,10 +808,14 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     // Custom compliance item DEFINITIONS carry; per-school status resets below.
     customComplianceItems: contest.customComplianceItems.map((it) => ({ ...it })),
     // Only advancing companies, the same show (playTitle + directors) intact.
-    // Performance order resets to form position; last year's paperwork drops.
+    // The company roster + production metadata CARRY with the show (PRD #68 —
+    // the same company goes up a level); roster is deep-copied so editing the
+    // advanced contest never touches the source. Performance order resets to
+    // form position; last year's paperwork drops.
     schools: advancingSchools.map((s, i) => ({
       ...s,
       directors: s.directors.map((d) => ({ ...d })),
+      roster: s.roster.map((m) => ({ ...m })),
       performanceOrder: i + 1,
       compliance: {},
     })),
@@ -891,6 +981,163 @@ export function removeDirector(
     i === schoolIndex ? { ...s, directors: s.directors.filter((_, di) => di !== directorIndex) } : s,
   );
   return { ...touch(contest, now), schools };
+}
+
+/* ────────────────────────── company roster ──────────────────────────
+ * PRD #68. Per-school roster edits + the paste-import applier + the informational
+ * 20+4 counter. Every updater is immutable and bumps updatedAt; an out-of-range
+ * school (or member) index is a no-op returning the contest untouched, matching
+ * the director/compliance helpers. The metadata scalars (author/publisher/type/
+ * setting/runtime/musicCredits) go through the existing withSchool patch.
+ */
+
+/** Appends a roster member to a school. Out-of-range school ⇒ no-op. */
+export function addRosterMember(
+  contest: Contest,
+  schoolIndex: number,
+  member: RosterMember,
+  now?: string,
+): Contest {
+  if (schoolIndex < 0 || schoolIndex >= contest.schools.length) return contest;
+  const schools = contest.schools.map((s, i) =>
+    i === schoolIndex ? { ...s, roster: [...s.roster, { ...member }] } : s,
+  );
+  return { ...touch(contest, now), schools };
+}
+
+/** Patches one roster member (name / role / category). Out-of-range indices ⇒ no-op. */
+export function updateRosterMember(
+  contest: Contest,
+  schoolIndex: number,
+  memberIndex: number,
+  patch: Partial<RosterMember>,
+  now?: string,
+): Contest {
+  const school = contest.schools[schoolIndex];
+  if (!school || memberIndex < 0 || memberIndex >= school.roster.length) return contest;
+  const schools = contest.schools.map((s, i) =>
+    i === schoolIndex
+      ? { ...s, roster: s.roster.map((m, mi) => (mi === memberIndex ? { ...m, ...patch } : m)) }
+      : s,
+  );
+  return { ...touch(contest, now), schools };
+}
+
+/** Removes the roster member at `memberIndex`. Out-of-range indices ⇒ no-op. */
+export function removeRosterMember(
+  contest: Contest,
+  schoolIndex: number,
+  memberIndex: number,
+  now?: string,
+): Contest {
+  const school = contest.schools[schoolIndex];
+  if (!school || memberIndex < 0 || memberIndex >= school.roster.length) return contest;
+  const schools = contest.schools.map((s, i) =>
+    i === schoolIndex ? { ...s, roster: s.roster.filter((_, mi) => mi !== memberIndex) } : s,
+  );
+  return { ...touch(contest, now), schools };
+}
+
+/**
+ * Adjacent swap of two roster members (mirrors moveCritiqueAssignment): swaps the
+ * member at `memberIndex` with the one at `memberIndex + direction`. `direction` is
+ * ±1; any other value, an out-of-range target, or an out-of-range school is a no-op.
+ */
+export function moveRosterMember(
+  contest: Contest,
+  schoolIndex: number,
+  memberIndex: number,
+  direction: number,
+  now?: string,
+): Contest {
+  if (direction !== 1 && direction !== -1) return contest;
+  const school = contest.schools[schoolIndex];
+  if (!school) return contest;
+  const target = memberIndex + direction;
+  if (memberIndex < 0 || memberIndex >= school.roster.length || target < 0 || target >= school.roster.length) {
+    return contest;
+  }
+  const roster = [...school.roster];
+  [roster[memberIndex], roster[target]] = [roster[target], roster[memberIndex]];
+  const schools = contest.schools.map((s, i) => (i === schoolIndex ? { ...s, roster } : s));
+  return { ...touch(contest, now), schools };
+}
+
+/**
+ * The structured result of E2's `parseCompanyBlock` — the director-submitted block
+ * turned into data. Applied to a school by `importCompany`. Play title lives in the
+ * Plays section, so it rides here alongside the metadata and importCompany routes it
+ * to `School.playTitle`. `directorNames` are NAMES only (emails aren't in the block);
+ * importCompany maps them onto `School.directors` preserving existing emails by
+ * position. The model owns this contract so the parser and the applier can't drift.
+ */
+export interface ParsedCompany {
+  playTitle: string;
+  metadata: CompanyMetadata;
+  directorNames: string[];
+  roster: RosterMember[];
+}
+
+/**
+ * Applies a parsed company block to a school in one immutable update: writes the
+ * production metadata + play title + roster, and maps the parsed director NAMES onto
+ * `School.directors` preserving any existing emails by position (appending blank-email
+ * rows as needed). When the parse yielded no director names, existing directors are
+ * left untouched (so a partial paste never wipes the director rows). Out-of-range
+ * school index ⇒ no-op.
+ */
+export function importCompany(
+  contest: Contest,
+  schoolIndex: number,
+  parsed: ParsedCompany,
+  now?: string,
+): Contest {
+  if (schoolIndex < 0 || schoolIndex >= contest.schools.length) return contest;
+  const schools = contest.schools.map((s, i) => {
+    if (i !== schoolIndex) return s;
+    const directors =
+      parsed.directorNames.length === 0
+        ? s.directors
+        : parsed.directorNames.map((name, di) => ({ name, email: s.directors[di]?.email ?? '' }));
+    return {
+      ...s,
+      playTitle: parsed.playTitle,
+      author: parsed.metadata.author,
+      publisher: parsed.metadata.publisher,
+      productionType: parsed.metadata.productionType,
+      setting: parsed.metadata.setting,
+      runtime: parsed.metadata.runtime,
+      musicCredits: parsed.metadata.musicCredits,
+      roster: parsed.roster.map((m) => ({ ...m })),
+      directors,
+    };
+  });
+  return { ...touch(contest, now), schools };
+}
+
+/** The informational 20+4 company counts (PRD #68). */
+export interface CompanyCounts {
+  /** Cast + crew members — toward the 20 limit. */
+  castCrew: number;
+  /** Alternates — toward the 4 limit. */
+  alternates: number;
+  /** Every roster member — toward the 24 total. */
+  total: number;
+}
+
+/**
+ * Counts a school's roster: cast + crew toward 20, alternates toward 4, all toward
+ * 24. **Counts only — no cap, no clamping, no warning** (PRD #68 user story 12);
+ * an over-count is reported faithfully so the UI can surface it without blocking.
+ */
+export function companyCounts(school: School): CompanyCounts {
+  let castCrew = 0;
+  let alternates = 0;
+  for (const m of school.roster) {
+    if (m.category === 'alternate') alternates++;
+    else castCrew++;
+  }
+  return { castCrew, alternates, total: castCrew + alternates };
 }
 
 /**
@@ -1519,6 +1766,22 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
           paymentPaperworkReturnedDate: '',
         }))
       : raw.adjudicators,
+  }),
+  // v7 (Group D / contracting checklist) predates the company roster (PRD #68):
+  // every school gains an empty roster + blank production metadata, and every
+  // adjudicator plus CmInfo gains a blank bio. All additive and blank-safe.
+  7: (raw) => ({
+    ...raw,
+    cmInfo:
+      typeof raw.cmInfo === 'object' && raw.cmInfo !== null
+        ? { ...(raw.cmInfo as Record<string, unknown>), bio: '' }
+        : raw.cmInfo,
+    adjudicators: Array.isArray(raw.adjudicators)
+      ? (raw.adjudicators as Record<string, unknown>[]).map((j) => ({ ...j, bio: '' }))
+      : raw.adjudicators,
+    schools: Array.isArray(raw.schools)
+      ? (raw.schools as Record<string, unknown>[]).map((s) => ({ ...s, ...blankCompanyFields() }))
+      : raw.schools,
   }),
 };
 

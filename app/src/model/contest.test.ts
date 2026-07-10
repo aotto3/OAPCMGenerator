@@ -73,7 +73,15 @@ import {
   withIdentity,
   withSchool,
   withSpeechwire,
+  addRosterMember,
+  updateRosterMember,
+  removeRosterMember,
+  moveRosterMember,
+  importCompany,
+  companyCounts,
   type Contest,
+  type RosterMember,
+  type ParsedCompany,
 } from './contest';
 import { drawOrder, type Rng } from './draw';
 
@@ -152,6 +160,7 @@ describe('createContest', () => {
       ttaoContractDate: '',
       paymentPaperworkSentDate: '',
       paymentPaperworkReturnedDate: '',
+      bio: '',
     });
   });
 
@@ -1520,6 +1529,278 @@ describe('v5 → v6 migration (results & advancement)', () => {
     // Pre-existing data is preserved and it re-serializes at the current version.
     expect(migrated.schools[0].name).toBe('Westlake HS');
     expect(migrated.identity.districtNumber).toBe('20');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+});
+
+/* ────────────────────────── company roster (PRD #68) ────────────────────────── */
+
+const CAST: RosterMember = { name: 'Emily Stage', role: 'Emily', category: 'cast' };
+const CREW: RosterMember = { name: 'Sam Board', role: 'Stage Manager', category: 'crew' };
+const ALT: RosterMember = { name: 'Jo Backup', role: '', category: 'alternate' };
+
+/** A contest whose first school has a small roster + production metadata. */
+function withRoster(): Contest {
+  let c = filledContest();
+  c = addRosterMember(c, 0, CAST, LATER);
+  c = addRosterMember(c, 0, CREW, LATER);
+  c = addRosterMember(c, 0, ALT, LATER);
+  c = withSchool(
+    c,
+    0,
+    { author: 'Thornton Wilder', publisher: 'Samuel French', productionType: 'play', setting: 'Grover’s Corners', runtime: '38 min', musicCredits: 'Live piano' },
+    LATER,
+  );
+  return c;
+}
+
+describe('roster updaters', () => {
+  it('addRosterMember appends a copy, bumps updatedAt, and leaves the source untouched', () => {
+    const source = filledContest();
+    const c = addRosterMember(source, 0, CAST, LATER);
+    expect(c.schools[0].roster).toEqual([CAST]);
+    expect(c.updatedAt).toBe(LATER);
+    expect(source.schools[0].roster).toEqual([]); // immutable
+    // Stored a copy — mutating the input member does not reach into the contest.
+    const member = { ...CAST };
+    const c2 = addRosterMember(source, 0, member);
+    member.name = 'Changed';
+    expect(c2.schools[0].roster[0].name).toBe('Emily Stage');
+  });
+
+  it('addRosterMember is a no-op on an out-of-range school', () => {
+    const source = filledContest();
+    expect(addRosterMember(source, 99, CAST)).toBe(source);
+    expect(addRosterMember(source, -1, CAST)).toBe(source);
+  });
+
+  it('updateRosterMember patches one member and no-ops out of range', () => {
+    let c = addRosterMember(filledContest(), 0, CAST);
+    c = updateRosterMember(c, 0, 0, { role: 'Emily Webb' }, LATER);
+    expect(c.schools[0].roster[0]).toEqual({ name: 'Emily Stage', role: 'Emily Webb', category: 'cast' });
+    expect(c.updatedAt).toBe(LATER);
+    expect(updateRosterMember(c, 0, 5, { role: 'x' })).toBe(c); // bad member index
+    expect(updateRosterMember(c, 9, 0, { role: 'x' })).toBe(c); // bad school index
+  });
+
+  it('removeRosterMember drops one member and no-ops out of range', () => {
+    let c = addRosterMember(filledContest(), 0, CAST);
+    c = addRosterMember(c, 0, CREW);
+    const removed = removeRosterMember(c, 0, 0, LATER);
+    expect(removed.schools[0].roster).toEqual([CREW]);
+    expect(removed.updatedAt).toBe(LATER);
+    expect(removeRosterMember(c, 0, 9)).toBe(c);
+    expect(removeRosterMember(c, 9, 0)).toBe(c);
+  });
+
+  it('moveRosterMember does an adjacent swap; bad direction/target/school is a no-op', () => {
+    let c = addRosterMember(filledContest(), 0, CAST);
+    c = addRosterMember(c, 0, CREW);
+    c = addRosterMember(c, 0, ALT);
+    const moved = moveRosterMember(c, 0, 0, 1, LATER); // CAST ↔ CREW
+    expect(moved.schools[0].roster.map((m) => m.name)).toEqual(['Sam Board', 'Emily Stage', 'Jo Backup']);
+    expect(moved.updatedAt).toBe(LATER);
+    expect(moveRosterMember(c, 0, 0, -1)).toBe(c); // off the top
+    expect(moveRosterMember(c, 0, 2, 1)).toBe(c); // off the bottom
+    expect(moveRosterMember(c, 0, 0, 2)).toBe(c); // non-adjacent direction
+    expect(moveRosterMember(c, 9, 0, 1)).toBe(c); // bad school
+  });
+});
+
+describe('companyCounts', () => {
+  it('counts cast+crew vs alternates vs total (counts only, no cap)', () => {
+    const school = withRoster().schools[0];
+    expect(companyCounts(school)).toEqual({ castCrew: 2, alternates: 1, total: 3 });
+  });
+
+  it('is zero for an empty roster', () => {
+    expect(companyCounts(filledContest().schools[0])).toEqual({ castCrew: 0, alternates: 0, total: 3 - 3 });
+  });
+
+  it('reports an over-count faithfully — never clamps to 20/4/24', () => {
+    let c = filledContest();
+    for (let i = 0; i < 22; i++) c = addRosterMember(c, 0, { name: `C${i}`, role: '', category: 'cast' });
+    for (let i = 0; i < 6; i++) c = addRosterMember(c, 0, { name: `A${i}`, role: '', category: 'alternate' });
+    expect(companyCounts(c.schools[0])).toEqual({ castCrew: 22, alternates: 6, total: 28 });
+  });
+});
+
+describe('importCompany', () => {
+  const parsed: ParsedCompany = {
+    playTitle: 'Our Town',
+    metadata: {
+      author: 'Thornton Wilder',
+      publisher: 'Samuel French',
+      productionType: 'scenes',
+      setting: 'Grover’s Corners',
+      runtime: '40 minutes',
+      musicCredits: 'Original score',
+    },
+    directorNames: ['Pat Director', 'Chris Assistant'],
+    roster: [CAST, CREW, ALT],
+  };
+
+  it('applies metadata + play title + roster in one immutable update', () => {
+    const source = filledContest();
+    const c = importCompany(source, 1, parsed, LATER);
+    const s = c.schools[1];
+    expect(s.playTitle).toBe('Our Town');
+    expect(s.author).toBe('Thornton Wilder');
+    expect(s.publisher).toBe('Samuel French');
+    expect(s.productionType).toBe('scenes');
+    expect(s.setting).toBe('Grover’s Corners');
+    expect(s.runtime).toBe('40 minutes');
+    expect(s.musicCredits).toBe('Original score');
+    expect(s.roster).toEqual([CAST, CREW, ALT]);
+    expect(c.updatedAt).toBe(LATER);
+    expect(source.schools[1].roster).toEqual([]); // source untouched
+  });
+
+  it('maps director NAMES onto School.directors preserving existing emails by position', () => {
+    // School 0 in filledContest has two director rows: Pat Director <pat@x.org> and a blank.
+    let source = withDirector(filledContest(), 0, 1, { email: 'chris@x.org' });
+    const c = importCompany(source, 0, parsed);
+    expect(c.schools[0].directors).toEqual([
+      { name: 'Pat Director', email: 'pat@x.org' }, // email kept by position
+      { name: 'Chris Assistant', email: 'chris@x.org' }, // email kept by position
+    ]);
+  });
+
+  it('appends director rows (blank email) when the block has more directors than existing rows', () => {
+    const three: ParsedCompany = { ...parsed, directorNames: ['A', 'B', 'C'] };
+    const c = importCompany(filledContest(), 1, three); // school 1 has one director row
+    expect(c.schools[1].directors).toEqual([
+      { name: 'A', email: '' },
+      { name: 'B', email: '' },
+      { name: 'C', email: '' },
+    ]);
+  });
+
+  it('leaves existing directors untouched when the block yielded no director names', () => {
+    const noDir: ParsedCompany = { ...parsed, directorNames: [] };
+    const source = filledContest();
+    const c = importCompany(source, 0, noDir);
+    expect(c.schools[0].directors).toEqual(source.schools[0].directors);
+  });
+
+  it('is a no-op on an out-of-range school index', () => {
+    const source = filledContest();
+    expect(importCompany(source, 99, parsed)).toBe(source);
+    expect(importCompany(source, -1, parsed)).toBe(source);
+  });
+
+  it('deep-copies the roster so later edits never touch the imported source', () => {
+    const c = importCompany(filledContest(), 0, parsed);
+    const edited = updateRosterMember(c, 0, 0, { name: 'Changed' });
+    expect(parsed.roster[0].name).toBe('Emily Stage'); // parse result untouched
+    expect(edited.schools[0].roster[0].name).toBe('Changed');
+  });
+});
+
+describe('bios on adjudicators + CM', () => {
+  it('withAdjudicator and withCmInfo set the optional bio', () => {
+    let c = withAdjudicator(filledContest(), 0, { bio: 'Longtime UIL judge.' }, LATER);
+    c = withCmInfo(c, { bio: 'Contest manager since 2010.' }, LATER);
+    expect(c.adjudicators[0].bio).toBe('Longtime UIL judge.');
+    expect(c.cmInfo.bio).toBe('Contest manager since 2010.');
+  });
+
+  it('defaults to blank on a fresh contest', () => {
+    const c = filledContest();
+    expect(c.cmInfo.bio).toBe('');
+    expect(c.adjudicators.every((j) => j.bio === '')).toBe(true);
+  });
+});
+
+describe('duplicateContest clears roster + production metadata (director names carry)', () => {
+  it('resets the cast + metadata but keeps school names and director names', () => {
+    const dup = duplicateContest(withRoster(), { id: 'dup', now: LATER });
+    const s = dup.schools[0];
+    expect(s.roster).toEqual([]);
+    expect(s.author).toBe('');
+    expect(s.publisher).toBe('');
+    expect(s.productionType).toBe('');
+    expect(s.setting).toBe('');
+    expect(s.runtime).toBe('');
+    expect(s.musicCredits).toBe('');
+    expect(s.name).toBe('Westlake HS'); // school identity carries
+    expect(s.directors.map((d) => d.name)).toEqual(['Pat Director', '']); // director names carry
+  });
+});
+
+describe('advanceContest carries roster + production metadata', () => {
+  function advancingWithRoster(): Contest {
+    return setAdvancing(withRoster(), [0, 1]); // school 0 (with the roster) advances
+  }
+
+  it('keeps each advancing company’s roster + metadata with its show', () => {
+    const adv = advanceContest(advancingWithRoster(), { id: 'adv', now: LATER })!;
+    const s = adv.schools[0]; // Westlake, carried in form order
+    expect(s.name).toBe('Westlake HS');
+    expect(s.roster).toEqual([CAST, CREW, ALT]);
+    expect(s.author).toBe('Thornton Wilder');
+    expect(s.productionType).toBe('play');
+  });
+
+  it('deep-copies the carried roster — editing the advanced contest never touches the source', () => {
+    const source = advancingWithRoster();
+    const adv = advanceContest(source, { id: 'adv', now: LATER })!;
+    const edited = updateRosterMember(adv, 0, 0, { name: 'Changed' });
+    expect(source.schools[0].roster[0].name).toBe('Emily Stage'); // source untouched
+    expect(edited.schools[0].roster[0].name).toBe('Changed');
+  });
+});
+
+describe('roster/metadata/bio serialization round-trip', () => {
+  it('preserves roster, production metadata, and bios through serialize → parse', () => {
+    let c = withRoster();
+    c = withAdjudicator(c, 0, { bio: 'Judge bio.' });
+    c = withCmInfo(c, { bio: 'CM bio.' });
+
+    const restored = parseContest(serializeContest(c));
+    expect(restored.schools[0].roster).toEqual([CAST, CREW, ALT]);
+    expect(restored.schools[0].author).toBe('Thornton Wilder');
+    expect(restored.schools[0].productionType).toBe('play');
+    expect(restored.adjudicators[0].bio).toBe('Judge bio.');
+    expect(restored.cmInfo.bio).toBe('CM bio.');
+  });
+});
+
+describe('v7 → v8 migration (company roster + bios)', () => {
+  it('adds an empty roster + blank metadata per school and blank bios to adjudicators + CM', () => {
+    // A v7 contest: strip the Group-E fields the migration will add back.
+    const full = withRoster();
+    const { speechwire: _dev, ...syncable } = full;
+    const stripCompany = ({ roster, author, publisher, productionType, setting, runtime, musicCredits, ...rest }: Record<string, unknown>) => rest;
+    const stripBio = ({ bio, ...rest }: Record<string, unknown>) => rest;
+    const v7 = JSON.stringify({
+      schemaVersion: 7,
+      contest: {
+        ...syncable,
+        cmInfo: stripBio(syncable.cmInfo as unknown as Record<string, unknown>),
+        adjudicators: (syncable.adjudicators as unknown as Record<string, unknown>[]).map(stripBio),
+        schools: (syncable.schools as unknown as Record<string, unknown>[]).map(stripCompany),
+      },
+    });
+
+    const migrated = parseContest(v7);
+    // Pre-existing data preserved.
+    expect(migrated.schools[0].name).toBe('Westlake HS');
+    expect(migrated.identity.districtNumber).toBe('20');
+    // Company fields back-filled blank on every school.
+    for (const s of migrated.schools) {
+      expect(s.roster).toEqual([]);
+      expect(s.author).toBe('');
+      expect(s.publisher).toBe('');
+      expect(s.productionType).toBe('');
+      expect(s.setting).toBe('');
+      expect(s.runtime).toBe('');
+      expect(s.musicCredits).toBe('');
+    }
+    // Bios back-filled blank.
+    expect(migrated.cmInfo.bio).toBe('');
+    expect(migrated.adjudicators.every((j) => j.bio === '')).toBe(true);
+    // Re-serializes at the current version.
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });
