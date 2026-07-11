@@ -863,6 +863,12 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .admin-volume-fill { display: block; height: 100%; background: var(--c-blue); }
 .admin-volume-count { color: var(--c-muted); text-align: right; }
 
+/* Errors tab (Group F, F3). */
+.admin-errors .admin-error-msg {
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-xs, 0.8rem);
+}
+
 @media (max-width: 720px) {
   .admin-stats { grid-template-columns: repeat(2, 1fr); }
   .admin-grid { grid-template-columns: 1fr; }
