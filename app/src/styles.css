@@ -827,10 +827,47 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .admin-filter-search input, .admin-filter-contest input { width: 100%; }
 .admin-active-filter { margin-top: var(--space-3); }
 
+/* Analytics tab (Group F, F2). */
+.admin-window { display: inline-flex; gap: var(--space-1); }
+.admin-window-btn {
+  background: none; border: 1px solid var(--c-border); border-radius: var(--radius-md);
+  padding: 4px 10px; font-size: var(--fs-sm); cursor: pointer; color: var(--c-muted);
+}
+.admin-window-active { border-color: var(--c-blue); color: var(--c-blue); font-weight: 600; }
+
+.admin-trends {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+.admin-trend {
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3);
+  background: var(--c-surface);
+}
+.admin-trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.admin-trend-label { font-size: var(--fs-sm); color: var(--c-muted); }
+.admin-trend-total { font-size: var(--fs-lg); font-weight: 700; color: var(--c-blue); }
+.admin-spark { display: block; width: 100%; height: 32px; margin-top: var(--space-2); }
+
+.admin-analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.admin-subhead { margin: 0 0 var(--space-2); font-size: var(--fs-sm); color: var(--c-muted); font-weight: 600; }
+
+.admin-ratio { margin-bottom: var(--space-2); font-size: var(--fs-sm); }
+.admin-ratio-head { display: flex; justify-content: space-between; gap: var(--space-2); margin-bottom: 2px; }
+.admin-ratio-track { height: 8px; background: var(--c-bg-blue); border-radius: 999px; overflow: hidden; }
+.admin-ratio-fill { height: 100%; background: var(--c-blue); }
+.admin-retention { margin-top: var(--space-3); }
+
+.admin-volume { list-style: none; margin: 0; padding: 0; font-size: var(--fs-sm); }
+.admin-volume li { display: grid; grid-template-columns: 1fr 2fr auto; align-items: center; gap: var(--space-2); padding: 3px 0; }
+.admin-volume-track { height: 8px; background: var(--c-bg-blue); border-radius: 999px; overflow: hidden; }
+.admin-volume-fill { display: block; height: 100%; background: var(--c-blue); }
+.admin-volume-count { color: var(--c-muted); text-align: right; }
+
 @media (max-width: 720px) {
   .admin-stats { grid-template-columns: repeat(2, 1fr); }
   .admin-grid { grid-template-columns: 1fr; }
   .admin-filters label { flex: 1 1 140px; }
+  .admin-analytics-grid { grid-template-columns: 1fr; }
 }
 
 /* --- Theme toggle (Slice 18, #50) ----------------------------------------

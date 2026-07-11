@@ -79,7 +79,7 @@ beforeEach(async () => {
 });
 
 describe('admin gate', () => {
-  const routes = ['/api/admin/me', '/api/admin/stats', '/api/admin/users', '/api/admin/events'];
+  const routes = ['/api/admin/me', '/api/admin/stats', '/api/admin/users', '/api/admin/events', '/api/admin/analytics'];
 
   it('answers 404 on every admin route for an unauthenticated caller', async () => {
     for (const route of routes) {
@@ -273,6 +273,40 @@ describe('widened activity feed filters', () => {
     const page1 = await asUser(request(app).get('/api/admin/events?userId=alice&limit=2&offset=0'), 'admin').expect(200);
     expect(page1.body.total).toBe(5);
     expect((page1.body.events as unknown[]).length).toBe(2);
+  });
+});
+
+describe('analytics endpoint', () => {
+  it('returns the report shape for an admin over the default window', async () => {
+    await seed(app); // 5 contest.created (3 alice, 2 bob), all "now"
+    const res = await asUser(request(app).get('/api/admin/analytics'), 'admin').expect(200);
+    const body = res.body as {
+      window: { from: string; to: string; bucket: string };
+      series: unknown[];
+      totals: { contestsCreated: number; activeUsers: number };
+      adoption: { totalUsers: number; createdContest: { users: number; ratio: number } };
+      retention: { activeUsers: number };
+      volumeByType: Array<{ type: string; count: number }>;
+    };
+    // 30-day default ⇒ daily buckets, one per day of the window.
+    expect(body.window.bucket).toBe('day');
+    expect(Array.isArray(body.series)).toBe(true);
+    // The five seeded creates land in the window (recorded ~now).
+    expect(body.totals.contestsCreated).toBe(5);
+    expect(body.totals.activeUsers).toBe(2); // alice + bob
+    expect(body.adoption.totalUsers).toBe(3); // three accounts in the directory
+    expect(body.adoption.createdContest.users).toBe(2);
+    expect(body.volumeByType).toContainEqual({ type: 'contest.created', count: 5 });
+  });
+
+  it('honors the ?window param (90 days ⇒ weekly buckets)', async () => {
+    const res = await asUser(request(app).get('/api/admin/analytics?window=90'), 'admin').expect(200);
+    expect((res.body as { window: { bucket: string } }).window.bucket).toBe('week');
+  });
+
+  it('is 404 for a non-admin', async () => {
+    await asUser(request(app).get('/api/admin/analytics'), 'alice').expect(404);
+    await request(app).get('/api/admin/analytics').expect(404);
   });
 });
 

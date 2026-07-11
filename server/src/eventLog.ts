@@ -75,6 +75,12 @@ export interface EventLog {
   queryEvents(query?: EventQuery): Promise<EventRecord[]>;
   /** Counts events matching the filter (admin stats, e.g. documents generated). */
   countEvents(filter?: EventCountFilter): Promise<number>;
+  /**
+   * Returns EVERY event matching a filter, newest-first and unpaged — for the
+   * windowed reads (analytics, error triage) that must see the whole set, not a
+   * page. The row set stays bounded because callers always pass a date range.
+   */
+  listEvents(filter?: EventFilter): Promise<EventRecord[]>;
 }
 
 /** Clamp paging to sane bounds so a caller can never ask for a runaway page. */
@@ -158,6 +164,19 @@ export function createEventLog(pool: Pool): EventLog {
         params,
       );
       return rows[0]?.n ?? 0;
+    },
+
+    async listEvents(filter = {}) {
+      const params: unknown[] = [];
+      const where = buildWhere(filter, params);
+      const { rows } = await pool.query(
+        `select seq, occurred_at, user_id, user_email, type, contest_id, contest_name, detail
+         from events
+         ${where}
+         order by seq desc`,
+        params,
+      );
+      return rows.map(mapRow);
     },
   };
 }
