@@ -192,73 +192,66 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .section h2 { margin: 0 0 var(--space-3); font-size: 1.05rem; }
 
-/* Each workspace section is wrapped in an anchor div the nav scrolls to; the
-   offset keeps the heading clear of the sticky nav (Slice 16). */
+/* Each workspace section is wrapped in an anchor div the readiness jump scrolls
+   to; the offset keeps the heading clear of the top of the viewport. */
 .ws-section-anchor { scroll-margin-top: var(--ws-nav-h); }
 
-/* Sticky workspace navigation (Slice 16, #29): phase-grouped progress + a
-   jump-to chip strip so the long single-scroll workspace stays navigable. */
-.workspace-nav {
-  position: sticky; top: 0; z-index: 20;
-  margin-top: var(--space-4);
-  padding: var(--space-3) 0 var(--space-2);
-  background: var(--c-page-bg);
-  border-bottom: 1px solid var(--c-border);
-}
+/* --- Workspace shell (Slice R2, #129) ------------------------------------
+   The single-scroll workspace is now content-swapped panes driven by a sidebar.
+   Desktop: a persistent rail beside the content. Mobile: an off-canvas drawer
+   behind a hamburger (see the responsive block below). Colors are theme tokens. */
+.workspace { max-width: 1120px; margin: 0 auto; padding: var(--space-5) var(--space-4) 64px; }
+.workspace-header { margin-bottom: var(--space-3); }
+.workspace-header-top { display: flex; align-items: center; gap: var(--space-3); }
 
-.phase-progress {
-  list-style: none; display: flex; gap: var(--space-2);
-  margin: 0 0 var(--space-2); padding: 0;
-}
-.phase-item {
-  flex: 1; display: flex; flex-direction: column; gap: 2px;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--c-border); border-left: 3px solid var(--c-border);
-  border-radius: var(--radius-md); background: var(--c-surface);
-}
-.phase-label { font-size: var(--fs-xs); color: var(--c-muted); font-weight: 600; }
-.phase-count { font-size: var(--fs-sm); font-weight: 700; }
-.phase-partial { border-left-color: var(--c-blue); }
-.phase-partial .phase-count { color: var(--c-blue); }
-.phase-done { border-left-color: var(--c-blue); background: var(--c-bg-blue); }
-.phase-done .phase-count { color: var(--c-blue); }
+.workspace-shell { display: flex; align-items: flex-start; gap: var(--space-5); }
+.workspace-main { flex: 1 1 auto; min-width: 0; max-width: 860px; }
 
-/* Jump-to dropdown: the whole section list on one screen, no horizontal scroll.
-   Trigger shows the current (scroll-spy) section; the menu reveals all of them. */
-.ws-nav-jump { position: relative; }
-.ws-nav-trigger {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  background: var(--c-surface); border: 1px solid var(--c-border);
-  border-radius: var(--radius-md); padding: 6px var(--space-3);
-  font-size: var(--fs-sm); font-weight: 600; color: var(--c-text);
+.workspace-sidebar {
+  flex: none; width: 208px; position: sticky; top: var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-4);
 }
-.ws-nav-trigger:hover { border-color: var(--c-blue-border); }
-.ws-nav-trigger-lead { color: var(--c-muted); font-weight: 600; }
-.ws-nav-trigger-label { font-weight: 700; }
-.ws-nav-emoji { font-size: 0.95rem; line-height: 1; }
-
-.ws-nav-menu {
-  position: absolute; z-index: 30; top: calc(100% + var(--space-1)); left: 0;
-  list-style: none; margin: 0; padding: var(--space-2);
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1);
-  min-width: 340px; max-width: min(560px, calc(100vw - 32px));
-  background: var(--c-surface); border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+.ws-zone { display: flex; flex-direction: column; gap: 2px; }
+.ws-zone-tools {
+  border-top: 1px solid var(--c-border); margin-top: var(--space-1); padding-top: var(--space-3);
 }
-.ws-nav-item {
+.ws-zone-label {
+  font-size: var(--fs-xs); font-weight: 700; color: var(--c-muted);
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--space-2) var(--space-1);
+}
+.ws-pane-btn {
   display: flex; align-items: center; gap: var(--space-2); width: 100%;
   background: none; border: 1px solid transparent; border-radius: var(--radius-md);
-  padding: 6px var(--space-2); font-size: var(--fs-sm); font-weight: 600;
+  padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); font-weight: 600;
   color: var(--c-text); text-align: left;
 }
-.ws-nav-item:hover { background: var(--c-bg-blue); }
-.ws-nav-item.is-active { background: var(--c-bg-blue); border-color: var(--c-blue); color: var(--c-blue); }
-.ws-nav-item-label { flex: 1; }
-.ws-nav-dot {
-  width: 8px; height: 8px; border-radius: var(--radius-pill);
-  background: var(--c-warn-border); flex: none;
+.ws-pane-btn:hover { background: var(--c-bg-blue); }
+.ws-pane-btn.is-active {
+  background: var(--c-bg-blue); border-color: var(--c-blue);
+  color: var(--c-blue); font-weight: 700;
 }
-.ws-nav-dot.is-done { background: var(--c-blue); }
+.ws-pane-emoji { font-size: 0.95rem; line-height: 1; flex: none; }
+.ws-pane-label { flex: 1; }
+
+/* Hamburger (mobile only) + drawer backdrop are hidden on the desktop rail. */
+.ws-hamburger {
+  display: none; background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--fs-lg); line-height: 1;
+  color: var(--c-text);
+}
+.ws-drawer-backdrop { display: none; }
+
+/* Per-pane Expand/Collapse-all (retired from the global nav; kept where a pane
+   stacks several collapsible modules). */
+.pane-toolbar { display: flex; justify-content: flex-end; margin-top: var(--space-4); }
+.ws-toggle-all { display: inline-flex; align-items: center; gap: var(--space-1); }
+.ws-toggle-all button {
+  background: none; border: none; color: var(--c-blue);
+  font-size: var(--fs-sm); font-weight: 600; padding: var(--space-1) 2px;
+}
+.ws-toggle-all .sep { color: var(--c-border); font-size: var(--fs-sm); }
+
+.readiness-pane-title { margin: 0 var(--space-3) 0 0; font-size: var(--fs-lg); }
 
 /* Collapsible section header (v12 section-header) with completion chip. */
 .section-header {
@@ -818,11 +811,6 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 @media (max-width: 420px) {
   .section-header { flex-wrap: wrap; row-gap: var(--space-1); }
   .section-header h2 { flex: 1 1 100%; }
-  .phase-progress { flex-wrap: wrap; }
-  .phase-item { flex: 1 1 calc(50% - var(--space-2)); }
-  .ws-nav-jump { display: block; }
-  .ws-nav-trigger { width: 100%; justify-content: flex-start; }
-  .ws-nav-menu { grid-template-columns: 1fr; min-width: 0; width: 100%; }
 }
 
 /* Ownership/attribution footer (rendered by App.tsx in every state). Subtle,
@@ -1001,12 +989,22 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   background: var(--c-bg-blue); color: var(--c-blue); font-weight: 700;
 }
 
-/* --- Expand / collapse all (Slice 18, #50) -------------------------------
-   Text controls beside the jump-to menu that drive every workspace section. */
-.ws-nav-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.ws-nav-toggle-all { display: inline-flex; align-items: center; gap: var(--space-1); }
-.ws-nav-toggle-all button {
-  background: none; border: none; color: var(--c-blue);
-  font-size: var(--fs-sm); font-weight: 600; padding: var(--space-1) 2px;
+/* --- Workspace sidebar: mobile drawer (Slice R2, #129) --------------------
+   Below the rail breakpoint the sidebar becomes an off-canvas drawer behind a
+   hamburger; the same markup, CSS-swapped. */
+@media (max-width: 760px) {
+  .workspace-shell { display: block; }
+  .ws-hamburger { display: inline-flex; align-items: center; }
+  .workspace-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+    width: min(260px, 82vw); margin: 0; padding: var(--space-5) var(--space-4);
+    background: var(--c-surface); border-right: 1px solid var(--c-border);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18); overflow-y: auto;
+    transform: translateX(-100%); transition: transform 0.2s ease;
+  }
+  .workspace-sidebar.is-open { transform: translateX(0); }
+  .ws-drawer-backdrop.is-open {
+    display: block; position: fixed; inset: 0; z-index: 40;
+    background: rgba(0, 0, 0, 0.4);
+  }
 }
-.ws-nav-toggle-all .sep { color: var(--c-border); font-size: var(--fs-sm); }

@@ -4,36 +4,30 @@ import {
   sectionCompletion,
   validateContest,
   type Contest,
-  type SectionId,
 } from '../model/contest';
 import { getContest } from '../storage/contestStore';
 import { useAutosave } from '../storage/useAutosave';
-import { EmailComposer } from './EmailComposer';
-import { EmailListBox } from './EmailListBox';
-import { AdjudicatorsSection } from './sections/AdjudicatorsSection';
-import { CmInfoSection } from './sections/CmInfoSection';
-import { CompaniesSection } from './sections/CompaniesSection';
-import { ComplianceSection } from './sections/ComplianceSection';
-import { CritiqueSection } from './sections/CritiqueSection';
-import { DetailsSection } from './sections/DetailsSection';
-import { DrawSection } from './sections/DrawSection';
-import { GenerateSection } from './sections/GenerateSection';
-import { HistorySection } from './sections/HistorySection';
-import { IdentitySection } from './sections/IdentitySection';
-import { PlaysSection } from './sections/PlaysSection';
-import { ResultsSection } from './sections/ResultsSection';
-import { SchoolsSection } from './sections/SchoolsSection';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
-import { SchedulePreview } from './SchedulePreview';
-import { WorkspaceNav } from './WorkspaceNav';
 import { ReadinessPage } from './ReadinessPage';
 import { ReadinessSummary } from './ReadinessSummary';
+import { WorkspacePane } from './WorkspacePane';
+import { WorkspaceSidebar } from './WorkspaceSidebar';
+import {
+  canonicalPane,
+  landingPane,
+  paneModules,
+  type ModuleId,
+  type PaneId,
+} from './paneRegistry';
 
 /**
- * Contest workspace — all v12 data-entry sections. Pattern to keep: state
- * lives in one `Contest` value, every change goes through the model's
- * update helpers (sections receive the contest and hand back the next one),
- * and useAutosave persists it — components never talk to IndexedDB directly.
+ * Contest workspace — the v12 data-entry sections, now grouped into content-swapped
+ * panes driven by the sidebar (PRD #127). Pattern to keep: state lives in one
+ * `Contest` value, every change goes through the model's update helpers (sections
+ * receive the contest and hand back the next one), and useAutosave persists it —
+ * components never talk to IndexedDB directly. The current pane is ordinary
+ * component state (router-ready, but no URL routing in v1); switching panes only
+ * unmounts/mounts modules, so autosave keeps unsaved work safe across a switch.
  */
 export function Workspace({
   contestId,
@@ -50,15 +44,20 @@ export function Workspace({
 }) {
   const [contest, setContest] = useState<Contest>();
   const [missing, setMissing] = useState(false);
-  // Global expand/collapse-all signal broadcast to every Section via context.
+  // Global expand/collapse-all signal broadcast to every mounted Section via
+  // context. Content-swap makes this per-pane for free: only the current pane's
+  // sections are mounted, so a broadcast reaches just them.
   const [openSignal, setOpenSignal] = useState<SectionOpenSignal | null>(null);
   const setAllSections = (open: boolean) =>
     setOpenSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
-  // The readiness page is a dedicated view of THIS contest (PRD #75); it shares the
-  // same `contest` state + autosave, so its tri-state edits persist like any other.
-  const [view, setView] = useState<'workspace' | 'readiness'>('workspace');
-  // A section anchor to scroll to once the workspace view is back on screen — set
-  // when a derived readiness item's "go to section" jump fires from the page.
+  // The current destination: the Readiness hub or one of the panes. A fresh draft
+  // lands on Setup (start typing); a saved contest lands on Readiness (status).
+  const isDraft = !!(draft && draft.id === contestId);
+  const [view, setView] = useState<PaneId>(() => landingPane(isDraft));
+  // Mobile: the off-canvas sidebar drawer's open state (the desktop rail ignores it).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // A module anchor to scroll to once its pane's content mounts — set when a
+  // readiness item's jump fires (switch to the canonical pane, then scroll).
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,14 +70,19 @@ export function Workspace({
 
   useAutosave(contest);
 
-  // After a jump from the readiness page, wait for the workspace anchors to mount,
-  // then scroll to the requested section (mirrors WorkspaceNav's smooth scroll).
+  // After a jump, wait for the target pane's anchors to mount, then smooth-scroll
+  // to the module. Skipped on the Readiness hub (no module anchors there). A
+  // double rAF is deliberate: content-swap mounts the pane fresh, so the first
+  // frame paints it and the second lets layout settle before we read the anchor's
+  // final position — a single frame scrolls to a stale (too-short-page) offset.
   useEffect(() => {
-    if (view !== 'workspace' || !pendingScroll) return;
+    if (view === 'readiness' || !pendingScroll) return;
     const id = pendingScroll;
     setPendingScroll(null);
     requestAnimationFrame(() =>
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      requestAnimationFrame(() =>
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      ),
     );
   }, [view, pendingScroll]);
 
@@ -92,106 +96,90 @@ export function Workspace({
   }
   if (!contest) return <main className="page"><p className="muted">Loading…</p></main>;
 
-  const jumpToSection = (id: string) => {
-    setPendingScroll(id);
-    setView('workspace');
+  /** Navigate to a pane from the sidebar (a plain switch, no pending scroll). */
+  const selectPane = (pane: PaneId) => {
+    setPendingScroll(null);
+    setView(pane);
   };
 
-  if (view === 'readiness') {
-    return (
-      <ReadinessPage
-        contest={contest}
-        onChange={setContest}
-        onBack={() => setView('workspace')}
-        onJump={jumpToSection}
-      />
-    );
-  }
+  /** Readiness jump: open a module's canonical pane, then scroll to its anchor. */
+  const jumpToSection = (sectionId: string) => {
+    const module = sectionId.replace(/^sec-/, '') as ModuleId;
+    setPendingScroll(sectionId);
+    setView(canonicalPane(module));
+  };
 
   const progress = sectionCompletion(contest);
   const issues = validateContest(contest);
-
-  // Default collapse behavior (Slice 16): open the first data-entry section that
-  // still has empty fields and collapse the rest, guiding the CM to the next
-  // thing needing attention. A fully-complete contest opens none — the nav and
-  // tool sections carry the flow from there. Computed once at mount, like the
-  // Section's own open state, so toggling a section by hand always wins after.
-  const dataOrder: SectionId[] = ['cm', 'identity', 'details', 'adjudicators', 'schools', 'plays'];
-  const firstIncomplete = dataOrder.find((k) => progress[k].done < progress[k].total);
-  const openFirst = (k: SectionId) => k === firstIncomplete;
+  // Expand/Collapse-all is only meaningful where a pane stacks several collapsible
+  // modules — kept for the heavy panes (Schools), hidden on single-module ones.
+  const showToggleAll =
+    view !== 'readiness' && paneModules(view).filter((m) => !m.mirror).length > 1;
 
   return (
     <SectionOpenContext.Provider value={openSignal}>
-    <main className="page">
-      <header className="page-header">
-        <button className="btn-ghost" onClick={onBack}>← All contests</button>
-        <h1>{contestDisplayName(contest.identity)}</h1>
-        <p className="subtitle">Every change saves automatically.</p>
-      </header>
+      <div className="workspace">
+        <header className="page-header workspace-header">
+          <div className="workspace-header-top">
+            <button
+              type="button"
+              className="ws-hamburger"
+              aria-label="Open navigation"
+              onClick={() => setDrawerOpen(true)}
+            >
+              ☰
+            </button>
+            <button className="btn-ghost" onClick={onBack}>← All contests</button>
+          </div>
+          <h1>{contestDisplayName(contest.identity)}</h1>
+          <p className="subtitle">Every change saves automatically.</p>
+        </header>
 
-      <WorkspaceNav
-        progress={progress}
-        onExpandAll={() => setAllSections(true)}
-        onCollapseAll={() => setAllSections(false)}
-      />
+        <div className="workspace-shell">
+          <WorkspaceSidebar
+            current={view}
+            onSelect={selectPane}
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+          />
 
-      <ReadinessSummary contest={contest} onOpen={() => setView('readiness')} />
+          <main className="workspace-main">
+            {view === 'readiness' ? (
+              <ReadinessPage contest={contest} onChange={setContest} onJump={jumpToSection} />
+            ) : (
+              <>
+                <ReadinessSummary contest={contest} onOpen={() => setView('readiness')} />
 
-      {issues.length > 0 && (
-        <ul className="issues">
-          {issues.map((issue) => (
-            <li key={issue.field}>⚠️ {issue.message}</li>
-          ))}
-        </ul>
-      )}
+                {issues.length > 0 && (
+                  <ul className="issues">
+                    {issues.map((issue) => (
+                      <li key={issue.field}>⚠️ {issue.message}</li>
+                    ))}
+                  </ul>
+                )}
 
-      <div id="sec-cm" className="ws-section-anchor">
-        <CmInfoSection contest={contest} completion={progress.cm} onChange={setContest} defaultOpen={openFirst('cm')} />
+                {showToggleAll && (
+                  <div className="pane-toolbar">
+                    <div className="ws-toggle-all">
+                      <button type="button" onClick={() => setAllSections(true)}>Expand all</button>
+                      <span className="sep" aria-hidden>·</span>
+                      <button type="button" onClick={() => setAllSections(false)}>Collapse all</button>
+                    </div>
+                  </div>
+                )}
+
+                <WorkspacePane
+                  pane={view}
+                  contest={contest}
+                  progress={progress}
+                  onChange={setContest}
+                  onOpenSaved={onOpenSaved}
+                />
+              </>
+            )}
+          </main>
+        </div>
       </div>
-      <div id="sec-identity" className="ws-section-anchor">
-        <IdentitySection contest={contest} completion={progress.identity} onChange={setContest} defaultOpen={openFirst('identity')} />
-      </div>
-      <div id="sec-details" className="ws-section-anchor">
-        <DetailsSection contest={contest} completion={progress.details} onChange={setContest} defaultOpen={openFirst('details')} />
-      </div>
-      <div id="sec-adjudicators" className="ws-section-anchor">
-        <AdjudicatorsSection contest={contest} completion={progress.adjudicators} onChange={setContest} defaultOpen={openFirst('adjudicators')} />
-      </div>
-      <div id="sec-schools" className="ws-section-anchor">
-        <SchoolsSection contest={contest} completion={progress.schools} onChange={setContest} defaultOpen={openFirst('schools')} />
-      </div>
-      <div id="sec-plays" className="ws-section-anchor">
-        <PlaysSection contest={contest} completion={progress.plays} onChange={setContest} defaultOpen={openFirst('plays')} />
-      </div>
-      <div id="sec-companies" className="ws-section-anchor">
-        <CompaniesSection contest={contest} onChange={setContest} />
-      </div>
-      <div id="sec-draw" className="ws-section-anchor">
-        <DrawSection contest={contest} onChange={setContest} />
-      </div>
-      <div id="sec-compliance" className="ws-section-anchor">
-        <ComplianceSection contest={contest} onChange={setContest} />
-      </div>
-      <div id="sec-schedule" className="ws-section-anchor">
-        <SchedulePreview contest={contest} />
-      </div>
-      <div id="sec-critique" className="ws-section-anchor">
-        <CritiqueSection contest={contest} onChange={setContest} />
-      </div>
-      <div id="sec-results" className="ws-section-anchor">
-        <ResultsSection contest={contest} onChange={setContest} onAdvance={onOpenSaved} />
-      </div>
-      <div id="sec-generate" className="ws-section-anchor">
-        <GenerateSection contest={contest} onChange={setContest} />
-      </div>
-      <div id="sec-history" className="ws-section-anchor">
-        <HistorySection contest={contest} onRestore={setContest} />
-      </div>
-      <div id="sec-email" className="ws-section-anchor">
-        <EmailComposer contest={contest} />
-      </div>
-      <EmailListBox contest={contest} />
-    </main>
     </SectionOpenContext.Provider>
   );
 }
