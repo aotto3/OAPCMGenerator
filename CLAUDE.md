@@ -112,11 +112,25 @@ verbatim everywhere:
    resolves `{ id, email }` so events carry both.
 
 5. **App UI** (`app/src/ui/`) — dashboard → workspace (`Workspace.tsx` +
-   `sections/`) → generate; `App.tsx` gates on auth (`auth/authClient.ts`).
-   Theming is light/dark/system, token-driven (`ui/theme.ts`; the whole app reads
-   CSS custom properties, so the dark override in `styles.css` flips everything at
-   once — never hard-code a color that a fixed palette doesn't require). `admin/`
-   is the owner-only admin panel, rendered only after a positive am-I-admin probe.
+   `sections/`) → generate; `App.tsx` gates on auth (`auth/authClient.ts`). The
+   workspace is **grouped panes driven by a sidebar** (PRD #127), not one long
+   scroll: `paneRegistry.ts` is a **pure, totality-typed registry** (the same
+   pattern as the document registry) that is the single source of truth for the
+   pane structure — the section→pane mapping is a `Record<ModuleId, PaneId>`, so a
+   new section without a home fails to compile. `WorkspaceSidebar` (desktop rail /
+   mobile drawer, pure navigation, no status) and `WorkspacePane` (mounts only the
+   selected pane's modules — content-swap, not scroll) are both loops over it.
+   `Workspace` holds the current pane in ordinary state (router-ready, no URL
+   routing); landing is registry-driven (fresh draft → Setup, saved → Readiness).
+   The Readiness hub (`ReadinessPage.tsx`) renders **inside the workspace shell**
+   (sidebar + header stay visible), and its jump links open a module's **canonical
+   pane** then scroll to it. Exactly two modules are mirrored across panes (Critique
+   in Judges, read-only Schedule preview in Setup); everything is safe because every
+   section is a controlled component over the single autosaved `Contest`. Theming is
+   light/dark/system, token-driven (`ui/theme.ts`; the whole app reads CSS custom
+   properties, so the dark override in `styles.css` flips everything at once — never
+   hard-code a color that a fixed palette doesn't require). `admin/` is the
+   owner-only admin panel, rendered only after a positive am-I-admin probe.
    `telemetry/` is the fire-and-forget client (documents generated, contest
    export/import, uncaught errors) — it swallows every failure and is never awaited
    on a user-facing path.

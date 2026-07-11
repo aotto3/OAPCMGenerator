@@ -49,9 +49,14 @@ src/
              async flush, so typing never waits on the network.
   ui/        React components. They hold a Contest in state, edit it through
              model helpers, and persist via useAutosave. UI components never
-             import `idb` or build serialization formats themselves. Also the
-             light/dark/system theme (theme.ts + ThemeToggle): token-driven, so
-             the dark override in styles.css re-colors the whole app at once.
+             import `idb` or build serialization formats themselves. The workspace
+             is grouped panes driven by a sidebar: paneRegistry.ts is a pure,
+             totality-typed section→pane map (the document-registry pattern, and
+             the one unit-tested piece of the workspace UI); WorkspaceSidebar
+             (rail/drawer) and WorkspacePane (content-swap) are loops over it.
+             Also the light/dark/system theme (theme.ts + ThemeToggle):
+             token-driven, so the dark override in styles.css re-colors the whole
+             app at once.
   admin/     Owner-only admin panel (stats, users, activity feed, per-user
              drill-down). Rendered only after a positive am-I-admin probe against
              the server; the server re-checks admin on every request behind it.

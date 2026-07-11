@@ -43,30 +43,44 @@ easier on your eyes; your choice is remembered on that device.
 
 ## 3. Fill in your contest
 
-Inside a contest, you fill the same information as always, organized into sections
-you expand one at a time (or **Expand all / Collapse all** from the section menu),
-with progress indicators so you can see what's done:
+Inside a contest, a **sidebar** on the left (a **☰ menu** button on phones) groups
+your work into a handful of panes — **Setup, Judges, Schools, Contest, Results** —
+plus a pinned **Tools** area (Readiness, Generate, Manual Save, Email, and Quick
+Links to UIL resources). Click any pane to go straight to it, in any order; only
+that pane's sections show, so you're never scrolling past everything else. Within a
+pane, each section expands and collapses (with **Expand all / Collapse all** on the
+busier panes) and shows a progress indicator. You fill the same information as
+always:
 
-1. **CM Info** — your name, contact details (pre-filled once and remembered).
-2. **Contest Identity** — year, classification, level, host school/venue.
+1. **CM Info** — your name, contact details (pre-filled once and remembered). *(Setup)*
+2. **Contest Identity** — year, classification, level, host school/venue. *(Setup)*
 3. **Contest Details** — contest date, meeting/first-show times, judging format,
-   rehearsals, fees, deadlines, and your Speechwire login.
-4. **Adjudicators** — your judges' names and mailing addresses.
-5. **Schools & Directors** — each school, its director(s), and email(s).
-6. **Play Titles & Performance Order** — each school's play and draw order.
+   rehearsals, fees, deadlines, and your Speechwire login. *(Setup)*
+4. **Adjudicators** — your judges' names and mailing addresses. *(Judges)*
+5. **Schools & Directors** — each school, its director(s), and email(s). *(Schools)*
+6. **Play Titles & Performance Order** — each school's play and draw order. *(Schools)*
 
 **There is no Save button.** Every keystroke is saved instantly in your browser and
 synced to your account in the background whenever you're online. Refresh, close the
 tab, switch computers — your work is there.
 
 ### Handy tools while you work
+- **Readiness** (in the Tools area) is your at-a-glance status hub: how ready the
+  contest is by phase, with each item linking straight to the section that fixes it.
+  Opening a brand-new contest lands you on **Setup** to start typing; returning to a
+  saved contest lands you on **Readiness** so you see where things stand first.
 - **Schedule Preview** updates live as you type times and add schools, so you can
-  sanity-check the day's timing before generating anything.
+  sanity-check the day's timing before generating anything. It also appears on the
+  **Setup** pane so you can watch the schedule change while you edit Contest Details.
 - **Email Composer** drafts your routine emails (announcement, deadline reminder,
   day-before, judges, advancing schools) filled from your contest data — one
   copy-paste away.
 - **Critique Randomizer** assigns judges to critiques following UIL rules; you can
   **lock** an assignment so it survives regeneration, and reorder by hand if needed.
+  It's available on both the **Judges** and **Contest** panes — edits in one show up
+  in the other instantly.
+- **Quick Links** (Tools area) open UIL Resources & Forms, the OAP Handbook,
+  Speechwire, and the Tabulation Tool in a new tab, so you never lose your place.
 
 ## 4. Checkpoints (save a moment you can return to)
 
