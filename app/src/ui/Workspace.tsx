@@ -26,6 +26,8 @@ import { SchoolsSection } from './sections/SchoolsSection';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { SchedulePreview } from './SchedulePreview';
 import { WorkspaceNav } from './WorkspaceNav';
+import { ReadinessPage } from './ReadinessPage';
+import { ReadinessSummary } from './ReadinessSummary';
 
 /**
  * Contest workspace — all v12 data-entry sections. Pattern to keep: state
@@ -52,6 +54,12 @@ export function Workspace({
   const [openSignal, setOpenSignal] = useState<SectionOpenSignal | null>(null);
   const setAllSections = (open: boolean) =>
     setOpenSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
+  // The readiness page is a dedicated view of THIS contest (PRD #75); it shares the
+  // same `contest` state + autosave, so its tri-state edits persist like any other.
+  const [view, setView] = useState<'workspace' | 'readiness'>('workspace');
+  // A section anchor to scroll to once the workspace view is back on screen — set
+  // when a derived readiness item's "go to section" jump fires from the page.
+  const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   useEffect(() => {
     if (draft && draft.id === contestId) {
@@ -63,6 +71,17 @@ export function Workspace({
 
   useAutosave(contest);
 
+  // After a jump from the readiness page, wait for the workspace anchors to mount,
+  // then scroll to the requested section (mirrors WorkspaceNav's smooth scroll).
+  useEffect(() => {
+    if (view !== 'workspace' || !pendingScroll) return;
+    const id = pendingScroll;
+    setPendingScroll(null);
+    requestAnimationFrame(() =>
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  }, [view, pendingScroll]);
+
   if (missing) {
     return (
       <main className="page">
@@ -72,6 +91,22 @@ export function Workspace({
     );
   }
   if (!contest) return <main className="page"><p className="muted">Loading…</p></main>;
+
+  const jumpToSection = (id: string) => {
+    setPendingScroll(id);
+    setView('workspace');
+  };
+
+  if (view === 'readiness') {
+    return (
+      <ReadinessPage
+        contest={contest}
+        onChange={setContest}
+        onBack={() => setView('workspace')}
+        onJump={jumpToSection}
+      />
+    );
+  }
 
   const progress = sectionCompletion(contest);
   const issues = validateContest(contest);
@@ -99,6 +134,8 @@ export function Workspace({
         onExpandAll={() => setAllSections(true)}
         onCollapseAll={() => setAllSections(false)}
       />
+
+      <ReadinessSummary contest={contest} onOpen={() => setView('readiness')} />
 
       {issues.length > 0 && (
         <ul className="issues">
