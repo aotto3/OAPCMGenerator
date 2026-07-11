@@ -1,25 +1,32 @@
 import { useState } from 'react';
 import {
-  COMPLIANCE_STATUSES,
+  APPROVED_LIST_NA_ITEMS,
   addComplianceItem,
   complianceItems,
   complianceProgress,
+  effectiveComplianceStatus,
+  isOnApprovedList,
   removeComplianceItem,
   setComplianceStatus,
+  setOnApprovedList,
   type ComplianceStatus,
   type Contest,
 } from '../../model/contest';
 import { Section } from './Section';
 
 /**
- * Compliance tracker (PRD #64, Group A). A schools × items grid where the CM
- * records which handbook paperwork each school has turned in — Pending /
- * Received / N/A per cell — with a colored progress counter per school.
+ * Compliance tracker (PRD #64, Group A; quick-edit + approved-list — feedback
+ * 2026-07-11). A schools × items grid where the CM records which handbook
+ * paperwork each school has turned in. Each cell is a click-to-cycle chip
+ * (Pending → Received → N/A) — one tap for the common case, color-coded so the
+ * grid scans at a glance — with a colored progress counter per school.
  *
- * Deliberately additive and optional (user story 12): the section defaults
- * collapsed, holds no state but the "new custom item" text box, and reads/writes
- * only through the pure model helpers (complianceProgress + the with*()-style
- * updaters from Slice A1), so autosave/sync/export carry it with no plumbing of
+ * A per-school "On the UIL approved list" toggle auto-N/As the license / cutting
+ * permission / off-list approval items (APPROVED_LIST_NA_ITEMS) and locks those
+ * chips, so an approved play clears its inapplicable paperwork in one click.
+ *
+ * Deliberately additive and optional (user story 12): reads/writes only through
+ * the pure model helpers, so autosave/sync/export carry it with no plumbing of
  * their own. Progress shows nowhere outside this section.
  */
 
@@ -27,6 +34,20 @@ const STATUS_LABELS: Record<ComplianceStatus, string> = {
   pending: 'Pending',
   received: 'Received',
   na: 'N/A',
+};
+
+/** Compact chip glyph per state; color carries the rest. */
+const STATUS_GLYPH: Record<ComplianceStatus, string> = {
+  pending: '—',
+  received: '✓',
+  na: 'N/A',
+};
+
+/** One click advances a cell to the next state. */
+const NEXT_STATUS: Record<ComplianceStatus, ComplianceStatus> = {
+  pending: 'received',
+  received: 'na',
+  na: 'pending',
 };
 
 export function ComplianceSection({
@@ -51,11 +72,12 @@ export function ComplianceSection({
   return (
     <Section title="✅ Compliance" badge="Optional Tracker" defaultOpen={false}>
       <p className="note-box">
-        Track the handbook paperwork each school owes before contest day. Some items apply only in
-        certain cases — mark them <strong>N/A</strong> when they don't apply: <em>“Scenes from” / cutting
-        permission</em> (only for a cut script), <em>Play approval</em> (only for off-list titles), and{' '}
-        <em>Scenic approval</em> (only for special set pieces). N/A items drop out of a school's counter.
-        This tracker is just for you — it never blocks anything or appears in a generated document.
+        Track the handbook paperwork each school owes before contest day.{' '}
+        <strong>Click a cell to cycle</strong> Pending → Received → N/A. Mark an item{' '}
+        <strong>N/A</strong> when it doesn't apply — N/A items drop out of a school's counter. If a play is
+        on the <strong>UIL approved list</strong>, tick that box to auto-N/A the publisher license, cutting
+        permission, and off-list approval at once. This tracker is just for you — it never blocks anything or
+        appears in a generated document.
       </p>
 
       <div className="compliance-scroll">
@@ -85,29 +107,45 @@ export function ComplianceSection({
           <tbody>
             {contest.schools.map((school, i) => {
               const progress = complianceProgress(school, items);
+              const schoolName = school.name.trim() || `School ${i + 1}`;
+              const approved = isOnApprovedList(school);
               return (
                 <tr key={i}>
                   <th scope="row" className="compliance-school">
-                    {school.name.trim() || `School ${i + 1}`}
+                    <span className="compliance-school-name">{schoolName}</span>
+                    <label className="compliance-approved">
+                      <input
+                        type="checkbox"
+                        checked={approved}
+                        onChange={(e) => onChange(setOnApprovedList(contest, i, e.target.checked))}
+                      />
+                      On approved list
+                    </label>
                   </th>
                   {items.map((item) => {
-                    const status = school.compliance[item.id] ?? 'pending';
+                    const status = effectiveComplianceStatus(school, item.id);
+                    const locked = approved && APPROVED_LIST_NA_ITEMS.includes(item.id);
                     return (
                       <td key={item.id} className="compliance-cell">
-                        <select
-                          className={`compliance-select is-${status}`}
-                          aria-label={`${school.name.trim() || `School ${i + 1}`} — ${item.label}`}
-                          value={status}
-                          onChange={(e) =>
-                            onChange(setComplianceStatus(contest, i, item.id, e.target.value as ComplianceStatus))
+                        <button
+                          type="button"
+                          className={`compliance-chip is-${status}${locked ? ' is-locked' : ''}`}
+                          disabled={locked}
+                          aria-label={
+                            `${schoolName} — ${item.label}: ${STATUS_LABELS[status]}` +
+                            (locked ? ' (auto — play on approved list)' : '. Click to change.')
+                          }
+                          title={
+                            locked
+                              ? 'Auto N/A — play is on the approved list'
+                              : `${STATUS_LABELS[status]} — click to change`
+                          }
+                          onClick={() =>
+                            onChange(setComplianceStatus(contest, i, item.id, NEXT_STATUS[status]))
                           }
                         >
-                          {COMPLIANCE_STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {STATUS_LABELS[s]}
-                            </option>
-                          ))}
-                        </select>
+                          {STATUS_GLYPH[status]}
+                        </button>
                       </td>
                     );
                   })}

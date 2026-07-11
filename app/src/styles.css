@@ -505,6 +505,24 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
    N/A muted, Pending the neutral surface. */
 .compliance-select.is-received { background: var(--c-success-bg); border-color: var(--c-success-border); }
 .compliance-select.is-na { background: var(--c-page-bg); color: var(--c-muted); }
+/* Click-to-cycle status chip (feedback 2026-07-11) — one tap advances the state;
+   color carries the meaning so the grid scans at a glance. */
+.compliance-chip {
+  font: inherit; font-size: var(--fs-xs); font-weight: 700; width: 100%; min-width: 40px;
+  padding: 4px var(--space-1); cursor: pointer;
+  border: 1px solid var(--c-border); border-radius: var(--radius-sm);
+  background: var(--c-surface); color: var(--c-muted);
+}
+.compliance-chip.is-received { background: var(--c-success-bg); border-color: var(--c-success-border); color: var(--c-success); }
+.compliance-chip.is-na { background: var(--c-page-bg); border-color: var(--c-border); color: var(--c-muted); }
+.compliance-chip.is-locked { cursor: default; opacity: 0.75; }
+/* School row header stacks the name over the approved-list toggle. */
+.compliance-school-name { display: block; }
+.compliance-approved {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;
+  font-size: var(--fs-xs); font-weight: 400; color: var(--c-muted); white-space: nowrap; cursor: pointer;
+}
+.compliance-approved input { cursor: pointer; }
 .compliance-progress { text-align: center; }
 .compliance-counter {
   display: inline-block; font-weight: 700; font-size: var(--fs-xs);

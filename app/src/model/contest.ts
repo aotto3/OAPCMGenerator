@@ -161,9 +161,26 @@ export const BUILT_IN_COMPLIANCE_ITEMS: readonly ComplianceItem[] = [
   { id: 'cutting_permission', label: '"Scenes from" / cutting permission' },
   { id: 'play_approval', label: 'Play approval (off-list titles)' },
   { id: 'scenic_approval', label: 'Scenic approval' },
-  { id: 'online_entry', label: 'Contestant entry in the Online Entry System' },
-  { id: 'title_registration', label: 'Title registration' },
 ] as const;
+
+/**
+ * The "play is on the UIL approved list" flag is stored per school in the SAME
+ * compliance map under this reserved id (value 'received' ⇒ on, absent ⇒ off) —
+ * so it autosaves/syncs/exports and clears on duplicate/advance with no schema
+ * change. It is deliberately NOT a member of BUILT_IN_COMPLIANCE_ITEMS, so it is
+ * never a graded column; it only drives the auto-N/A below. (Reserved id can't
+ * collide: built-ins are the fixed ids above and customs are uuids.)
+ */
+export const APPROVED_LIST_ITEM_ID = 'approved_list';
+
+/**
+ * When a school's play is on the UIL approved list, these paperwork items no
+ * longer apply and are auto-marked N/A (derived, and locked in the UI). The set
+ * the CM asked for (PRD feedback 2026-07-11): the publisher license, cutting
+ * permission, and off-list play approval. Editing this list is the one place to
+ * change what "on the approved list" waives.
+ */
+export const APPROVED_LIST_NA_ITEMS: readonly string[] = ['performance_license', 'cutting_permission', 'play_approval'];
 
 /* ────────────────────────── readiness checklist ──────────────────────────
  * PRD #75. The contest-lifecycle readiness page. This module owns only the
@@ -1533,6 +1550,33 @@ export function removeComplianceItem(contest: Contest, itemId: string, now?: str
   return { ...touch(contest, now), customComplianceItems, schools };
 }
 
+/** True when the school's play is flagged as on the UIL approved list. */
+export function isOnApprovedList(school: School): boolean {
+  return school.compliance[APPROVED_LIST_ITEM_ID] === 'received';
+}
+
+/**
+ * Toggles the school's "on the UIL approved list" flag. When on, the items in
+ * APPROVED_LIST_NA_ITEMS read as N/A (see effectiveComplianceStatus) and lock in
+ * the UI; turning it off restores them to whatever was stored (Pending unless the
+ * CM had set them). Stored in the compliance map, so it rides the same
+ * autosave/sync/export/duplicate plumbing. Out-of-range index ⇒ no-op.
+ */
+export function setOnApprovedList(contest: Contest, schoolIndex: number, on: boolean, now?: string): Contest {
+  return setComplianceStatus(contest, schoolIndex, APPROVED_LIST_ITEM_ID, on ? 'received' : 'pending', now);
+}
+
+/**
+ * A school's EFFECTIVE status for one item — the stored value, except that the
+ * approved-list flag forces APPROVED_LIST_NA_ITEMS to 'na'. This is the single
+ * source of truth the counter and the UI both read, so the auto-N/A can never
+ * drift between them. Absent stored status ⇒ 'pending'.
+ */
+export function effectiveComplianceStatus(school: School, itemId: string): ComplianceStatus {
+  if (isOnApprovedList(school) && APPROVED_LIST_NA_ITEMS.includes(itemId)) return 'na';
+  return school.compliance[itemId] ?? 'pending';
+}
+
 export const COMPLIANCE_COLORS = ['red', 'yellow', 'green'] as const;
 export type ComplianceColor = (typeof COMPLIANCE_COLORS)[number];
 
@@ -1555,7 +1599,7 @@ export function complianceProgress(school: School, items: readonly ComplianceIte
   let applicable = 0;
   let done = 0;
   for (const item of items) {
-    const status = school.compliance[item.id] ?? 'pending';
+    const status = effectiveComplianceStatus(school, item.id);
     if (status === 'na') continue;
     applicable++;
     if (status === 'received') done++;

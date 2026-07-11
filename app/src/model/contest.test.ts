@@ -30,12 +30,17 @@ import {
   DOCUMENT_TYPES,
   MAX_SCHOOLS,
   MIN_SCHOOLS,
+  APPROVED_LIST_ITEM_ID,
+  APPROVED_LIST_NA_ITEMS,
   addComplianceItem,
   addDirector,
   complianceItems,
   complianceProgress,
+  effectiveComplianceStatus,
+  isOnApprovedList,
   removeComplianceItem,
   setComplianceStatus,
+  setOnApprovedList,
   admissionFeeDisplay,
   allDirectorEmails,
   autoDeadlineFor,
@@ -1003,8 +1008,8 @@ describe('duplicateContest (roll-forward)', () => {
 /* ────────────────────────── compliance tracker (PRD #64) ────────────────────────── */
 
 describe('compliance model foundation', () => {
-  it('encodes the 8 fixed handbook items with stable ids', () => {
-    expect(BUILT_IN_COMPLIANCE_ITEMS).toHaveLength(8);
+  it('encodes the 6 fixed handbook items with stable ids', () => {
+    expect(BUILT_IN_COMPLIANCE_ITEMS).toHaveLength(6);
     expect(BUILT_IN_COMPLIANCE_ITEMS.map((i) => i.id)).toEqual([
       'community_standards',
       'performance_license',
@@ -1012,8 +1017,6 @@ describe('compliance model foundation', () => {
       'cutting_permission',
       'play_approval',
       'scenic_approval',
-      'online_entry',
-      'title_registration',
     ]);
   });
 
@@ -1026,17 +1029,17 @@ describe('compliance model foundation', () => {
 
   describe('complianceProgress derivation', () => {
     const c = contest();
-    const items = complianceItems(c); // 8 built-ins
+    const items = complianceItems(c); // 6 built-ins
 
-    it('all pending ⇒ red, 0/8', () => {
+    it('all pending ⇒ red, 0/6', () => {
       const p = complianceProgress(c.schools[0], items);
-      expect(p).toEqual({ done: 0, applicable: 8, color: 'red' });
+      expect(p).toEqual({ done: 0, applicable: 6, color: 'red' });
     });
 
     it('mixed (some received, rest pending) ⇒ yellow', () => {
       let c2 = setComplianceStatus(c, 0, 'community_standards', 'received');
       c2 = setComplianceStatus(c2, 0, 'performance_license', 'received');
-      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 2, applicable: 8, color: 'yellow' });
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 2, applicable: 6, color: 'yellow' });
     });
 
     it('every applicable item received ⇒ green', () => {
@@ -1044,7 +1047,7 @@ describe('compliance model foundation', () => {
       for (const item of BUILT_IN_COMPLIANCE_ITEMS) {
         c2 = setComplianceStatus(c2, 0, item.id, 'received');
       }
-      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 8, applicable: 8, color: 'green' });
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 6, applicable: 6, color: 'green' });
     });
 
     it('all items N/A ⇒ green 0/0 (nothing to collect)', () => {
@@ -1056,14 +1059,14 @@ describe('compliance model foundation', () => {
     });
 
     it('mixed N/A: N/A items drop out of the denominator', () => {
-      // 2 N/A, 3 received, 3 pending ⇒ applicable 6, done 3, yellow.
+      // 2 N/A, 3 received, 1 pending ⇒ applicable 4, done 3, yellow.
       let c2 = c;
       c2 = setComplianceStatus(c2, 0, 'cutting_permission', 'na');
       c2 = setComplianceStatus(c2, 0, 'play_approval', 'na');
       c2 = setComplianceStatus(c2, 0, 'community_standards', 'received');
       c2 = setComplianceStatus(c2, 0, 'performance_license', 'received');
       c2 = setComplianceStatus(c2, 0, 'royalty_payment', 'received');
-      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 3, applicable: 6, color: 'yellow' });
+      expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 3, applicable: 4, color: 'yellow' });
     });
 
     it('N/A everything except one received item ⇒ green (all applicable resolved)', () => {
@@ -1071,16 +1074,82 @@ describe('compliance model foundation', () => {
       for (const item of BUILT_IN_COMPLIANCE_ITEMS) {
         c2 = setComplianceStatus(c2, 0, item.id, 'na');
       }
-      c2 = setComplianceStatus(c2, 0, 'title_registration', 'received');
+      c2 = setComplianceStatus(c2, 0, 'scenic_approval', 'received');
       expect(complianceProgress(c2.schools[0], items)).toEqual({ done: 1, applicable: 1, color: 'green' });
     });
 
     it('counts custom items alongside built-ins', () => {
       let c2 = addComplianceItem(c, { id: 'custom-1', label: 'Proof of insurance' });
       const items2 = complianceItems(c2);
-      expect(items2).toHaveLength(9);
+      expect(items2).toHaveLength(7);
       c2 = setComplianceStatus(c2, 0, 'custom-1', 'received');
-      expect(complianceProgress(c2.schools[0], items2)).toEqual({ done: 1, applicable: 9, color: 'yellow' });
+      expect(complianceProgress(c2.schools[0], items2)).toEqual({ done: 1, applicable: 7, color: 'yellow' });
+    });
+  });
+
+  describe('approved-list auto-N/A (feedback 2026-07-11)', () => {
+    it('APPROVED_LIST_NA_ITEMS names the three waived built-ins', () => {
+      expect(APPROVED_LIST_NA_ITEMS).toEqual(['performance_license', 'cutting_permission', 'play_approval']);
+    });
+
+    it('a fresh school is not on the approved list', () => {
+      expect(isOnApprovedList(contest().schools[0])).toBe(false);
+    });
+
+    it('setOnApprovedList toggles the flag, immutably and out-of-range-safe', () => {
+      const on = setOnApprovedList(contest(), 0, true, LATER);
+      expect(isOnApprovedList(on.schools[0])).toBe(true);
+      expect(on.schools[0].compliance).toEqual({ [APPROVED_LIST_ITEM_ID]: 'received' });
+      expect(on.updatedAt).toBe(LATER);
+      // Turning it off drops the key (back to the empty map).
+      const off = setOnApprovedList(on, 0, false);
+      expect(isOnApprovedList(off.schools[0])).toBe(false);
+      expect(off.schools[0].compliance).toEqual({});
+      // Out-of-range index is a no-op.
+      const c = contest();
+      expect(setOnApprovedList(c, 99, true)).toBe(c);
+    });
+
+    it('effectiveComplianceStatus forces the waived items to N/A while on the list', () => {
+      let c = setComplianceStatus(contest(), 0, 'performance_license', 'received');
+      // Stored value is Received…
+      expect(effectiveComplianceStatus(c.schools[0], 'performance_license')).toBe('received');
+      c = setOnApprovedList(c, 0, true);
+      // …but the effective status reads N/A while on the approved list.
+      for (const id of APPROVED_LIST_NA_ITEMS) {
+        expect(effectiveComplianceStatus(c.schools[0], id)).toBe('na');
+      }
+      // A non-waived item is unaffected.
+      expect(effectiveComplianceStatus(c.schools[0], 'community_standards')).toBe('pending');
+      // Turning it off restores the underlying stored value (not lost).
+      c = setOnApprovedList(c, 0, false);
+      expect(effectiveComplianceStatus(c.schools[0], 'performance_license')).toBe('received');
+    });
+
+    it('the approved-list flag drops the waived items out of the counter', () => {
+      const items = complianceItems(contest());
+      // Baseline: 6 pending ⇒ red 0/6.
+      expect(complianceProgress(contest().schools[0], items)).toEqual({ done: 0, applicable: 6, color: 'red' });
+      // On the approved list ⇒ 3 waived, so only 3 remain applicable.
+      const c = setOnApprovedList(contest(), 0, true);
+      expect(complianceProgress(c.schools[0], items)).toEqual({ done: 0, applicable: 3, color: 'red' });
+      // The reserved flag id is NOT itself a graded column.
+      expect(items.some((it) => it.id === APPROVED_LIST_ITEM_ID)).toBe(false);
+    });
+
+    it('an approved-list school with its other items resolved reads green', () => {
+      let c = setOnApprovedList(contest(), 0, true);
+      for (const id of ['community_standards', 'royalty_payment', 'scenic_approval']) {
+        c = setComplianceStatus(c, 0, id, 'received');
+      }
+      expect(complianceProgress(c.schools[0], complianceItems(c))).toEqual({ done: 3, applicable: 3, color: 'green' });
+    });
+
+    it('round-trips the flag through serialize/parse and clears it on duplicate', () => {
+      const c = setOnApprovedList(filledContest(), 0, true);
+      expect(isOnApprovedList(parseContest(serializeContest(c)).schools[0])).toBe(true);
+      // duplicateContest clears every school status, including the flag.
+      expect(isOnApprovedList(duplicateContest(c).schools[0])).toBe(false);
     });
   });
 
@@ -1101,15 +1170,15 @@ describe('compliance model foundation', () => {
     });
 
     it('only touches the targeted school', () => {
-      const c = setComplianceStatus(contest(), 1, 'online_entry', 'na');
-      expect(c.schools[1].compliance).toEqual({ online_entry: 'na' });
+      const c = setComplianceStatus(contest(), 1, 'scenic_approval', 'na');
+      expect(c.schools[1].compliance).toEqual({ scenic_approval: 'na' });
       expect(c.schools[0].compliance).toEqual({});
     });
 
     it('out-of-range school index is a no-op', () => {
       const c = contest();
-      expect(setComplianceStatus(c, 99, 'online_entry', 'received')).toBe(c);
-      expect(setComplianceStatus(c, -1, 'online_entry', 'received')).toBe(c);
+      expect(setComplianceStatus(c, 99, 'scenic_approval', 'received')).toBe(c);
+      expect(setComplianceStatus(c, -1, 'scenic_approval', 'received')).toBe(c);
     });
   });
 
@@ -1120,7 +1189,7 @@ describe('compliance model foundation', () => {
       expect(c.updatedAt).toBe(LATER);
       // Every school can hold a status for it, all starting Pending (absent).
       const items = complianceItems(c);
-      expect(c.schools.every((s) => complianceProgress(s, items).applicable === 9)).toBe(true);
+      expect(c.schools.every((s) => complianceProgress(s, items).applicable === 7)).toBe(true);
     });
 
     it('removing a custom item drops its status from every school', () => {
@@ -1154,17 +1223,17 @@ describe('compliance model foundation', () => {
   it('compliance state is keyed to the school, surviving reordering and school-count changes', () => {
     let c = contest();
     c = setComplianceStatus(c, 0, 'community_standards', 'received');
-    c = setComplianceStatus(c, 1, 'online_entry', 'na');
+    c = setComplianceStatus(c, 1, 'scenic_approval', 'na');
     // Rename school 0 — its status stays put (keyed to the school record).
     c = withSchool(c, 0, { name: 'Renamed HS' });
     expect(c.schools[0].compliance).toEqual({ community_standards: 'received' });
     // Grow then shrink back — surviving schools keep their state.
     const grown = setNumSchools(c, MAX_SCHOOLS);
     expect(grown.schools[0].compliance).toEqual({ community_standards: 'received' });
-    expect(grown.schools[1].compliance).toEqual({ online_entry: 'na' });
+    expect(grown.schools[1].compliance).toEqual({ scenic_approval: 'na' });
     const shrunk = setNumSchools(grown, 4);
     expect(shrunk.schools[0].compliance).toEqual({ community_standards: 'received' });
-    expect(shrunk.schools[1].compliance).toEqual({ online_entry: 'na' });
+    expect(shrunk.schools[1].compliance).toEqual({ scenic_approval: 'na' });
   });
 
   it('round-trips through serialize/parse, including custom items and statuses', () => {
