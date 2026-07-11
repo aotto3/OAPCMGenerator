@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 8;
+export const CONTEST_SCHEMA_VERSION = 9;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -163,6 +163,65 @@ export const BUILT_IN_COMPLIANCE_ITEMS: readonly ComplianceItem[] = [
   { id: 'scenic_approval', label: 'Scenic approval' },
   { id: 'online_entry', label: 'Contestant entry in the Online Entry System' },
   { id: 'title_registration', label: 'Title registration' },
+] as const;
+
+/* ────────────────────────── readiness checklist ──────────────────────────
+ * PRD #75. The contest-lifecycle readiness page. This module owns only the
+ * PERSISTED state — the manual/custom check-off status map and the custom-item
+ * definitions — plus the fixed built-in manual list and the phase vocabulary.
+ * The report that composes derived + manual + custom items into phases with a
+ * rollup is the pure `readinessReport` module (G2, sibling of critique.ts),
+ * NOT here. Fully additive: an untouched checklist is `{}` + `[]` and costs
+ * nothing serialized, exactly like the compliance tracker (PRD #64).
+ */
+
+/**
+ * The seven chronological contest phases, in order — the lifecycle spine the
+ * readiness page groups items into. The first four match the workspace nav
+ * strip's phase ids (ui/WorkspaceNav.tsx); G extends it end to end. Every
+ * built-in and custom readiness item names one of these as its phase.
+ */
+export const READINESS_PHASES = [
+  'preliminary',
+  'planning',
+  'contracting',
+  'entry',
+  'draw_schedule',
+  'contest_day',
+  'results_advancement',
+] as const;
+/** One of the seven lifecycle phases a readiness item belongs to. */
+export type ReadinessPhase = (typeof READINESS_PHASES)[number];
+
+export const READINESS_STATUSES = ['pending', 'done', 'na'] as const;
+/** Tri-state per manual/custom item. Absent from the check-off map ⇒ 'pending'. */
+export type ReadinessStatus = (typeof READINESS_STATUSES)[number];
+
+/**
+ * A manual readiness item — built-in or custom. Both are `{ id, label, phase }`;
+ * the check-off status is looked up by id (in the contest's readinessChecks map),
+ * so it travels with the item, not its list position (PRD user story 24).
+ */
+export interface ReadinessItemDef {
+  id: string;
+  label: string;
+  phase: ReadinessPhase;
+}
+
+/**
+ * The fixed built-in manual logistics items — the real-world tasks the app can't
+ * derive from contest data (2025–26 UIL OAP Handbook, PRD #75). Built-ins are
+ * never editable or removable; a task that doesn't apply is expressed with an 'na'
+ * status, not by hiding it. The `id`s are stable keys stored in the check-off map:
+ * never rename or renumber them, only append. This list is the single place to
+ * update when the handbook's logistics change (PRD user story 27).
+ */
+export const BUILT_IN_READINESS_ITEMS: readonly ReadinessItemDef[] = [
+  { id: 'venue_reserved', label: 'Venue reserved', phase: 'planning' },
+  { id: 'hospitality_arranged', label: 'Hospitality arranged', phase: 'planning' },
+  { id: 'trophies_ordered', label: 'Trophies / medals ordered', phase: 'entry' },
+  { id: 'programs_printed', label: 'Programs printed', phase: 'draw_schedule' },
+  { id: 'tech_set', label: 'Tech / lighting / sound set', phase: 'contest_day' },
 ] as const;
 
 /* ────────────────────────── company roster ──────────────────────────
@@ -422,6 +481,20 @@ export interface Contest {
   results: ContestResults | null;
   /** Next-level contest info (PRD #66); always present, blank strings by default. */
   nextContest: NextContestInfo;
+  /**
+   * Readiness check-off status per manual/custom item id (PRD #75). Absent id ⇒
+   * 'pending', so an untouched checklist is `{}` and costs nothing serialized.
+   * Keyed by id so it survives item reordering/additions. Derived readiness items
+   * are NOT stored here — they recompute from contest data in the report (G2).
+   */
+  readinessChecks: Record<string, ReadinessStatus>;
+  /**
+   * Per-contest custom readiness items (PRD #75) — CM-added logistics tasks the
+   * built-in list doesn't cover. Built-ins are not stored here; see
+   * BUILT_IN_READINESS_ITEMS. Carried (reset to Pending) across duplicate/advance
+   * as the CM's reusable process template.
+   */
+  customReadinessItems: ReadinessItemDef[];
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -592,6 +665,8 @@ export function createContest(options: NewContestOptions = {}): Contest {
     draw: null,
     results: null,
     nextContest: defaultNextContest(),
+    readinessChecks: {},
+    customReadinessItems: [],
     speechwire: defaultSpeechwire(),
   };
 }
@@ -687,6 +762,11 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     // starts with nothing recorded and a blank next-level block (PRD #66).
     results: null,
     nextContest: defaultNextContest(),
+    // Readiness check-offs are per-occurrence — a roll-forward starts fresh (all
+    // Pending); the custom item DEFINITIONS carry as the CM's reusable process
+    // template (PRD #75 user story 21). Derived items recompute from new data.
+    readinessChecks: {},
+    customReadinessItems: contest.customReadinessItems.map((it) => ({ ...it })),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -826,6 +906,11 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     // Season-specific — the next contest records its own outcome and next level.
     results: null,
     nextContest: defaultNextContest(),
+    // The advanced contest is its own fresh event — check-offs reset (all
+    // Pending) while the custom item DEFINITIONS carry as the CM's reusable
+    // process template (PRD #75 user story 22). Derived items recompute.
+    readinessChecks: {},
+    customReadinessItems: contest.customReadinessItems.map((it) => ({ ...it })),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -1480,6 +1565,57 @@ export function complianceProgress(school: School, items: readonly ComplianceIte
   return { done, applicable, color };
 }
 
+/* ────────────────────────── readiness checklist ──────────────────────────
+ * PRD #75. The manual/custom check-off state. Status lives on the contest keyed
+ * to the item id (absent ⇒ pending); custom item definitions live on the contest
+ * too. Fully additive — only the readiness page (G3) reads any of this via the
+ * report (G2), and an untouched checklist adds nothing to the serialized record.
+ */
+
+/**
+ * Sets one manual/custom item's check-off status. Writing 'pending' DROPS the key
+ * (the default), so the map only ever holds meaningful 'done'/'na' entries and an
+ * untouched checklist stays `{}`. Works for built-in and custom item ids alike;
+ * status is keyed by id, so it survives item reordering/additions (PRD user
+ * story 24).
+ */
+export function setReadinessStatus(
+  contest: Contest,
+  itemId: string,
+  status: ReadinessStatus,
+  now?: string,
+): Contest {
+  const readinessChecks = { ...contest.readinessChecks };
+  if (status === 'pending') delete readinessChecks[itemId];
+  else readinessChecks[itemId] = status;
+  return { ...touch(contest, now), readinessChecks };
+}
+
+/**
+ * Adds a custom readiness item. The caller supplies the id (the model stays pure —
+ * no id generation, no clock/RNG); the UI mints a uuid. The item is Pending until
+ * checked, since an absent status already reads as Pending.
+ */
+export function addReadinessItem(contest: Contest, item: ReadinessItemDef, now?: string): Contest {
+  return { ...touch(contest, now), customReadinessItems: [...contest.customReadinessItems, item] };
+}
+
+/**
+ * Removes a custom readiness item and DROPS its check-off status, so no orphaned
+ * entry lingers. Built-in ids are never in customReadinessItems, so a built-in
+ * can't be removed; an id that isn't a current custom item is a no-op.
+ */
+export function removeReadinessItem(contest: Contest, itemId: string, now?: string): Contest {
+  if (!contest.customReadinessItems.some((it) => it.id === itemId)) return contest;
+  const customReadinessItems = contest.customReadinessItems.filter((it) => it.id !== itemId);
+  if (!(itemId in contest.readinessChecks)) {
+    return { ...touch(contest, now), customReadinessItems };
+  }
+  const readinessChecks = { ...contest.readinessChecks };
+  delete readinessChecks[itemId];
+  return { ...touch(contest, now), customReadinessItems, readinessChecks };
+}
+
 /* ────────────────────────── derived values ────────────────────────── */
 
 /** "District 20" / "Zone" — level plus number when a number is present. */
@@ -1785,6 +1921,11 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
       ? (raw.schools as Record<string, unknown>[]).map((s) => ({ ...s, ...blankCompanyFields() }))
       : raw.schools,
   }),
+  // v8 (Group E / company roster) predates the readiness page (PRD #75): add an
+  // empty (all-Pending) check-off map and no custom readiness items. Additive and
+  // blank-safe — an old contest loads as an all-Pending checklist. LAST bump in
+  // the A–E→G sequence.
+  8: (raw) => ({ ...raw, readinessChecks: {}, customReadinessItems: [] }),
 };
 
 export function parseContest(json: string): Contest {

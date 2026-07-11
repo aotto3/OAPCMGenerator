@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILT_IN_COMPLIANCE_ITEMS,
+  BUILT_IN_READINESS_ITEMS,
+  READINESS_PHASES,
+  addReadinessItem,
+  removeReadinessItem,
+  setReadinessStatus,
+  type ReadinessItemDef,
   CONTEST_SCHEMA_VERSION,
   MAX_BEST_PERFORMERS,
   MAX_ALL_STAR_CAST,
@@ -1181,6 +1187,186 @@ describe('compliance model foundation', () => {
     expect(dup.schools.every((s) => Object.keys(s.compliance).length === 0)).toBe(true);
     // Source untouched.
     expect(source.schools[0].compliance).toEqual({ community_standards: 'received', ins: 'received' });
+  });
+});
+
+/* ────────────────────────── readiness checklist (PRD #75) ────────────────────────── */
+
+describe('readiness model foundation', () => {
+  it('encodes the fixed built-in manual items with stable ids and known phases', () => {
+    expect(BUILT_IN_READINESS_ITEMS).toHaveLength(5);
+    expect(BUILT_IN_READINESS_ITEMS.map((i) => i.id)).toEqual([
+      'venue_reserved',
+      'hospitality_arranged',
+      'trophies_ordered',
+      'programs_printed',
+      'tech_set',
+    ]);
+    // Every built-in names one of the seven lifecycle phases.
+    for (const item of BUILT_IN_READINESS_ITEMS) {
+      expect(READINESS_PHASES).toContain(item.phase);
+    }
+  });
+
+  it('lists the seven chronological phases in order, extending the nav strip', () => {
+    expect([...READINESS_PHASES]).toEqual([
+      'preliminary',
+      'planning',
+      'contracting',
+      'entry',
+      'draw_schedule',
+      'contest_day',
+      'results_advancement',
+    ]);
+  });
+
+  it('a new contest starts with an empty checklist (no checks, no custom items)', () => {
+    const c = contest();
+    expect(c.readinessChecks).toEqual({});
+    expect(c.customReadinessItems).toEqual([]);
+  });
+
+  describe('setReadinessStatus', () => {
+    it('is immutable and bumps updatedAt', () => {
+      const c = contest();
+      const next = setReadinessStatus(c, 'venue_reserved', 'done', LATER);
+      expect(next).not.toBe(c);
+      expect(c.readinessChecks).toEqual({}); // source untouched
+      expect(next.readinessChecks).toEqual({ venue_reserved: 'done' });
+      expect(next.updatedAt).toBe(LATER);
+    });
+
+    it('records done and na; an absent id reads as pending', () => {
+      let c = setReadinessStatus(contest(), 'venue_reserved', 'done');
+      c = setReadinessStatus(c, 'tech_set', 'na');
+      expect(c.readinessChecks).toEqual({ venue_reserved: 'done', tech_set: 'na' });
+      // programs_printed was never touched ⇒ absent ⇒ pending.
+      expect(c.readinessChecks.programs_printed).toBeUndefined();
+    });
+
+    it("writing 'pending' drops the key so an untouched item serializes to nothing", () => {
+      let c = setReadinessStatus(contest(), 'venue_reserved', 'done');
+      c = setReadinessStatus(c, 'venue_reserved', 'pending');
+      expect(c.readinessChecks).toEqual({});
+    });
+
+    it('works for custom item ids too', () => {
+      let c = addReadinessItem(contest(), { id: 'ada_ramp', label: 'ADA ramp', phase: 'contest_day' });
+      c = setReadinessStatus(c, 'ada_ramp', 'done');
+      expect(c.readinessChecks).toEqual({ ada_ramp: 'done' });
+    });
+  });
+
+  describe('add / remove custom items', () => {
+    const custom: ReadinessItemDef = { id: 'parking', label: 'Parking arranged', phase: 'contest_day' };
+
+    it('adds a custom item immutably and bumps updatedAt', () => {
+      const c = addReadinessItem(contest(), custom, LATER);
+      expect(c.customReadinessItems).toEqual([custom]);
+      expect(c.updatedAt).toBe(LATER);
+    });
+
+    it('removing a custom item drops its check-off status', () => {
+      let c = addReadinessItem(contest(), custom);
+      c = setReadinessStatus(c, 'parking', 'done');
+      c = removeReadinessItem(c, 'parking', LATER);
+      expect(c.customReadinessItems).toEqual([]);
+      expect(c.readinessChecks).toEqual({});
+      expect(c.updatedAt).toBe(LATER);
+    });
+
+    it('removing preserves other custom items and other statuses', () => {
+      let c = addReadinessItem(contest(), { id: 'a', label: 'A', phase: 'entry' });
+      c = addReadinessItem(c, { id: 'b', label: 'B', phase: 'entry' });
+      c = setReadinessStatus(c, 'venue_reserved', 'done');
+      c = setReadinessStatus(c, 'a', 'done');
+      c = removeReadinessItem(c, 'a');
+      expect(c.customReadinessItems).toEqual([{ id: 'b', label: 'B', phase: 'entry' }]);
+      expect(c.readinessChecks).toEqual({ venue_reserved: 'done' });
+    });
+
+    it('removing a built-in / unknown id is a no-op (built-ins are not removable)', () => {
+      const c = addReadinessItem(contest(), custom);
+      expect(removeReadinessItem(c, 'venue_reserved')).toBe(c); // built-in, not in customs
+      expect(removeReadinessItem(c, 'nope')).toBe(c);
+    });
+  });
+
+  it('check-off status is keyed to the item id, surviving custom add/remove/reorder', () => {
+    let c = setReadinessStatus(contest(), 'programs_printed', 'done');
+    c = addReadinessItem(c, { id: 'x', label: 'X', phase: 'entry' });
+    c = addReadinessItem(c, { id: 'y', label: 'Y', phase: 'entry' });
+    c = setReadinessStatus(c, 'y', 'na');
+    // Remove the first custom (reordering what's left) — the built-in status is untouched.
+    c = removeReadinessItem(c, 'x');
+    expect(c.readinessChecks).toEqual({ programs_printed: 'done', y: 'na' });
+  });
+
+  it('round-trips through serialize/parse, including custom items and statuses', () => {
+    let c = contest();
+    c = addReadinessItem(c, { id: 'parking', label: 'Parking arranged', phase: 'contest_day' });
+    c = setReadinessStatus(c, 'venue_reserved', 'done');
+    c = setReadinessStatus(c, 'parking', 'na');
+    const back = parseContest(serializeContest(c));
+    expect(back.customReadinessItems).toEqual([{ id: 'parking', label: 'Parking arranged', phase: 'contest_day' }]);
+    expect(back.readinessChecks).toEqual({ venue_reserved: 'done', parking: 'na' });
+  });
+
+  it('duplicateContest carries custom item DEFINITIONS (reset to Pending) but clears check-offs', () => {
+    let source = filledContest();
+    source = addReadinessItem(source, { id: 'parking', label: 'Parking arranged', phase: 'contest_day' });
+    source = setReadinessStatus(source, 'venue_reserved', 'done');
+    source = setReadinessStatus(source, 'parking', 'done');
+    const dup = duplicateContest(source, { id: 'dup-id', now: LATER });
+    expect(dup.customReadinessItems).toEqual([{ id: 'parking', label: 'Parking arranged', phase: 'contest_day' }]);
+    expect(dup.readinessChecks).toEqual({});
+    // Carried definitions are deep-copied — editing the copy never touches the source.
+    expect(dup.customReadinessItems[0]).not.toBe(source.customReadinessItems[0]);
+    // Source untouched.
+    expect(source.readinessChecks).toEqual({ venue_reserved: 'done', parking: 'done' });
+  });
+
+  it('advanceContest carries custom item DEFINITIONS (reset to Pending) but clears check-offs', () => {
+    let source = filledContest();
+    source = setAdvancing(source, [0]);
+    source = addReadinessItem(source, { id: 'parking', label: 'Parking arranged', phase: 'contest_day' });
+    source = setReadinessStatus(source, 'tech_set', 'done');
+    source = setReadinessStatus(source, 'parking', 'na');
+    const adv = advanceContest(source, { id: 'adv-id', now: LATER })!;
+    expect(adv.customReadinessItems).toEqual([{ id: 'parking', label: 'Parking arranged', phase: 'contest_day' }]);
+    expect(adv.readinessChecks).toEqual({});
+    expect(adv.customReadinessItems[0]).not.toBe(source.customReadinessItems[0]);
+    // Source untouched.
+    expect(source.readinessChecks).toEqual({ tech_set: 'done', parking: 'na' });
+  });
+});
+
+describe('v8 → v9 migration (readiness checklist)', () => {
+  it('migrates a pre-readiness (v8) payload to an empty (all-Pending) checklist', () => {
+    // A full current contest minus the fields #95 added: strip them from the envelope.
+    const { readinessChecks: _rc, customReadinessItems: _cri, speechwire: _dev, ...v8Contest } = filledContest();
+    const v8 = JSON.stringify({ schemaVersion: 8, contest: v8Contest });
+
+    const migrated = parseContest(v8);
+    expect(migrated.readinessChecks).toEqual({});
+    expect(migrated.customReadinessItems).toEqual([]);
+    // Pre-existing data preserved.
+    expect(migrated.schools[0].name).toBe('Westlake HS');
+    expect(migrated.identity.districtNumber).toBe('20');
+    // Re-serializes at the current version.
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('is idempotent-safe on an already-migrated (v9) contest — the 8→9 step never runs on it', () => {
+    // A current-version contest carrying readiness state parses straight through:
+    // parseContest starts the migration loop at v=9, so the 8→9 step (which blanks
+    // the fields) is skipped and the existing state is preserved verbatim.
+    let c = addReadinessItem(filledContest(), { id: 'parking', label: 'Parking', phase: 'contest_day' });
+    c = setReadinessStatus(c, 'venue_reserved', 'done');
+    const back = parseContest(serializeContest(c));
+    expect(JSON.parse(serializeContest(c)).schemaVersion).toBe(9); // current version
+    expect(back.readinessChecks).toEqual({ venue_reserved: 'done' });
+    expect(back.customReadinessItems).toEqual([{ id: 'parking', label: 'Parking', phase: 'contest_day' }]);
   });
 });
 
