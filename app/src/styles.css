@@ -315,9 +315,10 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   font-size: var(--fs-sm); font-weight: 400; white-space: nowrap;
 }
 
-.judge-block, .school-block, .play-block {
+.judge-block, .school-block, .play-block, .company-block {
   border-top: 1px dashed var(--c-border); padding-top: var(--space-3); margin-top: var(--space-3);
 }
+.company-block:first-of-type { border-top: none; padding-top: 0; margin-top: var(--space-2); }
 .judge-block:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 .school-block h3 { margin: 0 0 var(--space-2); font-size: 0.95rem; }
 .judge-extras {
@@ -580,6 +581,46 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
 }
 .field input[readonly] { background: var(--c-bg-blue); }
+
+/* Companies section (PRD #68, Group E). */
+.company-paste { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.company-paste textarea {
+  width: 100%; font: inherit; padding: var(--space-2); resize: vertical; min-height: 96px;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); color: var(--c-text);
+}
+.company-paste-actions { display: flex; gap: var(--space-2); align-items: center; }
+.company-empty { font-size: var(--fs-sm); margin: var(--space-2) 0; }
+
+.roster-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.roster-row {
+  display: grid; grid-template-columns: 118px minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-2); align-items: center;
+}
+.roster-row input, .roster-row select {
+  font: inherit; font-weight: 400; padding: 6px var(--space-2); min-width: 0;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); color: var(--c-text);
+}
+.roster-row input:disabled { background: var(--c-bg-blue); color: var(--c-muted); }
+.roster-row-controls { display: flex; gap: 4px; }
+.roster-btn {
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-sm);
+  color: var(--c-text); width: 30px; height: 30px; font-size: 0.85rem; line-height: 1; padding: 0;
+}
+.roster-btn:disabled { opacity: 0.4; cursor: default; }
+.roster-btn-remove { color: var(--c-red); border-color: var(--c-red); }
+
+.roster-add { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-3); font-size: var(--fs-sm); }
+.company-counter {
+  display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--c-muted);
+}
+.company-counter strong { color: var(--c-text); }
+
+@media (max-width: 560px) {
+  .roster-row { grid-template-columns: 1fr 1fr; }
+  .roster-row select { grid-column: 1 / -1; }
+  .roster-row-controls { grid-column: 1 / -1; justify-content: flex-end; }
+}
 
 .issues { margin: var(--space-3) 0 0; padding-left: 0; list-style: none; color: var(--c-warn); }
 
