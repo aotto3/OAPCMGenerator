@@ -30,6 +30,7 @@ async function buildApp() {
     repo: createContestRepo(pool),
     eventLog: createEventLog(pool),
     userDirectory: createInMemoryUserDirectory([]),
+    authAdmin: { sendSignInLink: async () => {} },
     adminEmails: new Set(),
     // Fake session: authenticated iff the request carries an x-user-id header.
     // The email is derived from the id so events have both without a real user.

@@ -26,6 +26,7 @@ async function buildApp() {
     repo: createContestRepo(pool),
     eventLog,
     userDirectory: createInMemoryUserDirectory([]),
+    authAdmin: { sendSignInLink: async () => {} },
     adminEmails: new Set(),
     resolveUser: (req) => {
       const id = req.header('x-user-id');

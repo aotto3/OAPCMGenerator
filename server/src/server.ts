@@ -21,6 +21,15 @@ async function main(): Promise<void> {
     repo: createContestRepo(pool),
     eventLog: createEventLog(pool),
     userDirectory: createUserDirectory(pool),
+    // The one account-acting seam: wrap Better Auth's magic-link send. Wired here
+    // (the one place holding real auth); the admin routes only see the interface.
+    authAdmin: {
+      sendSignInLink: async (email) => {
+        // Server-initiated send: the magic-link URL is built from Better Auth's
+        // configured baseURL (SERVER_URL), so no request headers are needed.
+        await auth.api.signInMagicLink({ body: { email }, headers: {} });
+      },
+    },
     adminEmails: adminEmails(),
     corsOrigin: requireEnv('WEB_ORIGIN'),
     webOrigin: requireEnv('WEB_ORIGIN'),

@@ -36,10 +36,17 @@ async function buildApp(admins: ReadonlySet<string> = new Set(['admin@example.te
   const adapter = mem.adapters.createPg();
   const pool = new adapter.Pool() as unknown as Pool;
   await migrate(pool);
+  // Recording fake for the one account-acting seam, so tests can assert sends.
+  const sentLinks: string[] = [];
   const app = createApp({
     repo: createContestRepo(pool),
     eventLog: createEventLog(pool),
     userDirectory: createInMemoryUserDirectory(USERS),
+    authAdmin: {
+      sendSignInLink: async (email) => {
+        sentLinks.push(email);
+      },
+    },
     adminEmails: admins,
     // Fake session: authenticated iff x-user-id is present; email is derived to
     // match the directory's `${id}@example.test` scheme so the allowlist works.
@@ -48,7 +55,7 @@ async function buildApp(admins: ReadonlySet<string> = new Set(['admin@example.te
       return id ? { id, email: `${id}@example.test` } : null;
     },
   });
-  return { app, pool };
+  return { app, pool, sentLinks };
 }
 
 const asUser = (agent: request.Test, userId: string) => agent.set('x-user-id', userId);
@@ -356,6 +363,48 @@ describe('errors endpoint', () => {
   it('is 404 for a non-admin', async () => {
     await asUser(request(app).get('/api/admin/errors'), 'alice').expect(404);
     await request(app).get('/api/admin/errors').expect(404);
+  });
+});
+
+describe('resend sign-in link', () => {
+  it('sends via authAdmin and writes an audited admin.signin_link_resent event', async () => {
+    const { app: a, pool, sentLinks } = await buildApp();
+    await asUser(request(a).post('/api/admin/users/alice/resend-signin'), 'admin').expect(204);
+
+    // The one account write happened, to the target's email.
+    expect(sentLinks).toEqual(['alice@example.test']);
+
+    // ...and it is audited: actor = admin, target in detail.
+    const log = createEventLog(pool);
+    const [event] = await log.queryEvents({ type: 'admin.signin_link_resent' });
+    expect(event).toMatchObject({
+      type: 'admin.signin_link_resent',
+      userId: 'admin',
+      userEmail: 'admin@example.test',
+    });
+    expect(event.detail).toMatchObject({ targetUserId: 'alice', targetEmail: 'alice@example.test' });
+  });
+
+  it('rate-limits repeated sends within the window with a 429 and no further send', async () => {
+    const { app: a, sentLinks } = await buildApp();
+    // The limiter allows 3 per window; the 4th is refused without sending.
+    for (let i = 0; i < 3; i++) {
+      await asUser(request(a).post('/api/admin/users/alice/resend-signin'), 'admin').expect(204);
+    }
+    await asUser(request(a).post('/api/admin/users/alice/resend-signin'), 'admin').expect(429);
+    expect(sentLinks).toHaveLength(3); // the denied call did not send
+
+    // A different target is independent — still allowed.
+    await asUser(request(a).post('/api/admin/users/bob/resend-signin'), 'admin').expect(204);
+    expect(sentLinks).toContain('bob@example.test');
+  });
+
+  it('is 404 for an unknown user, a non-admin, and unauthenticated', async () => {
+    const { app: a, sentLinks } = await buildApp();
+    await asUser(request(a).post('/api/admin/users/nobody/resend-signin'), 'admin').expect(404);
+    await asUser(request(a).post('/api/admin/users/alice/resend-signin'), 'alice').expect(404);
+    await request(a).post('/api/admin/users/alice/resend-signin').expect(404);
+    expect(sentLinks).toHaveLength(0);
   });
 });
 

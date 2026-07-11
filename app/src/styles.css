@@ -863,6 +863,10 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .admin-volume-fill { display: block; height: 100%; background: var(--c-blue); }
 .admin-volume-count { color: var(--c-muted); text-align: right; }
 
+/* User actions (Group F, F5). */
+.admin-user-actions { display: inline-flex; gap: var(--space-2); flex-wrap: wrap; }
+.admin-resend-msg { margin: 0 0 var(--space-2); }
+
 /* Sync-health (Group F, F4). */
 .admin-health { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--fs-sm); flex-wrap: wrap; }
 .admin-health-badge { padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: var(--fs-xs, 0.8rem); }
