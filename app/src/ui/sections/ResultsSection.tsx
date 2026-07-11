@@ -10,6 +10,7 @@ import {
   nextContestLevel,
   removeAwardWinner,
   removeOutstandingTechnician,
+  ROSTER_CATEGORIES,
   setAdvancing,
   setAlternate,
   setBestCrew,
@@ -18,6 +19,7 @@ import {
   type AwardListCategory,
   type Classification,
   type Contest,
+  type School,
 } from '../../model/contest';
 import { Section } from './Section';
 import { TextField } from './fields';
@@ -39,9 +41,11 @@ import { TextField } from './fields';
  * is an unordered capped checkbox set, and every consumer announces the advancing
  * companies in no particular order.
  *
- * The acting/tech award pickers are plain school-dropdown + typed name here; the
- * roster-backed comboboxes (the C↔E seam, PRD #66 / #68) land as the final step
- * of whichever of Group C / Group E ships second — Group E has not shipped.
+ * The acting/tech award name inputs are roster-backed comboboxes (the C↔E seam,
+ * PRD #66 / #68, the final step of Group E): once a school is chosen, its `<input
+ * list>` suggests that company's roster names (cast → crew → alternate). It stays
+ * a native free-text input, so an empty roster or an off-roster name works exactly
+ * as before — the seam adds a *source* for the award name, not new award data.
  */
 
 /** Display label for the level a contest advances to (mirrors the Awards Script). */
@@ -59,6 +63,28 @@ const ACTING_AWARDS: { category: AwardListCategory; label: string }[] = [
   { category: 'allStarCast', label: 'All-Star Cast' },
   { category: 'honorableMention', label: 'Honorable Mention All-Star Cast' },
 ];
+
+/**
+ * A school's roster member names for the award comboboxes, deduped and ordered
+ * cast → crew → alternate (ROSTER_CATEGORIES order). A UI projection only — the
+ * datalist source for the roster-backed name inputs, not a model concern. Blank
+ * names and duplicates are dropped; an empty roster yields `[]` (no suggestions,
+ * the input degrades to plain free text — the pre-Group-E behavior).
+ */
+function rosterNameOptions(school: School): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const category of ROSTER_CATEGORIES) {
+    for (const m of school.roster) {
+      if (m.category !== category) continue;
+      const name = m.name.trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+  }
+  return names;
+}
 
 /** Form-state for the advance-clone dialog (null ⇒ closed). */
 interface AdvanceForm {
@@ -172,6 +198,21 @@ export function ResultsSection({
         script prints its fill-in template as before. Nothing else in the app changes.
       </p>
 
+      {/* Roster-backed suggestions for the award name inputs (C↔E seam). One
+          hidden datalist per school that has named members; the name inputs
+          reference it by id via `list`. A school with no roster renders none,
+          so its inputs stay plain free text. */}
+      {schools.map((s, i) => {
+        const options = rosterNameOptions(s);
+        return options.length > 0 ? (
+          <datalist key={i} id={`results-roster-${i}`}>
+            {options.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        ) : null;
+      })}
+
       <div className="section-divider">Advancing Companies</div>
       <p className="hint">
         Select the {advCount} advancing {advCount === 1 ? 'company' : 'companies'} for this level. Order
@@ -254,6 +295,7 @@ export function ResultsSection({
                   className="results-name-input"
                   placeholder="Student name"
                   aria-label={`${label} — student name`}
+                  list={draft.schoolIndex === '' ? undefined : `results-roster-${draft.schoolIndex}`}
                   value={draft.name}
                   onChange={(e) => setDrafts((d) => ({ ...d, [category]: { ...d[category], name: e.target.value } }))}
                   onKeyDown={(e) => {
@@ -288,6 +330,7 @@ export function ResultsSection({
             <input
               type="text"
               placeholder="Technician name"
+              list={`results-roster-${i}`}
               value={results?.outstandingTechnicians.find((w) => w.schoolIndex === i)?.studentName ?? ''}
               onChange={(e) => setTechnician(i, e.target.value)}
             />
