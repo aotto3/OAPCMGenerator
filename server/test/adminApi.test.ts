@@ -382,6 +382,28 @@ describe('additive index migration is idempotent', () => {
   });
 });
 
+describe('per-user record + sync-health', () => {
+  it('returns the user record and derived sync-health for an admin', async () => {
+    await seed(app); // alice has 3 contests, recorded ~now
+    const res = await asUser(request(app).get('/api/admin/users/alice'), 'admin').expect(200);
+    expect(res.body.user).toMatchObject({ id: 'alice', email: 'alice@example.test' });
+    expect(res.body.user).not.toHaveProperty('payload');
+    expect(res.body.syncHealth).toMatchObject({ contestCount: 3, status: 'healthy', recentErrorCount: 0 });
+    expect(res.body.syncHealth.lastPushAt).toBeTruthy();
+  });
+
+  it('reports never-pushed for an account with no contests', async () => {
+    const res = await asUser(request(app).get('/api/admin/users/bob'), 'admin').expect(200);
+    expect(res.body.syncHealth).toMatchObject({ status: 'never-pushed', contestCount: 0, lastPushAt: null });
+  });
+
+  it('is 404 for an unknown user and for a non-admin', async () => {
+    await asUser(request(app).get('/api/admin/users/nobody'), 'admin').expect(404);
+    await asUser(request(app).get('/api/admin/users/alice'), 'alice').expect(404);
+    await request(app).get('/api/admin/users/alice').expect(404);
+  });
+});
+
 describe('per-user drill-down', () => {
   it("returns a user's contest metadata (no payloads)", async () => {
     await seed(app);

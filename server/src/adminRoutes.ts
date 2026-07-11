@@ -21,6 +21,10 @@ import { DOCUMENTS_GENERATED_EVENT } from './eventTypes';
 import { bucketForDays, computeAnalytics, type AnalyticsWindow } from './eventAnalytics';
 import { groupErrors } from './errorTriage';
 import { TELEMETRY_EVENTS } from './eventTypes';
+import { computeSyncHealth } from './syncHealth';
+
+/** How far back the drill-down looks for a user's "recent" errors. */
+const RECENT_EVENT_WINDOW_DAYS = 14;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A user is "active this week" if seen within this window. */
@@ -206,6 +210,27 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         to: window.to,
       });
       res.json({ window, groups: groupErrors(events) });
+    }),
+  );
+
+  // Drill-down: one user's record + derived sync-health (server-visible signals
+  // only — no pulls/conflicts/devices). Never returns a contest payload.
+  router.get(
+    '/users/:id',
+    adminOnly(async (req, res) => {
+      const id = String(req.params.id);
+      const user = await userDirectory.getUser(id);
+      if (!user) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      const from = new Date(Date.now() - RECENT_EVENT_WINDOW_DAYS * DAY_MS).toISOString();
+      const [contests, events] = await Promise.all([
+        repo.listByOwner(id),
+        eventLog.listEvents({ userId: id, from }),
+      ]);
+      const syncHealth = computeSyncHealth({ contests, events, now: new Date().toISOString() });
+      res.json({ user, syncHealth });
     }),
   );
 
