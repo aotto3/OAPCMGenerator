@@ -162,6 +162,25 @@ export async function fetchErrorGroups(windowDays?: number): Promise<ErrorGroup[
   return body.groups;
 }
 
+/** Per-user sync-health derived from server-visible signals (mirrors syncHealth). */
+export interface SyncHealth {
+  lastPushAt: string | null;
+  staleDays: number | null;
+  contestCount: number;
+  recentErrorCount: number;
+  status: 'healthy' | 'stale' | 'never-pushed';
+}
+
+export interface AdminUserDetail {
+  user: { id: string; email: string; createdAt: string; lastSeenAt?: string };
+  syncHealth: SyncHealth;
+}
+
+/** One user's record + derived sync-health for the drill-down. */
+export function fetchUser(userId: string): Promise<AdminUserDetail> {
+  return getJson<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(userId)}`);
+}
+
 export async function fetchUserContests(userId: string): Promise<AdminContest[]> {
   const body = await getJson<{ contests: AdminContest[] }>(
     `/api/admin/users/${encodeURIComponent(userId)}/contests`,

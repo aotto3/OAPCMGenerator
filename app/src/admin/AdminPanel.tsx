@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   fetchEvents,
   fetchStats,
+  fetchUser,
   fetchUserContests,
   fetchUsers,
   type AdminContest,
@@ -9,6 +10,7 @@ import {
   type AdminStats,
   type AdminUser,
   type EventPage,
+  type SyncHealth,
 } from './adminClient';
 import { AnalyticsTab } from './AnalyticsTab';
 import { ErrorsTab } from './ErrorsTab';
@@ -78,6 +80,29 @@ function StatCard({ label, value }: { label: string; value: number }) {
   );
 }
 
+const SYNC_STATUS: Record<SyncHealth['status'], { label: string; cls: string }> = {
+  healthy: { label: 'Healthy', cls: 'admin-health-ok' },
+  stale: { label: 'Stale', cls: 'admin-health-warn' },
+  'never-pushed': { label: 'Never pushed', cls: 'admin-health-muted' },
+};
+
+/** Sync-health summary for the drill-down — honest server-side signals only. */
+function SyncHealthCard({ health }: { health: SyncHealth }) {
+  const s = SYNC_STATUS[health.status];
+  return (
+    <div className="admin-health">
+      <span className={`admin-health-badge ${s.cls}`}>{s.label}</span>
+      <span className="muted">
+        {health.lastPushAt ? `Last push ${fmtDateTime(health.lastPushAt)}` : 'No contests stored'}
+        {health.staleDays !== null && ` · ${health.staleDays}d ago`}
+        {' · '}
+        {health.contestCount} contest{health.contestCount === 1 ? '' : 's'}
+        {health.recentErrorCount > 0 && ` · ${health.recentErrorCount} recent error${health.recentErrorCount === 1 ? '' : 's'}`}
+      </span>
+    </div>
+  );
+}
+
 export function AdminPanel({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -97,6 +122,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
   // Users-tab drill-down.
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [contests, setContests] = useState<AdminContest[] | null>(null);
+  const [health, setHealth] = useState<SyncHealth | null>(null);
 
   // Stats + users load once.
   useEffect(() => {
@@ -133,14 +159,20 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
     };
   }, [userId, type, contestId, fromDay, toDay, text, offset]);
 
-  // Drill-down: the selected user's contest metadata.
+  // Drill-down: the selected user's contest metadata + derived sync-health.
   useEffect(() => {
     if (!selected) {
       setContests(null);
+      setHealth(null);
       return;
     }
     let active = true;
+    setContests(null);
+    setHealth(null);
     void fetchUserContests(selected.id).then((c) => active && setContests(c));
+    void fetchUser(selected.id)
+      .then((d) => active && setHealth(d.syncHealth))
+      .catch(() => active && setHealth(null));
     return () => {
       active = false;
     };
@@ -380,6 +412,9 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
                   View activity →
                 </button>
               </div>
+
+              {health && <SyncHealthCard health={health} />}
+
               {contests === null ? (
                 <p className="muted">Loading…</p>
               ) : contests.length === 0 ? (
