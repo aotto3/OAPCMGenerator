@@ -79,7 +79,14 @@ beforeEach(async () => {
 });
 
 describe('admin gate', () => {
-  const routes = ['/api/admin/me', '/api/admin/stats', '/api/admin/users', '/api/admin/events', '/api/admin/analytics'];
+  const routes = [
+    '/api/admin/me',
+    '/api/admin/stats',
+    '/api/admin/users',
+    '/api/admin/events',
+    '/api/admin/analytics',
+    '/api/admin/errors',
+  ];
 
   it('answers 404 on every admin route for an unauthenticated caller', async () => {
     for (const route of routes) {
@@ -307,6 +314,48 @@ describe('analytics endpoint', () => {
   it('is 404 for a non-admin', async () => {
     await asUser(request(app).get('/api/admin/analytics'), 'alice').expect(404);
     await request(app).get('/api/admin/analytics').expect(404);
+  });
+});
+
+describe('errors endpoint', () => {
+  async function seedErrors(a: TestApp) {
+    // Two occurrences of one bug (different volatile values, two users) + one other.
+    await asUser(request(a).post('/api/telemetry'), 'alice')
+      .send({ type: 'client.error', detail: { message: 'Failed to load contest 12', appVersion: '2.0.0' } })
+      .expect(204);
+    await asUser(request(a).post('/api/telemetry'), 'bob')
+      .send({ type: 'client.error', detail: { message: 'Failed to load contest 99', appVersion: '2.1.0' } })
+      .expect(204);
+    await asUser(request(a).post('/api/telemetry'), 'alice')
+      .send({ type: 'client.error', detail: { message: 'Network request failed', appVersion: '2.1.0' } })
+      .expect(204);
+  }
+
+  it('returns fingerprinted error groups for an admin', async () => {
+    await seedErrors(app);
+    const res = await asUser(request(app).get('/api/admin/errors'), 'admin').expect(200);
+    const groups = res.body.groups as Array<{
+      count: number;
+      affectedUsers: number;
+      sampleMessage: string;
+      latestAppVersion: string;
+    }>;
+    expect(groups).toHaveLength(2);
+    const load = groups.find((g) => g.sampleMessage.startsWith('Failed to load'))!;
+    expect(load.count).toBe(2); // collapsed by fingerprint despite different numbers
+    expect(load.affectedUsers).toBe(2);
+    expect(res.body.window).toHaveProperty('from');
+  });
+
+  it('ignores non-error events (only client.error is triaged)', async () => {
+    await seed(app); // contest.created events only
+    const res = await asUser(request(app).get('/api/admin/errors'), 'admin').expect(200);
+    expect(res.body.groups).toEqual([]);
+  });
+
+  it('is 404 for a non-admin', async () => {
+    await asUser(request(app).get('/api/admin/errors'), 'alice').expect(404);
+    await request(app).get('/api/admin/errors').expect(404);
   });
 });
 

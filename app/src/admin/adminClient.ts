@@ -144,6 +144,24 @@ export function fetchAnalytics(windowDays?: number): Promise<AdminAnalytics> {
   return getJson<AdminAnalytics>(`/api/admin/analytics${q}`);
 }
 
+/** A fingerprinted group of client errors (mirrors server errorTriage). */
+export interface ErrorGroup {
+  fingerprint: string;
+  sampleMessage: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+  affectedUsers: number;
+  latestAppVersion?: string;
+}
+
+/** Client-error groups over a window (server default 30 days if omitted). */
+export async function fetchErrorGroups(windowDays?: number): Promise<ErrorGroup[]> {
+  const q = windowDays ? `?window=${windowDays}` : '';
+  const body = await getJson<{ groups: ErrorGroup[] }>(`/api/admin/errors${q}`);
+  return body.groups;
+}
+
 export async function fetchUserContests(userId: string): Promise<AdminContest[]> {
   const body = await getJson<{ contests: AdminContest[] }>(
     `/api/admin/users/${encodeURIComponent(userId)}/contests`,

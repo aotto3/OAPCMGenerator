@@ -11,6 +11,7 @@ import {
   type EventPage,
 } from './adminClient';
 import { AnalyticsTab } from './AnalyticsTab';
+import { ErrorsTab } from './ErrorsTab';
 
 /**
  * The admin panel (PRD #54, extended by Group F). A read-only window on accounts
@@ -171,6 +172,13 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
     setTab('activity');
   }
 
+  // Drill from the Errors tab into the Activity feed, filtered to client errors.
+  function viewClientErrors() {
+    clearFilters();
+    setType('client.error');
+    setTab('activity');
+  }
+
   const total = page?.total ?? 0;
   const canPrev = offset > 0;
   const canNext = offset + PAGE_SIZE < total;
@@ -320,25 +328,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
         </section>
       )}
 
-      {tab === 'errors' && (
-        <section className="admin-card" aria-label="Error triage">
-          <h2>Errors</h2>
-          <p className="muted">
-            Grouped client-error triage arrives in a later slice. In the meantime, you can{' '}
-            <button
-              className="btn-ghost"
-              onClick={() => {
-                clearFilters();
-                setType('client.error');
-                setTab('activity');
-              }}
-            >
-              filter the Activity feed to client errors
-            </button>
-            .
-          </p>
-        </section>
-      )}
+      {tab === 'errors' && <ErrorsTab onDrilldown={viewClientErrors} />}
 
       {tab === 'users' && (
         <>

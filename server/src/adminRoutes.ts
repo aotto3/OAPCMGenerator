@@ -19,6 +19,8 @@ import type { UserDirectory } from './userDirectory';
 import type { AuthUser, ResolveUser } from './contestRoutes';
 import { DOCUMENTS_GENERATED_EVENT } from './eventTypes';
 import { bucketForDays, computeAnalytics, type AnalyticsWindow } from './eventAnalytics';
+import { groupErrors } from './errorTriage';
+import { TELEMETRY_EVENTS } from './eventTypes';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A user is "active this week" if seen within this window. */
@@ -188,6 +190,22 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         userDirectory.listUsers(),
       ]);
       res.json(computeAnalytics(events, users, window));
+    }),
+  );
+
+  // Error triage: client.error events in the window, fingerprinted into groups.
+  // Read-only — no "resolved" state, nothing stored (PRD user story 13). Drill to
+  // occurrences via the feed filtered by type=client.error.
+  router.get(
+    '/errors',
+    adminOnly(async (req, res) => {
+      const window = parseWindow(req);
+      const events = await eventLog.listEvents({
+        type: TELEMETRY_EVENTS.clientError,
+        from: window.from,
+        to: window.to,
+      });
+      res.json({ window, groups: groupErrors(events) });
     }),
   );
 
