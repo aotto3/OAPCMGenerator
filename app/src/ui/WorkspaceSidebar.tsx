@@ -1,4 +1,5 @@
-import { PANES, type PaneId } from './paneRegistry';
+import { useEffect } from 'react';
+import { PANES, QUICK_LINKS, type PaneId } from './paneRegistry';
 
 /**
  * Workspace sidebar (PRD #127, Slice R2 #129) — the app's one navigation surface.
@@ -25,6 +26,14 @@ export function WorkspaceSidebar({
 }) {
   const grouped = PANES.filter((p) => p.zone === 'panes');
   const tools = PANES.filter((p) => p.zone === 'tools');
+
+  // Escape closes the mobile drawer (a no-op when it's already closed / on desktop).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   const paneButton = (id: PaneId, label: string, emoji: string) => (
     <button
@@ -60,6 +69,26 @@ export function WorkspaceSidebar({
         <div className="ws-zone ws-zone-tools">
           <span className="ws-zone-label">Tools</span>
           {tools.map((p) => paneButton(p.id, p.label, p.emoji))}
+        </div>
+
+        {/* Quick Links (restored from v12) — external references, new tab. Not a
+            pane; a sidebar-embedded link group living in the Tools zone. */}
+        <div className="ws-zone ws-quick-links">
+          <span className="ws-zone-label">Quick Links</span>
+          {QUICK_LINKS.map((link) => (
+            <a
+              key={link.url}
+              className="ws-quick-link"
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="ws-pane-emoji" aria-hidden>
+                {link.emoji}
+              </span>
+              <span className="ws-pane-label">{link.label}</span>
+            </a>
+          ))}
         </div>
       </nav>
     </>

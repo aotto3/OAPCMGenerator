@@ -20,13 +20,17 @@ import { moduleAnchorId, paneModules, type ModuleId, type PaneId } from './paneR
 
 /**
  * Pane content renderer (PRD #127, Slice R2 #129) — mounts only the selected
- * pane's modules (content-swap, not scroll), each in the `sec-<slug>` anchor the
- * Readiness jump scrolls to. A loop over the registry's `paneModules`; the sections
- * are re-parented unchanged, keeping their contest-in/contest-out contracts.
+ * pane's modules (content-swap, not scroll). A loop over the registry's
+ * `paneModules`; the sections are re-parented unchanged, keeping their
+ * contest-in/contest-out contracts.
  *
- * This slice renders canonical placements only — mirrors (`mirror: true`) are
- * filtered out, so no section appears on more than one pane. R3 (#130) turns the
- * Critique-in-Judges and Schedule-preview-in-Setup mirrors on.
+ * Mirrors (Slice R3 #130) render alongside canonical placements: Critique in
+ * Judges (fully editable) and the read-only Schedule preview in Setup. They are
+ * data-safe because every section is a controlled component over the single
+ * autosaved Contest, so both homes edit the same live state. Only canonical
+ * placements carry the `sec-<slug>` anchor — Readiness jumps always target the
+ * canonical home (`canonicalPane`), and content-swap means the mirror and its
+ * canonical twin are never mounted at once anyway.
  */
 export function WorkspacePane({
   pane,
@@ -41,11 +45,14 @@ export function WorkspacePane({
   onChange: (next: Contest) => void;
   onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
-  const modules = paneModules(pane).filter((m) => !m.mirror);
   return (
     <>
-      {modules.map(({ module }) => (
-        <div key={module} id={moduleAnchorId(module)} className="ws-section-anchor">
+      {paneModules(pane).map(({ module, mirror }) => (
+        <div
+          key={mirror ? `${module}-mirror` : module}
+          id={mirror ? undefined : moduleAnchorId(module)}
+          className="ws-section-anchor"
+        >
           {renderModule(module, contest, progress, onChange, onOpenSaved)}
         </div>
       ))}

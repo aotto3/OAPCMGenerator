@@ -233,6 +233,15 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .ws-pane-emoji { font-size: 0.95rem; line-height: 1; flex: none; }
 .ws-pane-label { flex: 1; }
 
+/* Quick Links: external references (v12), rendered as anchors, not pane buttons. */
+.ws-quick-links { border-top: 1px solid var(--c-border); padding-top: var(--space-3); }
+.ws-quick-link {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--c-blue); text-decoration: none;
+}
+.ws-quick-link:hover { background: var(--c-bg-blue); text-decoration: underline; }
+
 /* Hamburger (mobile only) + drawer backdrop are hidden on the desktop rail. */
 .ws-hamburger {
   display: none; background: var(--c-surface); border: 1px solid var(--c-border);
