@@ -33,10 +33,32 @@ export interface EventRecord extends EventInput {
   seq: number;
 }
 
-/** Filters + paging for {@link EventLog.queryEvents}. Newest-first always. */
-export interface EventQuery {
+/**
+ * The shared filter shape for reading the log. Every field is optional and ANDed
+ * together; omit them all for an unfiltered read. Both {@link EventLog.queryEvents}
+ * and {@link EventLog.countEvents} honor the exact same filter so a feed page and
+ * its total always agree.
+ */
+export interface EventFilter {
   /** Restrict to one user's events. Omit for all users. */
   userId?: string;
+  /** Restrict to one dotted event type, e.g. `client.error`. */
+  type?: string;
+  /** Restrict to one contest's events. */
+  contestId?: string;
+  /** Inclusive lower bound on `occurred_at` (an ISO 8601 UTC instant). */
+  from?: string;
+  /** Inclusive upper bound on `occurred_at` (an ISO 8601 UTC instant). */
+  to?: string;
+  /**
+   * Case-insensitive substring match across `user_email`, `contest_name`, and
+   * the client-error message in `detail`. Empty string is treated as unset.
+   */
+  text?: string;
+}
+
+/** Filters + paging for {@link EventLog.queryEvents}. Newest-first always. */
+export interface EventQuery extends EventFilter {
   /** Max rows to return. Defaults to 50. */
   limit?: number;
   /** Rows to skip for paging. Defaults to 0. */
@@ -44,10 +66,7 @@ export interface EventQuery {
 }
 
 /** Filters for {@link EventLog.countEvents}. All optional; omit for a grand total. */
-export interface EventCountFilter {
-  userId?: string;
-  type?: string;
-}
+export interface EventCountFilter extends EventFilter {}
 
 export interface EventLog {
   /** Appends one event. Callers treat this as best-effort (see contest routes). */
@@ -63,6 +82,34 @@ function pageBounds(query: EventQuery): { limit: number; offset: number } {
   const limit = Math.min(Math.max(Math.trunc(query.limit ?? 50), 1), 200);
   const offset = Math.max(Math.trunc(query.offset ?? 0), 0);
   return { limit, offset };
+}
+
+/**
+ * Builds the shared `where` clause for a filter, pushing bound parameters onto
+ * `params` (so the caller can append its own, e.g. limit/offset, afterwards).
+ * Returns the clause including the `where` keyword, or `''` when nothing is set.
+ *
+ * occurred_at is an ISO 8601 UTC string in a fixed format (always `…Z`), so a
+ * lexicographic `>=`/`<=` on it is a chronological range. Free-text is a simple
+ * ILIKE substring across the two denormalized text columns plus the client-error
+ * message inside `detail` — no wildcard escaping, which is fine at this scale.
+ */
+function buildWhere(filter: EventFilter, params: unknown[]): string {
+  const conds: string[] = [];
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  if (filter.userId !== undefined) conds.push(`user_id = ${bind(filter.userId)}`);
+  if (filter.type !== undefined) conds.push(`type = ${bind(filter.type)}`);
+  if (filter.contestId !== undefined) conds.push(`contest_id = ${bind(filter.contestId)}`);
+  if (filter.from !== undefined) conds.push(`occurred_at >= ${bind(filter.from)}`);
+  if (filter.to !== undefined) conds.push(`occurred_at <= ${bind(filter.to)}`);
+  if (filter.text !== undefined && filter.text !== '') {
+    const p = bind(`%${filter.text}%`);
+    conds.push(`(user_email ILIKE ${p} OR contest_name ILIKE ${p} OR detail->>'message' ILIKE ${p})`);
+  }
+  return conds.length ? `where ${conds.join(' and ')}` : '';
 }
 
 /** Postgres-backed event log (production, and the tests' in-memory pg). */
@@ -86,34 +133,26 @@ export function createEventLog(pool: Pool): EventLog {
 
     async queryEvents(query = {}) {
       const { limit, offset } = pageBounds(query);
+      const params: unknown[] = [];
+      const where = buildWhere(query, params);
+      const limitParam = `$${params.push(limit)}`;
+      const offsetParam = `$${params.push(offset)}`;
       // seq desc gives insertion order (== occurred_at order for our appends)
       // newest-first, and is a stable tiebreaker for equal timestamps.
-      const where = query.userId !== undefined ? 'where user_id = $3' : '';
-      const params: unknown[] =
-        query.userId !== undefined ? [limit, offset, query.userId] : [limit, offset];
       const { rows } = await pool.query(
         `select seq, occurred_at, user_id, user_email, type, contest_id, contest_name, detail
          from events
          ${where}
          order by seq desc
-         limit $1 offset $2`,
+         limit ${limitParam} offset ${offsetParam}`,
         params,
       );
       return rows.map(mapRow);
     },
 
     async countEvents(filter = {}) {
-      const conds: string[] = [];
       const params: unknown[] = [];
-      if (filter.userId !== undefined) {
-        params.push(filter.userId);
-        conds.push(`user_id = $${params.length}`);
-      }
-      if (filter.type !== undefined) {
-        params.push(filter.type);
-        conds.push(`type = $${params.length}`);
-      }
-      const where = conds.length ? `where ${conds.join(' and ')}` : '';
+      const where = buildWhere(filter, params);
       const { rows } = await pool.query(
         `select count(*)::int as n from events ${where}`,
         params,
