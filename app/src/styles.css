@@ -799,9 +799,38 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .admin-contest-list { list-style: none; margin: 0; padding: 0; }
 .admin-contest-list li { padding: var(--space-1) 0; font-size: var(--fs-sm); }
 
+/* Tabbed sub-views (Group F). */
+.admin-tabs {
+  display: flex; gap: var(--space-1); margin: var(--space-4) 0 0;
+  border-bottom: 1px solid var(--c-border);
+}
+.admin-tab {
+  background: none; border: none; cursor: pointer;
+  padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); font-weight: 600;
+  color: var(--c-muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.admin-tab:hover { color: var(--c-text); }
+.admin-tab-active { color: var(--c-blue); border-bottom-color: var(--c-blue); }
+
+/* Activity-feed filter bar. */
+.admin-filters {
+  display: flex; flex-wrap: wrap; gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.admin-filters label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-sm); }
+.admin-filters label > span { color: var(--c-muted); }
+.admin-filters select, .admin-filters input {
+  font: inherit; padding: 6px 8px;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); color: inherit;
+}
+.admin-filter-search { flex: 1 1 220px; }
+.admin-filter-search input, .admin-filter-contest input { width: 100%; }
+.admin-active-filter { margin-top: var(--space-3); }
+
 @media (max-width: 720px) {
   .admin-stats { grid-template-columns: repeat(2, 1fr); }
   .admin-grid { grid-template-columns: 1fr; }
+  .admin-filters label { flex: 1 1 140px; }
 }
 
 /* --- Theme toggle (Slice 18, #50) ----------------------------------------

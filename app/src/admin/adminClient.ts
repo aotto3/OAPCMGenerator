@@ -74,14 +74,32 @@ export async function fetchUsers(): Promise<AdminUser[]> {
   return body.users;
 }
 
-/** A page of the activity feed, newest-first, optionally scoped to one user. */
-export function fetchEvents(opts: {
+/** Filters for the activity feed — all optional, ANDed server-side. */
+export interface EventFilters {
   userId?: string;
-  limit: number;
-  offset: number;
-}): Promise<EventPage> {
+  type?: string;
+  contestId?: string;
+  /** Inclusive ISO instant lower bound. */
+  from?: string;
+  /** Inclusive ISO instant upper bound. */
+  to?: string;
+  /** Free text across email / contest name / error message. */
+  text?: string;
+}
+
+/**
+ * A page of the activity feed, newest-first, narrowed by any combination of the
+ * feed filters (user, type, contest, date range, free text) plus paging. Empty
+ * filter values are omitted so the default is the whole feed.
+ */
+export function fetchEvents(opts: EventFilters & { limit: number; offset: number }): Promise<EventPage> {
   const params = new URLSearchParams({ limit: String(opts.limit), offset: String(opts.offset) });
   if (opts.userId) params.set('userId', opts.userId);
+  if (opts.type) params.set('type', opts.type);
+  if (opts.contestId) params.set('contestId', opts.contestId);
+  if (opts.from) params.set('from', opts.from);
+  if (opts.to) params.set('to', opts.to);
+  if (opts.text) params.set('text', opts.text);
   return getJson<EventPage>(`/api/admin/events?${params.toString()}`);
 }
 

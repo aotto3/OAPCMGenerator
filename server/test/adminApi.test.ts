@@ -169,6 +169,136 @@ describe('activity feed', () => {
   });
 });
 
+describe('widened activity feed filters', () => {
+  /**
+   * Seeds a richer trail than `seed()`: a rename (contest.updated), a delete
+   * (contest.deleted), and two telemetry events (a doc-generation and a
+   * client.error carrying a message in `detail`) so type / contest / date-range
+   * / free-text filters each have something distinct to match.
+   */
+  async function seedRich(a: TestApp) {
+    await seed(a); // 5 contest.created (3 alice, 2 bob)
+    await asUser(request(a).put('/api/contests/a1'), 'alice')
+      .send(contestBody('a1', 'Alice One Renamed'))
+      .expect(200); // contest.updated
+    await asUser(request(a).delete('/api/contests/b2'), 'bob').expect(204); // contest.deleted
+    await asUser(request(a).post('/api/telemetry'), 'alice')
+      .send({ type: 'documents.generated', contestId: 'a2', contestName: 'Alice Two' })
+      .expect(204);
+    await asUser(request(a).post('/api/telemetry'), 'bob')
+      .send({ type: 'client.error', detail: { message: 'Kaboom while rendering', appVersion: '2.0.0' } })
+      .expect(204);
+  }
+
+  it('filters by event type, with a matching total', async () => {
+    await seedRich(app);
+    const res = await asUser(request(app).get('/api/admin/events?type=contest.deleted'), 'admin').expect(200);
+    expect(res.body.total).toBe(1);
+    const events = res.body.events as Array<{ type: string; contestName: string }>;
+    expect(events.map((e) => e.type)).toEqual(['contest.deleted']);
+    expect(events[0].contestName).toBe('Bob Two');
+  });
+
+  it('filters by contest id', async () => {
+    await seedRich(app);
+    const res = await asUser(request(app).get('/api/admin/events?contestId=a1'), 'admin').expect(200);
+    // a1 was created then renamed — two events, both for that contest.
+    expect(res.body.total).toBe(2);
+    const events = res.body.events as Array<{ type: string; contestId: string }>;
+    expect(events.every((e) => e.contestId === 'a1')).toBe(true);
+    expect(events.map((e) => e.type)).toEqual(['contest.updated', 'contest.created']);
+  });
+
+  it('filters by an inclusive ISO date range', async () => {
+    // Two events straddling a boundary, recorded directly so timestamps are exact.
+    const { app: a2, pool } = await buildApp();
+    const { createEventLog } = await import('../src/eventLog');
+    const log = createEventLog(pool);
+    await log.recordEvent({ occurredAt: '2026-05-01T00:00:00.000Z', userId: 'alice', userEmail: 'alice@example.test', type: 'contest.created', contestName: 'May' });
+    await log.recordEvent({ occurredAt: '2026-06-15T00:00:00.000Z', userId: 'alice', userEmail: 'alice@example.test', type: 'contest.created', contestName: 'June' });
+    await log.recordEvent({ occurredAt: '2026-07-20T00:00:00.000Z', userId: 'alice', userEmail: 'alice@example.test', type: 'contest.created', contestName: 'July' });
+
+    const res = await asUser(
+      request(a2).get('/api/admin/events?from=2026-06-01T00:00:00.000Z&to=2026-07-01T00:00:00.000Z'),
+      'admin',
+    ).expect(200);
+    expect(res.body.total).toBe(1);
+    expect((res.body.events as Array<{ contestName: string }>).map((e) => e.contestName)).toEqual(['June']);
+  });
+
+  it('free-text matches email, contest name, and the error message in detail', async () => {
+    await seedRich(app);
+
+    // Contest name (case-insensitive).
+    const byName = await asUser(request(app).get('/api/admin/events?text=renamed'), 'admin').expect(200);
+    expect((byName.body.events as Array<{ contestName: string }>).map((e) => e.contestName)).toEqual([
+      'Alice One Renamed',
+    ]);
+
+    // Email substring — every bob event.
+    const byEmail = await asUser(request(app).get('/api/admin/events?text=bob@'), 'admin').expect(200);
+    expect(byEmail.body.total).toBeGreaterThan(0);
+    expect((byEmail.body.events as Array<{ userEmail: string }>).every((e) => e.userEmail === 'bob@example.test')).toBe(true);
+
+    // Error message inside detail.
+    const byError = await asUser(request(app).get('/api/admin/events?text=kaboom'), 'admin').expect(200);
+    expect(byError.body.total).toBe(1);
+    expect((byError.body.events as Array<{ type: string }>)[0].type).toBe('client.error');
+  });
+
+  it('combines the new filters with the existing user filter', async () => {
+    await seedRich(app);
+    // Alice's document-generation only: user + type together.
+    const res = await asUser(
+      request(app).get('/api/admin/events?userId=alice&type=documents.generated'),
+      'admin',
+    ).expect(200);
+    expect(res.body.total).toBe(1);
+    const events = res.body.events as Array<{ userId: string; type: string; contestName: string }>;
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ userId: 'alice', type: 'documents.generated', contestName: 'Alice Two' });
+
+    // A contradictory combination (bob + alice-only text) yields nothing.
+    const empty = await asUser(
+      request(app).get('/api/admin/events?userId=bob&type=documents.generated'),
+      'admin',
+    ).expect(200);
+    expect(empty.body.total).toBe(0);
+    expect(empty.body.events).toEqual([]);
+  });
+
+  it('paginates a filtered feed with a filtered total', async () => {
+    await seedRich(app);
+    // All alice events (3 created + 1 updated + 1 doc-gen = 5), 2 per page.
+    const page1 = await asUser(request(app).get('/api/admin/events?userId=alice&limit=2&offset=0'), 'admin').expect(200);
+    expect(page1.body.total).toBe(5);
+    expect((page1.body.events as unknown[]).length).toBe(2);
+  });
+});
+
+describe('additive index migration is idempotent', () => {
+  // The Group F indexes on occurred_at and type. `migrate()` reruns events.sql
+  // on every boot; these use IF NOT EXISTS so a re-run is a no-op. (pg-mem can't
+  // re-run the whole CREATE TABLE IF NOT EXISTS file — a pg-mem quirk, not a
+  // real-Postgres one — so this exercises the additive index step directly.)
+  const additiveIndexes = [
+    'create index if not exists events_occurred_at_idx on events (occurred_at)',
+    'create index if not exists events_type_idx on events (type)',
+  ];
+
+  it('re-running the additive index step on an existing schema is safe', async () => {
+    const { pool } = await buildApp(); // events table already created + indexed
+    for (let boot = 0; boot < 3; boot++) {
+      for (const sql of additiveIndexes) {
+        await expect(pool.query(sql)).resolves.toBeDefined();
+      }
+    }
+    // The feed still reads (and its filters still work) after repeated boots.
+    const res = await asUser(request((await buildApp()).app).get('/api/admin/events?type=contest.created'), 'admin').expect(200);
+    expect(res.body).toHaveProperty('total');
+  });
+});
+
 describe('per-user drill-down', () => {
   it("returns a user's contest metadata (no payloads)", async () => {
     await seed(app);

@@ -14,7 +14,7 @@
  */
 import { Router, type Request, type Response } from 'express';
 import type { ContestRepo } from './contestRepo';
-import type { EventLog } from './eventLog';
+import type { EventFilter, EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
 import type { AuthUser, ResolveUser } from './contestRoutes';
 import { DOCUMENTS_GENERATED_EVENT } from './eventTypes';
@@ -38,6 +38,28 @@ function pageParams(req: Request): { limit?: number; offset?: number } {
   return {
     limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
     offset: Number.isFinite(offset) && offset >= 0 ? offset : undefined,
+  };
+}
+
+/** Reads a query param as a trimmed non-empty string, else undefined. */
+function strParam(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+/**
+ * Parses the widened activity-feed filters from the query string: user, type,
+ * contest, ISO date-range bounds, and free text. Each is optional — an absent or
+ * blank param leaves that filter unset, so the endpoint's default is the same
+ * unfiltered feed as before.
+ */
+function feedFilter(req: Request): EventFilter {
+  return {
+    userId: strParam(req.query.userId),
+    type: strParam(req.query.type),
+    contestId: strParam(req.query.contestId),
+    from: strParam(req.query.from),
+    to: strParam(req.query.to),
+    text: strParam(req.query.text),
   };
 }
 
@@ -117,15 +139,17 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
     }),
   );
 
-  // Global activity feed, newest-first, paginated, optionally filtered by user.
+  // Global activity feed, newest-first, paginated. Filterable by user, type,
+  // contest, ISO date range, and free text — any combination (all ANDed). The
+  // page and its total share one filter so they always agree.
   router.get(
     '/events',
     adminOnly(async (req, res) => {
-      const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+      const filter = feedFilter(req);
       const { limit, offset } = pageParams(req);
       const [events, total] = await Promise.all([
-        eventLog.queryEvents({ userId, limit, offset }),
-        eventLog.countEvents({ userId }),
+        eventLog.queryEvents({ ...filter, limit, offset }),
+        eventLog.countEvents(filter),
       ]);
       res.json({ events, total, limit, offset });
     }),

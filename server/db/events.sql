@@ -32,3 +32,10 @@ create table if not exists events (
 );
 
 create index if not exists events_user_id_idx on events (user_id);
+
+-- Additive indexes for the widened admin feed (Group F): the feed filters and
+-- the analytics reads scan by event type and by time window, so index both.
+-- IF NOT EXISTS keeps migrate() idempotent — these appear on the next boot with
+-- no manual step, exactly like the table and user_id index above.
+create index if not exists events_occurred_at_idx on events (occurred_at);
+create index if not exists events_type_idx on events (type);
