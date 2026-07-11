@@ -246,6 +246,8 @@ export const DOCUMENT_TYPES = [
   // Slow PDF generation — only wanted once judges are contracted (v12).
   { id: 'adj_packets', label: 'Adjudicator Packets (.pdf)', defaultSelected: false },
   { id: 'timer', label: 'Timer Instructions + Form (.docx)', defaultSelected: false },
+  // Opt-in like the adjudicator PDFs — only wanted once companies are entered (PRD #68).
+  { id: 'program', label: 'Audience Program (.docx)', defaultSelected: false },
 ] as const;
 
 export type DocumentId = (typeof DOCUMENT_TYPES)[number]['id'];

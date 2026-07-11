@@ -9,7 +9,7 @@
  *
  * A definition is pure: contest record in → file bytes out (the one exception is
  * the adjudicator PDF builder, which loads bundled ballot templates via a browser
- * fetch / Node fs loader — see pdfAssets.ts). All 14 documents now have real
+ * fetch / Node fs loader — see pdfAssets.ts). All 15 documents now have real
  * builders; id, label, and filename stay put as builders evolve.
  */
 
@@ -27,6 +27,7 @@ import { buildRehearsalSchedule } from './rehearsalSchedule';
 import { buildContactList } from './contactList';
 import { buildAdjudicatorInfo } from './adjudicatorInfo';
 import { buildChecklist } from './checklist';
+import { buildProgram } from './program';
 import { buildAdjudicatorPacketsPdf } from './adjPackets';
 import { loadAdjudicatorTemplates } from './pdfAssets';
 
@@ -114,6 +115,7 @@ const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilde
   adjudicator: { filename: 'Adjudicator Info Sheet.xlsx', build: buildAdjudicatorInfo },
   adj_packets: { filename: 'Adjudicator Packets.pdf', build: buildAdjPackets },
   timer: { filename: 'Timer Instructions and Form.docx', build: buildTimerDoc },
+  program: { filename: 'Audience Program.docx', build: buildProgram },
 };
 
 /**

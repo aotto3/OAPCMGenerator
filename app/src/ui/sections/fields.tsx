@@ -35,6 +35,38 @@ export function TextField({
   );
 }
 
+/** Labeled multi-line textarea — the optional free-text bios (PRD #68) and similar. */
+export function TextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  wide,
+  rows = 3,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  hint?: string;
+  wide?: boolean;
+  rows?: number;
+}) {
+  return (
+    <label className={wide ? 'field field-wide' : 'field'}>
+      {label}
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={rows}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {hint && <span className="hint">{hint}</span>}
+    </label>
+  );
+}
+
 /** Labeled select over a fixed option list. */
 export function SelectField<T extends string | number>({
   label,
