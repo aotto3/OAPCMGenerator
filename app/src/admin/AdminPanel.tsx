@@ -10,6 +10,7 @@ import {
   type AdminUser,
   type EventPage,
 } from './adminClient';
+import { AnalyticsTab } from './AnalyticsTab';
 
 /**
  * The admin panel (PRD #54, extended by Group F). A read-only window on accounts
@@ -211,10 +212,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
             <StatCard label="Contests" value={stats?.totalContests ?? 0} />
             <StatCard label="Documents generated" value={stats?.documentsGenerated ?? 0} />
           </section>
-          <section className="admin-card" aria-label="Analytics">
-            <h2>Analytics</h2>
-            <p className="muted">Trends and adoption charts arrive in a later slice.</p>
-          </section>
+          <AnalyticsTab />
         </>
       )}
 

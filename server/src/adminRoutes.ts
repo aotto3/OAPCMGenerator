@@ -18,9 +18,14 @@ import type { EventFilter, EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
 import type { AuthUser, ResolveUser } from './contestRoutes';
 import { DOCUMENTS_GENERATED_EVENT } from './eventTypes';
+import { bucketForDays, computeAnalytics, type AnalyticsWindow } from './eventAnalytics';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 /** A user is "active this week" if seen within this window. */
-const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const ACTIVE_WINDOW_MS = 7 * DAY_MS;
+/** Default analytics window when ?window is absent/invalid, and its clamp bounds. */
+const DEFAULT_WINDOW_DAYS = 30;
+const MAX_WINDOW_DAYS = 365;
 
 export interface AdminRoutesDeps {
   repo: ContestRepo;
@@ -60,6 +65,22 @@ function feedFilter(req: Request): EventFilter {
     from: strParam(req.query.from),
     to: strParam(req.query.to),
     text: strParam(req.query.text),
+  };
+}
+
+/**
+ * Derives the analytics window from ?window (a day count; default 30, clamped to
+ * [1, 365]). `to` is now; `from` is that many days back; bucket granularity is
+ * implied by the length (daily for short windows, weekly for long).
+ */
+function parseWindow(req: Request): AnalyticsWindow {
+  const raw = Math.trunc(Number(req.query.window));
+  const days = Number.isFinite(raw) && raw >= 1 ? Math.min(raw, MAX_WINDOW_DAYS) : DEFAULT_WINDOW_DAYS;
+  const toMs = Date.now();
+  return {
+    from: new Date(toMs - days * DAY_MS).toISOString(),
+    to: new Date(toMs).toISOString(),
+    bucket: bucketForDays(days),
   };
 }
 
@@ -152,6 +173,21 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         eventLog.countEvents(filter),
       ]);
       res.json({ events, total, limit, offset });
+    }),
+  );
+
+  // Analytics: bucketed trends + adoption/retention/volume over a time window.
+  // All computed on read from the windowed log rows + the account directory —
+  // nothing precomputed or stored (PRD user story 6).
+  router.get(
+    '/analytics',
+    adminOnly(async (req, res) => {
+      const window = parseWindow(req);
+      const [events, users] = await Promise.all([
+        eventLog.listEvents({ from: window.from, to: window.to }),
+        userDirectory.listUsers(),
+      ]);
+      res.json(computeAnalytics(events, users, window));
     }),
   );
 

@@ -47,6 +47,41 @@ export interface EventPage {
   total: number;
 }
 
+/** One bucket of the analytics trend series (mirrors server eventAnalytics). */
+export interface TrendBucket {
+  start: string;
+  signups: number;
+  activeUsers: number;
+  contestsCreated: number;
+  documentsGenerated: number;
+  errors: number;
+}
+
+export interface AdoptionRatio {
+  users: number;
+  ratio: number;
+}
+
+export interface AdminAnalytics {
+  window: { from: string; to: string; bucket: 'day' | 'week' };
+  series: TrendBucket[];
+  totals: {
+    signups: number;
+    activeUsers: number;
+    contestsCreated: number;
+    documentsGenerated: number;
+    errors: number;
+  };
+  adoption: {
+    totalUsers: number;
+    createdContest: AdoptionRatio;
+    generatedDocuments: AdoptionRatio;
+    exported: AdoptionRatio;
+  };
+  retention: { activeUsers: number; returningUsers: number };
+  volumeByType: Array<{ type: string; count: number }>;
+}
+
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 
 async function getJson<T>(path: string): Promise<T> {
@@ -101,6 +136,12 @@ export function fetchEvents(opts: EventFilters & { limit: number; offset: number
   if (opts.to) params.set('to', opts.to);
   if (opts.text) params.set('text', opts.text);
   return getJson<EventPage>(`/api/admin/events?${params.toString()}`);
+}
+
+/** Analytics report over a window of `windowDays` (server default 30 if omitted). */
+export function fetchAnalytics(windowDays?: number): Promise<AdminAnalytics> {
+  const q = windowDays ? `?window=${windowDays}` : '';
+  return getJson<AdminAnalytics>(`/api/admin/analytics${q}`);
 }
 
 export async function fetchUserContests(userId: string): Promise<AdminContest[]> {

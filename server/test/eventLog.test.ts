@@ -166,6 +166,7 @@ describe('log-failure tolerance', () => {
       },
       queryEvents: async () => [],
       countEvents: async () => 0,
+      listEvents: async () => [],
     };
     const failing = await buildApp(throwing);
 
