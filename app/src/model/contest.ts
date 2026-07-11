@@ -1573,6 +1573,16 @@ export function complianceProgress(school: School, items: readonly ComplianceIte
  */
 
 /**
+ * The stored check-off status for a manual/custom item id — 'pending' when
+ * absent (the default), matching the compliance tracker's absent-means-Pending
+ * convention. Built-in and custom ids alike. The readiness report (G2) reads
+ * every manual/custom item's status through this.
+ */
+export function resolveReadinessStatus(contest: Contest, itemId: string): ReadinessStatus {
+  return contest.readinessChecks[itemId] ?? 'pending';
+}
+
+/**
  * Sets one manual/custom item's check-off status. Writing 'pending' DROPS the key
  * (the default), so the map only ever holds meaningful 'done'/'na' entries and an
  * untouched checklist stays `{}`. Works for built-in and custom item ids alike;
