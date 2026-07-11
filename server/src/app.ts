@@ -13,6 +13,7 @@ import { createTelemetryRoutes } from './telemetryRoutes';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
+import type { AuthAdmin } from './authAdmin';
 
 export interface AppDeps {
   repo: ContestRepo;
@@ -20,6 +21,8 @@ export interface AppDeps {
   eventLog: EventLog;
   /** Read-only account directory (Better Auth tables) for the admin API. */
   userDirectory: UserDirectory;
+  /** The one account-acting seam (resend sign-in link); tests pass a fake. */
+  authAdmin: AuthAdmin;
   /** Lowercased admin email allowlist; empty means the admin API is dark. */
   adminEmails: ReadonlySet<string>;
   resolveUser: ResolveUser;
@@ -83,6 +86,7 @@ export function createApp(deps: AppDeps): Express {
       repo: deps.repo,
       eventLog: deps.eventLog,
       userDirectory: deps.userDirectory,
+      authAdmin: deps.authAdmin,
       resolveUser: deps.resolveUser,
       adminEmails: deps.adminEmails,
     }),

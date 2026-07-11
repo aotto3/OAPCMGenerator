@@ -5,6 +5,7 @@ import {
   fetchUser,
   fetchUserContests,
   fetchUsers,
+  resendSignInLink,
   type AdminContest,
   type AdminEvent,
   type AdminStats,
@@ -62,6 +63,7 @@ const EVENT_LABELS: Record<string, string> = {
   'contest.exported': 'Exported file',
   'contest.imported': 'Imported file',
   'client.error': 'Client error',
+  'admin.signin_link_resent': 'Resent sign-in link',
 };
 const EVENT_TYPES = Object.keys(EVENT_LABELS);
 const eventLabel = (type: string): string => EVENT_LABELS[type] ?? type;
@@ -123,6 +125,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [contests, setContests] = useState<AdminContest[] | null>(null);
   const [health, setHealth] = useState<SyncHealth | null>(null);
+  const [resend, setResend] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
 
   // Stats + users load once.
   useEffect(() => {
@@ -169,6 +172,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
     let active = true;
     setContests(null);
     setHealth(null);
+    setResend({ busy: false, msg: null });
     void fetchUserContests(selected.id).then((c) => active && setContests(c));
     void fetchUser(selected.id)
       .then((d) => active && setHealth(d.syncHealth))
@@ -209,6 +213,21 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
     clearFilters();
     setType('client.error');
     setTab('activity');
+  }
+
+  // The one account-acting support action, behind a confirm dialog.
+  async function onResend(u: AdminUser) {
+    if (!window.confirm(`Email a fresh sign-in link to ${u.email}?`)) return;
+    setResend({ busy: true, msg: null });
+    try {
+      const result = await resendSignInLink(u.id);
+      setResend({
+        busy: false,
+        msg: result === 'sent' ? '✓ Sign-in link sent.' : 'A link was sent recently — try again later.',
+      });
+    } catch {
+      setResend({ busy: false, msg: 'Could not send the link.' });
+    }
   }
 
   const total = page?.total ?? 0;
@@ -408,10 +427,21 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
                   {selected.email}
                   <span className="muted"> · {selected.contestCount} contests</span>
                 </h2>
-                <button className="btn-secondary btn-sm" onClick={() => viewActivity(selected)}>
-                  View activity →
-                </button>
+                <div className="admin-user-actions">
+                  <button
+                    className="btn-secondary btn-sm"
+                    disabled={resend.busy}
+                    onClick={() => onResend(selected)}
+                  >
+                    {resend.busy ? 'Sending…' : 'Resend sign-in link'}
+                  </button>
+                  <button className="btn-secondary btn-sm" onClick={() => viewActivity(selected)}>
+                    View activity →
+                  </button>
+                </div>
               </div>
+
+              {resend.msg && <p className="muted admin-resend-msg">{resend.msg}</p>}
 
               {health && <SyncHealthCard health={health} />}
 

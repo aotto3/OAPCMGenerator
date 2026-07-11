@@ -22,9 +22,17 @@ import { bucketForDays, computeAnalytics, type AnalyticsWindow } from './eventAn
 import { groupErrors } from './errorTriage';
 import { TELEMETRY_EVENTS } from './eventTypes';
 import { computeSyncHealth } from './syncHealth';
+import { createRateLimiter } from './rateLimiter';
+import type { AuthAdmin } from './authAdmin';
 
 /** How far back the drill-down looks for a user's "recent" errors. */
 const RECENT_EVENT_WINDOW_DAYS = 14;
+
+/** Server-authored audit event for the one account-acting support action. */
+const ADMIN_SIGNIN_LINK_RESENT = 'admin.signin_link_resent';
+/** Resend sign-in link: at most this many sends per target email per window. */
+const RESEND_LIMIT = 3;
+const RESEND_WINDOW_MS = 15 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A user is "active this week" if seen within this window. */
@@ -37,6 +45,8 @@ export interface AdminRoutesDeps {
   repo: ContestRepo;
   eventLog: EventLog;
   userDirectory: UserDirectory;
+  /** The one account-acting seam (resend sign-in link). */
+  authAdmin: AuthAdmin;
   resolveUser: ResolveUser;
   /** Lowercased admin email allowlist (see env.adminEmails). */
   adminEmails: ReadonlySet<string>;
@@ -91,8 +101,11 @@ function parseWindow(req: Request): AnalyticsWindow {
 }
 
 export function createAdminRoutes(deps: AdminRoutesDeps): Router {
-  const { repo, eventLog, userDirectory, resolveUser, adminEmails } = deps;
+  const { repo, eventLog, userDirectory, authAdmin, resolveUser, adminEmails } = deps;
   const router = Router();
+
+  // Per-target-email limiter for the resend action (in-memory; one API process).
+  const resendLimiter = createRateLimiter({ limit: RESEND_LIMIT, windowMs: RESEND_WINDOW_MS });
 
   /**
    * Wraps a handler with the admin gate. Resolves the session; if there is none
@@ -231,6 +244,42 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       ]);
       const syncHealth = computeSyncHealth({ contests, events, now: new Date().toISOString() });
       res.json({ user, syncHealth });
+    }),
+  );
+
+  // Support action (the ONE account write): resend a fresh sign-in link to a
+  // locked-out user. Guarded by a per-target-email rate limit (429 without
+  // sending when exceeded) and audited with a server-authored event naming actor
+  // + target. Behind the adminOnly gate like everything else (PRD stories 21-24).
+  router.post(
+    '/users/:id/resend-signin',
+    adminOnly(async (req, res, admin) => {
+      const id = String(req.params.id);
+      const user = await userDirectory.getUser(id);
+      if (!user) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      if (!resendLimiter.tryAcquire(user.email.toLowerCase())) {
+        res.status(429).json({ error: 'A sign-in link was sent recently. Please wait before resending.' });
+        return;
+      }
+      await authAdmin.sendSignInLink(user.email);
+      // Audit best-effort, like the contest routes — a logging hiccup must not
+      // fail the support action the admin already performed.
+      try {
+        await eventLog.recordEvent({
+          occurredAt: new Date().toISOString(),
+          userId: admin.id,
+          userEmail: admin.email,
+          type: ADMIN_SIGNIN_LINK_RESENT,
+          detail: { targetUserId: id, targetEmail: user.email },
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to record admin.signin_link_resent event', err);
+      }
+      res.status(204).end();
     }),
   );
 

@@ -181,6 +181,21 @@ export function fetchUser(userId: string): Promise<AdminUserDetail> {
   return getJson<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(userId)}`);
 }
 
+/**
+ * Resends a fresh sign-in link to a user (the one account-acting admin call).
+ * Returns 'sent' on success, 'rate-limited' on a 429, and throws on other
+ * failures. Same credentialed, same-origin POST shape as the rest of the client.
+ */
+export async function resendSignInLink(userId: string): Promise<'sent' | 'rate-limited'> {
+  const res = await fetch(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/resend-signin`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (res.status === 429) return 'rate-limited';
+  if (!res.ok) throw new Error(`Admin request failed: ${res.status}`);
+  return 'sent';
+}
+
 export async function fetchUserContests(userId: string): Promise<AdminContest[]> {
   const body = await getJson<{ contests: AdminContest[] }>(
     `/api/admin/users/${encodeURIComponent(userId)}/contests`,
