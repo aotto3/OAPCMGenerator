@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   READINESS_STATUSES,
   addReadinessItem,
-  contestDisplayName,
   removeReadinessItem,
   setReadinessStatus,
   type Contest,
@@ -12,14 +11,15 @@ import {
 import { readinessReport, type ReadinessReportItem } from '../model/readiness';
 
 /**
- * Contest Readiness page (PRD #75, Group G). A dedicated per-contest page — the
- * itemized expansion of the workspace phase strip — reached from the workspace and
- * returning to it. A THIN renderer over the pure `readinessReport`: it holds no
- * readiness logic, only the "add custom item" form state. Derived items are
- * read-only with a jump-to-section link; manual/custom items are tri-state
- * controls bound to G1's updaters, so every edit rides the same autosave/sync/
- * export plumbing as the rest of the contest. Screen-only — the print button is
- * the paper fallback (no generated document).
+ * Contest Readiness hub (PRD #75, Group G; re-homed by #127). The itemized
+ * expansion of the readiness model, now rendered as the Readiness destination's
+ * content INSIDE the workspace shell — the sidebar and workspace header stay
+ * visible, so it is a selected pane, not a full-page takeover. A THIN renderer
+ * over the pure `readinessReport`: it holds no readiness logic, only the "add
+ * custom item" form state. Derived items are read-only with a jump link (switches
+ * to the owning pane and scrolls); manual/custom items are tri-state controls
+ * bound to G1's updaters, so every edit rides the same autosave/sync/export
+ * plumbing. Screen-only — the print button is the paper fallback.
  */
 
 const STATUS_LABELS: Record<ReadinessStatus, string> = {
@@ -31,13 +31,11 @@ const STATUS_LABELS: Record<ReadinessStatus, string> = {
 export function ReadinessPage({
   contest,
   onChange,
-  onBack,
   onJump,
 }: {
   contest: Contest;
   onChange: (next: Contest) => void;
-  onBack: () => void;
-  /** Jump to a workspace section anchor (returns to the workspace and scrolls). */
+  /** Jump to a module: switches to its canonical pane and scrolls to the anchor. */
   onJump: (sectionId: string) => void;
 }) {
   const report = readinessReport(contest);
@@ -52,14 +50,9 @@ export function ReadinessPage({
   }
 
   return (
-    <main className="page readiness-page">
-      <header className="page-header">
-        <button className="btn-ghost" onClick={onBack}>← Back to contest</button>
-        <h1>Contest Readiness</h1>
-        <p className="subtitle">{contestDisplayName(contest.identity)}</p>
-      </header>
-
+    <div className="readiness-pane">
       <div className="readiness-topbar">
+        <h2 className="readiness-pane-title">Contest Readiness</h2>
         <span className={`readiness-counter is-${report.color}`} title="Applicable items resolved">
           {report.done}/{report.applicable} ready
         </span>
@@ -113,7 +106,7 @@ export function ReadinessPage({
           + Add item
         </button>
       </div>
-    </main>
+    </div>
   );
 }
 
