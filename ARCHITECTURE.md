@@ -243,13 +243,16 @@ history and live URLs are in `memory/oap-2.0-deployment.md`.
   section, and — if it changes the serialized shape — bump the schema version and add
   a **forward migration** so old saved records still parse. Add model tests for the
   round-trip and migration.
-- **Add a workspace section (pane module).** Build the section component, then add a
-  `ModuleId` to `ui/paneRegistry.ts`, home it in `CANONICAL_HOME` (a total
-  `Record<ModuleId, PaneId>` — an unhomed module fails typecheck), and add its case
-  to the exhaustive switch in `WorkspacePane.tsx`. The sidebar and pane renderer are
-  loops over the registry, so nothing else needs editing. The registry is pure and
-  is the one part of the workspace UI with unit tests; the sidebar/pane renderer are
-  untested UI by convention.
+- **Add a workspace section (pane module).** Build the section component, then in
+  `ui/paneRegistry.ts` add a `ModuleId`, home it in `CANONICAL_HOME` (a total
+  `Record<ModuleId, PaneId>` — an unhomed module fails typecheck), give it a
+  `MODULE_META` entry (also a total record, so typecheck catches an omission), and
+  insert it into `MODULE_ORDER` (a plain array — skipping it makes the module
+  silently never render; the registry test catches it, not the compiler). Finally,
+  add its case to the exhaustive switch in `WorkspacePane.tsx`. The sidebar and pane
+  renderer are loops over the registry, so nothing else needs editing. The registry
+  is pure and is the one part of the workspace UI with unit tests; the sidebar/pane
+  renderer are untested UI by convention.
 - **Change generated content.** Edit the builder, run `UPDATE_GOLDEN=1`, and treat the
   golden diff as the review. If it touches letter language, schedule format, colors,
   or PDF field maps, re-read `output/context.md` first — those are frozen v12
