@@ -962,9 +962,16 @@ export function withDetails(contest: Contest, patch: Partial<ContestDetails>, no
   const details = { ...contest.details, ...patch };
   if ('contestDate' in patch && details.contestDate) {
     const auto = autoDeadlineFor(details.contestDate);
+    // A deadline is "still auto" if it's blank or equals the value derived from
+    // the *previous* contest date (i.e. the user hasn't hand-edited it). Refilling
+    // in that case lets a corrected contest date pull the deadline along — the
+    // reported bug was a stale year sticking after the date was fixed — while a
+    // hand-entered deadline (≠ prevAuto) is still never clobbered.
+    const prevAuto = autoDeadlineFor(contest.details.contestDate);
+    const stillAuto = (v: string) => !v || v === prevAuto;
     if (auto) {
-      if (!details.entrySystemDeadline) details.entrySystemDeadline = auto;
-      if (!details.lightCueDeadlineDate) details.lightCueDeadlineDate = auto;
+      if (stillAuto(details.entrySystemDeadline)) details.entrySystemDeadline = auto;
+      if (stillAuto(details.lightCueDeadlineDate)) details.lightCueDeadlineDate = auto;
     }
   }
   return { ...touch(contest, now), details };
@@ -1726,11 +1733,17 @@ export function numSchools(contest: Contest): number {
  * Deadline default: 10 days before the contest, as an ISO date. Reproduces
  * v12 autoCalcDeadlines() exactly, including its local-noon anchor (which
  * makes the subtraction immune to DST edges). '' in ⇒ '' out.
+ *
+ * Implausible years (< 1000) are treated as blank. A native `<input type="date">`
+ * emits a *complete, valid* date after only the first year digit — typing "2027"
+ * momentarily yields `0002-…`, `0020-…`, `0202-…` — so without this guard the
+ * first keystroke would seed a year-0002 deadline that the "fill only when blank"
+ * rule then refuses to correct.
  */
 export function autoDeadlineFor(contestDate: string): string {
   if (!contestDate) return '';
   const d = new Date(contestDate + 'T12:00:00');
-  if (isNaN(d.getTime())) return '';
+  if (isNaN(d.getTime()) || d.getFullYear() < 1000) return '';
   d.setDate(d.getDate() - 10);
   return d.toISOString().substring(0, 10);
 }

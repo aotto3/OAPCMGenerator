@@ -430,6 +430,41 @@ describe('auto-calculated deadlines (v12 autoCalcDeadlines)', () => {
     const c = withDetails(contest(), { firstShowTime: '11:00 AM' });
     expect(c.details.entrySystemDeadline).toBe('');
   });
+
+  it('treats implausible (sub-1000) years as blank', () => {
+    // A native date input emits complete valid dates mid-typing: "2027" passes
+    // through 0002/0020/0202 before landing on 2027.
+    expect(autoDeadlineFor('0002-03-18')).toBe('');
+    expect(autoDeadlineFor('0202-03-18')).toBe('');
+    expect(autoDeadlineFor('2027-03-18')).toBe('2027-03-08');
+  });
+
+  it('does not freeze a year-0002 deadline while the year is being typed', () => {
+    // Simulate typing the year of 3/18/2027 digit by digit.
+    let c = contest();
+    for (const cd of ['0002-03-18', '0020-03-18', '0202-03-18', '2027-03-18']) {
+      c = withDetails(c, { contestDate: cd });
+    }
+    expect(c.details.contestDate).toBe('2027-03-18');
+    expect(c.details.entrySystemDeadline).toBe('2027-03-08');
+    expect(c.details.lightCueDeadlineDate).toBe('2027-03-08');
+  });
+
+  it('pulls an auto-set deadline along when the contest date is corrected', () => {
+    let c = withDetails(contest(), { contestDate: '2027-03-18' });
+    expect(c.details.entrySystemDeadline).toBe('2027-03-08');
+    c = withDetails(c, { contestDate: '2027-04-10' });
+    expect(c.details.entrySystemDeadline).toBe('2027-03-31'); // followed the date
+    expect(c.details.lightCueDeadlineDate).toBe('2027-03-31');
+  });
+
+  it('still never clobbers a hand-edited deadline when the date is corrected', () => {
+    let c = withDetails(contest(), { contestDate: '2027-03-18' });
+    c = withDetails(c, { entrySystemDeadline: '2027-03-01' }); // user override
+    c = withDetails(c, { contestDate: '2027-04-10' });
+    expect(c.details.entrySystemDeadline).toBe('2027-03-01'); // kept
+    expect(c.details.lightCueDeadlineDate).toBe('2027-03-31'); // auto, followed
+  });
 });
 
 describe('rehearsal day-2 logic (v12 updateRehearsalDay2Count)', () => {
