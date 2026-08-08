@@ -11,6 +11,17 @@ import {
   saveContest,
   type ContestSummary,
 } from '../storage/contestStore';
+import {
+  DEFAULT_SORT,
+  SORT_KEYS,
+  directionLabel,
+  isSortDirection,
+  isSortKey,
+  sortContests,
+  type SortDirection,
+  type SortKey,
+  type SortPref,
+} from './contestSort';
 
 /** Dashboard visibility filter (PRD #141). */
 type ContestFilter = 'active' | 'archived' | 'all';
@@ -19,6 +30,34 @@ const FILTER_LABELS: Record<ContestFilter, string> = { active: 'Active', archive
 function matchesFilter(summary: ContestSummary, filter: ContestFilter): boolean {
   if (filter === 'all') return true;
   return filter === 'archived' ? summary.archived : !summary.archived;
+}
+
+// Sort preference persists per-device (a view preference, not contest data), so
+// the dashboard reopens the way it was left. Guarded — any storage failure or a
+// stale/invalid value falls back to the default rather than throwing.
+const SORT_STORAGE_KEY = 'oap.dashboardSort';
+
+function loadSortPref(): SortPref {
+  try {
+    const raw = localStorage.getItem(SORT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<SortPref>;
+      if (isSortKey(parsed.key) && isSortDirection(parsed.direction)) {
+        return { key: parsed.key, direction: parsed.direction };
+      }
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return DEFAULT_SORT;
+}
+
+function saveSortPref(pref: SortPref): void {
+  try {
+    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(pref));
+  } catch {
+    /* persistence is best-effort */
+  }
 }
 
 function lastEdited(iso: string): string {
@@ -57,8 +96,15 @@ export function Dashboard({
 }) {
   const [contests, setContests] = useState<ContestSummary[] | null>(null);
   const [filter, setFilter] = useState<ContestFilter>('active');
+  const [sort, setSort] = useState<SortPref>(loadSortPref);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Persist on every change so the choice survives a reload.
+  function updateSort(next: SortPref) {
+    setSort(next);
+    saveSortPref(next);
+  }
 
   useEffect(() => {
     let active = true;
@@ -128,6 +174,9 @@ export function Dashboard({
     setContests(await listContests());
   }
 
+  // The rows to render: current filter applied, then sorted by the chosen key.
+  const visible = contests ? sortContests(contests.filter((c) => matchesFilter(c, filter)), sort) : [];
+
   return (
     <main className="page">
       <header className="page-header">
@@ -165,20 +214,50 @@ export function Dashboard({
       )}
 
       {contests && contests.length > 0 && (
-        <div className="dashboard-filters" role="group" aria-label="Filter contests">
-          {(['active', 'archived', 'all'] as const).map((f) => {
-            const count = contests.filter((c) => matchesFilter(c, f)).length;
-            return (
-              <button
-                key={f}
-                className={filter === f ? 'filter-btn is-active' : 'filter-btn'}
-                aria-pressed={filter === f}
-                onClick={() => setFilter(f)}
+        <div className="dashboard-controls">
+          <div className="dashboard-filters" role="group" aria-label="Filter contests">
+            {(['active', 'archived', 'all'] as const).map((f) => {
+              const count = contests.filter((c) => matchesFilter(c, f)).length;
+              return (
+                <button
+                  key={f}
+                  className={filter === f ? 'filter-btn is-active' : 'filter-btn'}
+                  aria-pressed={filter === f}
+                  onClick={() => setFilter(f)}
+                >
+                  {FILTER_LABELS[f]} ({count})
+                </button>
+              );
+            })}
+          </div>
+          <div className="dashboard-sort">
+            <label>
+              Sort by{' '}
+              <select
+                value={sort.key}
+                onChange={(e) => updateSort({ ...sort, key: e.target.value as SortKey })}
               >
-                {FILTER_LABELS[f]} ({count})
-              </button>
-            );
-          })}
+                {SORT_KEYS.map(({ key, label }) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="visually-hidden">Order</span>
+              <select
+                value={sort.direction}
+                onChange={(e) => updateSort({ ...sort, direction: e.target.value as SortDirection })}
+              >
+                {(['asc', 'desc'] as const).map((d) => (
+                  <option key={d} value={d}>
+                    {directionLabel(sort.key, d)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       )}
 
@@ -186,15 +265,13 @@ export function Dashboard({
         <p className="muted">Loading…</p>
       ) : contests.length === 0 ? (
         <p className="muted">No contests yet. Create one to get started.</p>
-      ) : contests.filter((c) => matchesFilter(c, filter)).length === 0 ? (
+      ) : visible.length === 0 ? (
         <p className="muted">
           {filter === 'archived' ? 'No archived contests.' : 'No active contests — check Archived.'}
         </p>
       ) : (
         <ul className="contest-list">
-          {contests
-            .filter((c) => matchesFilter(c, filter))
-            .map((c) => (
+          {visible.map((c) => (
             <li key={c.id} className={c.archived ? 'contest-row is-archived' : 'contest-row'}>
               <button className="contest-open" onClick={() => onOpen(c.id)}>
                 <span className="contest-row-line contest-row-title">
