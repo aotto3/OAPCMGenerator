@@ -17,6 +17,9 @@ function s(partial: Partial<ContestSummary> & { id: string }): ContestSummary {
     contestDate: '',
     hostSchoolName: '',
     archived: false,
+    contestLevel: 'District',
+    classification: '5A',
+    contestYear: '2026',
     ...partial,
   };
 }
@@ -78,6 +81,31 @@ describe('sortContests', () => {
     const input = [s({ id: 'a', contestDate: '2026-03-10' }), s({ id: 'b', contestDate: '2026-01-05' })];
     sortContests(input, { key: 'date', direction: 'asc' });
     expect(input.map((c) => c.id)).toEqual(['a', 'b']);
+  });
+
+  it('sorts by level in UIL progression, not alphabetically', () => {
+    // Alphabetical would give Area, BiDistrict, District, Region, Zone — progression must not.
+    const region = s({ id: 'region', contestLevel: 'Region' });
+    const zone = s({ id: 'zone', contestLevel: 'Zone' });
+    const bi = s({ id: 'bi', contestLevel: 'BiDistrict' });
+    expect(ids([region, zone, bi], { key: 'level', direction: 'asc' })).toEqual(['zone', 'bi', 'region']);
+    expect(ids([region, zone, bi], { key: 'level', direction: 'desc' })).toEqual(['region', 'bi', 'zone']);
+  });
+
+  it('sorts by classification 1A → 6A numerically', () => {
+    const sixA = s({ id: '6a', classification: '6A' });
+    const oneA = s({ id: '1a', classification: '1A' });
+    const threeA = s({ id: '3a', classification: '3A' });
+    expect(ids([sixA, oneA, threeA], { key: 'classification', direction: 'asc' })).toEqual(['1a', '3a', '6a']);
+    expect(ids([sixA, oneA, threeA], { key: 'classification', direction: 'desc' })).toEqual(['6a', '3a', '1a']);
+  });
+
+  it('sorts by contest year numerically, blanks at the bottom in both directions', () => {
+    const y2027 = s({ id: 'y2027', contestYear: '2027' });
+    const y2025 = s({ id: 'y2025', contestYear: '2025' });
+    const blank = s({ id: 'blank', contestYear: '' });
+    expect(ids([y2027, blank, y2025], { key: 'year', direction: 'asc' })).toEqual(['y2025', 'y2027', 'blank']);
+    expect(ids([y2027, blank, y2025], { key: 'year', direction: 'desc' })).toEqual(['y2027', 'y2025', 'blank']);
   });
 });
 
