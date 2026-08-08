@@ -6,6 +6,7 @@ export function TextField({
   value,
   onChange,
   type = 'text',
+  inputMode,
   placeholder,
   hint,
   wide,
@@ -15,6 +16,7 @@ export function TextField({
   value: string;
   onChange?: (value: string) => void;
   type?: 'text' | 'email' | 'tel' | 'date' | 'password';
+  inputMode?: 'text' | 'numeric' | 'tel' | 'decimal';
   placeholder?: string;
   hint?: string;
   wide?: boolean;
@@ -25,6 +27,7 @@ export function TextField({
       {label}
       <input
         type={type}
+        inputMode={inputMode}
         value={value}
         placeholder={placeholder}
         readOnly={readOnly}

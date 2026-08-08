@@ -1,14 +1,31 @@
 import {
   CLASSIFICATIONS,
   CONTEST_LEVELS,
+  LEVEL_FIELDS,
   contestNamePreview,
   withIdentity,
   type Contest,
   type ContestIdentity,
+  type LevelFieldKey,
   type SectionCompletion,
 } from '../../model/contest';
 import { Section } from './Section';
 import { CopyButton, SelectField, TextField } from './fields';
+
+/** Per-field label + placeholder for the level identifiers, keyed to LEVEL_FIELDS. */
+const LEVEL_FIELD_META: Record<LevelFieldKey, { label: string; placeholder: string }> = {
+  region: { label: 'Region', placeholder: 'e.g. 2' },
+  area: { label: 'Area', placeholder: 'e.g. 1' },
+  district: { label: 'District', placeholder: 'e.g. 20' },
+  districtSecond: { label: 'Second District', placeholder: 'e.g. 21' },
+  zone: { label: 'Zone', placeholder: 'e.g. 3' },
+};
+
+/** BiDistrict's `district` box is the pair's FIRST slot — label it so. */
+function levelFieldLabel(level: string, key: LevelFieldKey): string {
+  if (level === 'BiDistrict' && key === 'district') return 'First District';
+  return LEVEL_FIELD_META[key].label;
+}
 
 export function IdentitySection({
   contest,
@@ -40,12 +57,16 @@ export function IdentitySection({
           options={CLASSIFICATIONS}
           onChange={(v) => edit({ classification: v })}
         />
-        <TextField
-          label="District / Zone / Area Number"
-          placeholder="e.g. 20"
-          value={identity.districtNumber}
-          onChange={(v) => edit({ districtNumber: v })}
-        />
+        {LEVEL_FIELDS[identity.contestLevel].map((key) => (
+          <TextField
+            key={key}
+            label={levelFieldLabel(identity.contestLevel, key)}
+            inputMode="numeric"
+            placeholder={LEVEL_FIELD_META[key].placeholder}
+            value={identity[key]}
+            onChange={(v) => edit({ [key]: v })}
+          />
+        ))}
         <label className="field">
           Contest Name Preview
           <span className="input-with-button">

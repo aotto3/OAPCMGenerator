@@ -30,7 +30,7 @@ const GOLDEN = join(
 
 /** A fully-populated contest — the letter reads nearly every field. */
 function fixtureContest(): Contest {
-  let c = createContest({ id: 'slice6-letter-fixture', now: NOW, identity: { districtNumber: '20' } });
+  let c = createContest({ id: 'slice6-letter-fixture', now: NOW, identity: { district: '20' } });
   c = withIdentity(
     c,
     {

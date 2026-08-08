@@ -50,10 +50,16 @@ import {
   contestNamePreview,
   contestTitleLong,
   createContest,
+  LEVEL_FIELDS,
+  retainLevelFields,
+  levelNumberText,
   duplicateContest,
   generationWarnings,
   importContest,
   defaultAdjudicators,
+  defaultCmInfo,
+  defaultDetails,
+  defaultSchools,
   defaultDocumentSelection,
   entryFeeDisplay,
   lockCritique,
@@ -121,7 +127,11 @@ describe('createContest', () => {
       contestYear: '2026',
       contestLevel: 'District',
       classification: '5A',
-      districtNumber: '',
+      region: '',
+      area: '',
+      district: '',
+      districtSecond: '',
+      zone: '',
       hostSchoolName: '',
       hostVenueName: '',
       hostAddress: '',
@@ -196,10 +206,10 @@ describe('createContest', () => {
 describe('update helpers', () => {
   it('withIdentity patches immutably and bumps updatedAt', () => {
     const before = contest();
-    const after = withIdentity(before, { districtNumber: '20' }, LATER);
-    expect(after.identity.districtNumber).toBe('20');
+    const after = withIdentity(before, { district: '20' }, LATER);
+    expect(after.identity.district).toBe('20');
     expect(after.updatedAt).toBe(LATER);
-    expect(before.identity.districtNumber).toBe(''); // original untouched
+    expect(before.identity.district).toBe(''); // original untouched
   });
 
   it('withCmInfo patches CM fields', () => {
@@ -364,7 +374,7 @@ describe('document selection', () => {
 });
 
 describe('derived names (v12 formats)', () => {
-  const id = contest({ contestYear: '2026', districtNumber: '20' }).identity;
+  const id = contest({ contestYear: '2026', district: '20' }).identity;
 
   it('display / folder name: "2026 — 5A District 20 OAP"', () => {
     expect(contestDisplayName(id)).toBe('2026 — 5A District 20 OAP');
@@ -382,20 +392,152 @@ describe('derived names (v12 formats)', () => {
     expect(contestTitleLong(id)).toBe('2026 UIL 5A District 20 One-Act Play Contest');
   });
 
-  it('omits the number when districtNumber is blank (e.g. BiDistrict)', () => {
-    const bidc = contest({ contestLevel: 'BiDistrict', districtNumber: '' }).identity;
+  it('omits the number when the level has no number (e.g. blank BiDistrict)', () => {
+    const bidc = contest({ contestLevel: 'BiDistrict' }).identity;
     expect(contestDisplayName(bidc)).toBe('2026 — 5A BiDistrict OAP');
     expect(contestFullName(bidc)).toBe('UIL 5A BiDistrict One-Act Play Contest');
   });
 
   it('drops empty segments in the preview like v12 filter(Boolean)', () => {
-    const noYear = contest({ contestYear: '', districtNumber: '20' }).identity;
+    const noYear = contest({ contestYear: '', district: '20' }).identity;
     expect(contestNamePreview(noYear)).toBe('5A — District 20 — OAP');
   });
 
   it('trims whitespace in year and number like v12', () => {
-    const padded = contest({ contestYear: ' 2026 ', districtNumber: ' 20 ' }).identity;
+    const padded = contest({ contestYear: ' 2026 ', district: ' 20 ' }).identity;
     expect(contestNamePreview(padded)).toBe('2026 — 5A — District 20 — OAP');
+  });
+});
+
+describe('level fields (PRD #136)', () => {
+  it('LEVEL_FIELDS lists the identifier fields each level uses', () => {
+    expect(LEVEL_FIELDS.Zone).toEqual(['region', 'area', 'district', 'zone']);
+    expect(LEVEL_FIELDS.District).toEqual(['district']);
+    expect(LEVEL_FIELDS.BiDistrict).toEqual(['region', 'area', 'district', 'districtSecond']);
+    expect(LEVEL_FIELDS.Area).toEqual(['region', 'area']);
+    expect(LEVEL_FIELDS.Region).toEqual(['region']);
+  });
+
+  describe('levelNumberText renders the level own identifier', () => {
+    it('District / Region / Area / Zone render their single field', () => {
+      expect(levelNumberText(contest({ contestLevel: 'District', district: '20' }).identity)).toBe('20');
+      expect(levelNumberText(contest({ contestLevel: 'Region', region: '2' }).identity)).toBe('2');
+      expect(levelNumberText(contest({ contestLevel: 'Area', area: '1' }).identity)).toBe('1');
+      expect(levelNumberText(contest({ contestLevel: 'Zone', zone: '3' }).identity)).toBe('3');
+    });
+
+    it('BiDistrict joins its two districts with a dash', () => {
+      expect(
+        levelNumberText(contest({ contestLevel: 'BiDistrict', district: '19', districtSecond: '20' }).identity),
+      ).toBe('19-20');
+    });
+
+    it('BiDistrict with a single district renders no dangling dash', () => {
+      expect(levelNumberText(contest({ contestLevel: 'BiDistrict', district: '19' }).identity)).toBe('19');
+      expect(levelNumberText(contest({ contestLevel: 'BiDistrict', districtSecond: '20' }).identity)).toBe('20');
+    });
+
+    it('renders "" when the level has no number', () => {
+      expect(levelNumberText(contest({ contestLevel: 'BiDistrict' }).identity)).toBe('');
+      expect(levelNumberText(contest({ contestLevel: 'District' }).identity)).toBe('');
+    });
+
+    it('trims whitespace', () => {
+      expect(
+        levelNumberText(contest({ contestLevel: 'BiDistrict', district: ' 19 ', districtSecond: ' 20 ' }).identity),
+      ).toBe('19-20');
+    });
+  });
+
+  describe('retainLevelFields keeps the level fields and blanks the rest', () => {
+    const full = { region: '2', area: '1', district: '19', districtSecond: '20', zone: '3' };
+
+    it('District keeps only district', () => {
+      expect(retainLevelFields(full, 'District')).toEqual({
+        region: '',
+        area: '',
+        district: '19',
+        districtSecond: '',
+        zone: '',
+      });
+    });
+
+    it('BiDistrict keeps region, area, and both districts', () => {
+      expect(retainLevelFields(full, 'BiDistrict')).toEqual({
+        region: '2',
+        area: '1',
+        district: '19',
+        districtSecond: '20',
+        zone: '',
+      });
+    });
+
+    it('Area keeps region and area only', () => {
+      expect(retainLevelFields(full, 'Area')).toEqual({
+        region: '2',
+        area: '1',
+        district: '',
+        districtSecond: '',
+        zone: '',
+      });
+    });
+
+    it('Zone keeps region, area, district, zone (drops the BiDistrict partner)', () => {
+      expect(retainLevelFields(full, 'Zone')).toEqual({
+        region: '2',
+        area: '1',
+        district: '19',
+        districtSecond: '',
+        zone: '3',
+      });
+    });
+  });
+});
+
+describe('derived names across every level (PRD #136)', () => {
+  const named = (patch: Partial<Contest['identity']>) =>
+    contestFullName(contest({ contestYear: '2026', classification: '5A', ...patch }).identity);
+
+  it('renders each level own identifier', () => {
+    expect(named({ contestLevel: 'District', district: '20' })).toBe('UIL 5A District 20 One-Act Play Contest');
+    expect(named({ contestLevel: 'BiDistrict', district: '19', districtSecond: '20' })).toBe(
+      'UIL 5A BiDistrict 19-20 One-Act Play Contest',
+    );
+    expect(named({ contestLevel: 'Area', area: '1' })).toBe('UIL 5A Area 1 One-Act Play Contest');
+    expect(named({ contestLevel: 'Zone', zone: '3' })).toBe('UIL 5A Zone 3 One-Act Play Contest');
+    expect(named({ contestLevel: 'Region', region: '2' })).toBe('UIL 5A Region 2 One-Act Play Contest');
+  });
+
+  it('a blank level number renders the level word with no stray dash or space', () => {
+    expect(named({ contestLevel: 'District' })).toBe('UIL 5A District One-Act Play Contest');
+    expect(named({ contestLevel: 'BiDistrict', district: '19' })).toBe(
+      'UIL 5A BiDistrict 19 One-Act Play Contest',
+    );
+  });
+});
+
+describe('withIdentity level switch (PRD #136)', () => {
+  it('clears fields the new level does not use, keeps overlapping ones', () => {
+    // District 20 → BiDistrict keeps the district (now the First slot).
+    const c = withIdentity(contest({ district: '20' }), { contestLevel: 'BiDistrict' }, LATER);
+    expect(c.identity.district).toBe('20');
+    expect(c.identity.districtSecond).toBe('');
+    expect(c.identity.zone).toBe('');
+  });
+
+  it('drops the hidden fields when switching down to a narrower level', () => {
+    // A Zone contest with the full chain, switched to District, keeps only district.
+    let c = withIdentity(contest(), { contestLevel: 'Zone', region: '2', area: '1', district: '19', zone: '3' });
+    c = withIdentity(c, { contestLevel: 'District' });
+    expect(c.identity.district).toBe('19');
+    expect(c.identity.region).toBe('');
+    expect(c.identity.area).toBe('');
+    expect(c.identity.zone).toBe('');
+  });
+
+  it('leaves level fields alone when the level is not part of the patch', () => {
+    const c = withIdentity(contest({ district: '20' }), { hostSchoolName: 'Host HS' });
+    expect(c.identity.district).toBe('20');
   });
 });
 
@@ -705,7 +847,7 @@ describe('performance-order draw lifecycle (PRD #65)', () => {
 
 describe('serialize / parse', () => {
   it('round-trips a fully filled contest exactly (minus device-only fields)', () => {
-    let c = contest({ districtNumber: '20', hostSchoolName: 'Friendswood High School' });
+    let c = contest({ district: '20', hostSchoolName: 'Friendswood High School' });
     c = withDetails(c, { contestDate: '2026-04-10', entryFee: '50' });
     c = withAdjudicator(c, 0, { name: 'Jane Judge', needsHotel: true, hotelNights: 2 });
     c = withSchool(c, 0, { name: 'Westlake HS', playTitle: 'Our Town' });
@@ -767,12 +909,13 @@ describe('serialize / parse', () => {
         id: 'old-id',
         createdAt: NOW,
         updatedAt: NOW,
-        identity: contest({ districtNumber: '20', hostSchoolName: 'Friendswood HS' }).identity,
+        identity: contest({ district: '20', hostSchoolName: 'Friendswood HS' }).identity,
       },
     });
     const migrated = parseContest(v1);
     expect(migrated.id).toBe('old-id');
-    expect(migrated.identity.districtNumber).toBe('20'); // existing data preserved
+    expect(migrated.identity.hostSchoolName).toBe('Friendswood HS'); // existing identity data preserved
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     expect(migrated.details).toEqual(contest().details);
     expect(migrated.schools).toHaveLength(DEFAULT_SCHOOLS);
     expect(migrated.adjudicators).toHaveLength(3);
@@ -784,20 +927,20 @@ describe('serialize / parse', () => {
 
   it('MIGRATION: a v2 (Slices 2–9) payload gains critique = null without losing data', () => {
     // A full v2 contest minus the field #23 added: strip `critique` from the envelope.
-    const full = withSchool(contest({ districtNumber: '20' }), 0, { name: 'Westlake HS' });
+    const full = withSchool(contest({ district: '20' }), 0, { name: 'Westlake HS' });
     const { critique: _dropped, speechwire: _dev, ...v2Contest } = full;
     const v2 = JSON.stringify({ schemaVersion: 2, contest: v2Contest });
 
     const migrated = parseContest(v2);
     expect(migrated.critique).toBeNull();
     expect(migrated.schools[0].name).toBe('Westlake HS'); // pre-existing data preserved
-    expect(migrated.identity.districtNumber).toBe('20');
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 
   it('MIGRATION: a v6 (Group C) payload gains three blank milestone dates on every adjudicator', () => {
     // A v6 contest: strip the Group-D milestone fields the migration will add back.
-    const full = withAdjudicator(contest({ districtNumber: '20' }), 0, { name: 'Jane Judge' });
+    const full = withAdjudicator(contest({ district: '20' }), 0, { name: 'Jane Judge' });
     const { speechwire: _dev, ...syncable } = full;
     const adjudicators = syncable.adjudicators.map((j) => {
       const { ttaoContractDate, paymentPaperworkSentDate, paymentPaperworkReturnedDate, ...rest } = j;
@@ -838,7 +981,7 @@ describe('serialize / parse', () => {
 
 describe('contestFileName', () => {
   it('is the display name plus the contest-file suffix', () => {
-    expect(contestFileName(contest({ districtNumber: '20' }).identity)).toBe(
+    expect(contestFileName(contest({ district: '20' }).identity)).toBe(
       '2026 — 5A District 20 OAP — Contest File.json',
     );
   });
@@ -884,7 +1027,7 @@ describe('generationWarnings', () => {
 
 /** A fully-filled contest to exercise import round-trips and the duplicate policy. */
 function filledContest(): Contest {
-  let c = contest({ districtNumber: '20', hostSchoolName: 'Friendswood High School' });
+  let c = contest({ district: '20', hostSchoolName: 'Friendswood High School' });
   c = withCmInfo(c, { techContact: 'Brian Hamlin' });
   c = withDetails(c, {
     contestDate: '2026-04-10',
@@ -948,14 +1091,15 @@ describe('importContest', () => {
         id: 'old-id',
         createdAt: NOW,
         updatedAt: NOW,
-        identity: contest({ districtNumber: '20', hostSchoolName: 'Friendswood HS' }).identity,
+        identity: contest({ district: '20', hostSchoolName: 'Friendswood HS' }).identity,
       },
     });
     const imported = importContest(v1File, { id: 'fresh-id', now: LATER });
 
     expect(imported.id).toBe('fresh-id'); // not the file's old id
     expect(imported.createdAt).toBe(LATER);
-    expect(imported.identity.districtNumber).toBe('20'); // existing data preserved
+    expect(imported.identity.hostSchoolName).toBe('Friendswood HS'); // existing identity data preserved
+    expect(imported.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     // Sections the old file lacked are filled from defaults by the migration.
     expect(imported.details).toEqual(contest().details);
     expect(imported.schools).toHaveLength(DEFAULT_SCHOOLS);
@@ -1456,7 +1600,7 @@ describe('v8 → v9 migration (readiness checklist)', () => {
     expect(migrated.customReadinessItems).toEqual([]);
     // Pre-existing data preserved.
     expect(migrated.schools[0].name).toBe('Westlake HS');
-    expect(migrated.identity.districtNumber).toBe('20');
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     // Re-serializes at the current version.
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
@@ -1468,16 +1612,65 @@ describe('v8 → v9 migration (readiness checklist)', () => {
     let c = addReadinessItem(filledContest(), { id: 'parking', label: 'Parking', phase: 'contest_day' });
     c = setReadinessStatus(c, 'venue_reserved', 'done');
     const back = parseContest(serializeContest(c));
-    expect(JSON.parse(serializeContest(c)).schemaVersion).toBe(9); // current version
+    expect(JSON.parse(serializeContest(c)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION); // current version
     expect(back.readinessChecks).toEqual({ venue_reserved: 'done' });
     expect(back.customReadinessItems).toEqual([{ id: 'parking', label: 'Parking', phase: 'contest_day' }]);
+  });
+});
+
+describe('v9 → v10 migration (level fields — PRD #136)', () => {
+  it('drops the legacy districtNumber and starts the structured level fields blank', () => {
+    // A v9 identity had the single free-text districtNumber and none of the new fields.
+    const v9 = JSON.stringify({
+      schemaVersion: 9,
+      contest: {
+        id: 'v9-id',
+        createdAt: NOW,
+        updatedAt: NOW,
+        identity: {
+          contestYear: '2026',
+          contestLevel: 'District',
+          classification: '5A',
+          districtNumber: '20',
+          hostSchoolName: 'Friendswood HS',
+          hostVenueName: '',
+          hostAddress: '',
+        },
+        cmInfo: defaultCmInfo(),
+        details: defaultDetails(),
+        adjudicators: defaultAdjudicators(),
+        schools: defaultSchools(),
+        customComplianceItems: [],
+        documents: defaultDocumentSelection(),
+        critique: null,
+        draw: null,
+        results: null,
+        nextContest: defaultNextContest(),
+        readinessChecks: {},
+        customReadinessItems: [],
+      },
+    });
+
+    const migrated = parseContest(v9);
+    // Legacy field is gone; the structured fields exist and are blank.
+    expect('districtNumber' in migrated.identity).toBe(false);
+    expect(migrated.identity.region).toBe('');
+    expect(migrated.identity.area).toBe('');
+    expect(migrated.identity.district).toBe('');
+    expect(migrated.identity.districtSecond).toBe('');
+    expect(migrated.identity.zone).toBe('');
+    // Other identity data is untouched.
+    expect(migrated.identity.hostSchoolName).toBe('Friendswood HS');
+    expect(migrated.identity.contestLevel).toBe('District');
+    // Re-serializes at the current version.
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });
 
 describe('v3 → v4 migration (compliance tracker)', () => {
   it('migrates a pre-compliance (v3) payload to an all-Pending tracker', () => {
     const v3Contest = {
-      ...contest({ districtNumber: '20' }),
+      ...contest({ district: '20' }),
       schools: [
         { name: 'Westlake HS', directors: [{ name: 'Pat', email: 'pat@x.org' }], playTitle: 'Our Town', performanceOrder: 1 },
         { name: 'Anderson HS', directors: [{ name: '', email: '' }], playTitle: '', performanceOrder: 2 },
@@ -1491,7 +1684,7 @@ describe('v3 → v4 migration (compliance tracker)', () => {
     expect(migrated.customComplianceItems).toEqual([]);
     expect(migrated.schools.map((s) => s.compliance)).toEqual([{}, {}]);
     expect(migrated.schools[0].name).toBe('Westlake HS'); // pre-existing data preserved
-    expect(migrated.identity.districtNumber).toBe('20');
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     // A migrated contest reads as all-Pending and re-serializes at the new version.
     expect(complianceProgress(migrated.schools[0], complianceItems(migrated)).color).toBe('red');
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
@@ -1509,7 +1702,7 @@ describe('v4 → v5 migration (performance-order draw)', () => {
     // Pre-existing data (including the hand-entered performance order) is preserved.
     expect(migrated.schools[0].name).toBe('Westlake HS');
     expect(migrated.schools[0].performanceOrder).toBe(3);
-    expect(migrated.identity.districtNumber).toBe('20');
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });
@@ -1579,7 +1772,7 @@ describe('advanceContest', () => {
     // Identity carry vs clear.
     expect(adv.identity.classification).toBe(src.identity.classification);
     expect(adv.identity.contestYear).toBe(src.identity.contestYear);
-    expect(adv.identity.districtNumber).toBe('');
+    expect(adv.identity.district).toBe('');
     expect(adv.identity.hostSchoolName).toBe('');
     expect(adv.identity.hostVenueName).toBe('');
     expect(adv.identity.hostAddress).toBe('');
@@ -1619,10 +1812,10 @@ describe('advanceContest', () => {
   it('honors identity carry-forward overrides, and they win over nextContest seeding', () => {
     const adv = advanceContest(advancing(), {
       id: 'adv',
-      identity: { hostSchoolName: 'Carried Host', districtNumber: '5', hostVenueName: 'Explicit Venue' },
+      identity: { hostSchoolName: 'Carried Host', district: '5', hostVenueName: 'Explicit Venue' },
     })!;
     expect(adv.identity.hostSchoolName).toBe('Carried Host');
-    expect(adv.identity.districtNumber).toBe('5');
+    expect(adv.identity.district).toBe('5');
     expect(adv.identity.hostVenueName).toBe('Explicit Venue'); // override beats the seeded location
     expect(adv.identity.contestLevel).toBe('BiDistrict'); // still bumped
   });
@@ -1818,7 +2011,7 @@ describe('v5 → v6 migration (results & advancement)', () => {
     expect(migrated.nextContest).toEqual(defaultNextContest());
     // Pre-existing data is preserved and it re-serializes at the current version.
     expect(migrated.schools[0].name).toBe('Westlake HS');
-    expect(migrated.identity.districtNumber).toBe('20');
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });
@@ -2076,7 +2269,7 @@ describe('v7 → v8 migration (company roster + bios)', () => {
     const migrated = parseContest(v7);
     // Pre-existing data preserved.
     expect(migrated.schools[0].name).toBe('Westlake HS');
-    expect(migrated.identity.districtNumber).toBe('20');
+    expect(migrated.identity.district).toBe(''); // level fields dropped by the v9→v10 migration
     // Company fields back-filled blank on every school.
     for (const s of migrated.schools) {
       expect(s.roster).toEqual([]);

@@ -222,7 +222,7 @@ describe('Year-Round Checklist — content', () => {
 /** Guards the two documents that key layout on identity — not just the fixture. */
 describe('identity-driven variations', () => {
   it("titles the contest schedule with a Zone contest's derived name", () => {
-    const zone = withIdentity(fixtureContest(), { contestLevel: 'Zone', districtNumber: '' }, FIXTURE_NOW);
+    const zone = withIdentity(fixtureContest(), { contestLevel: 'Zone' }, FIXTURE_NOW);
     const texts = cellTexts(firstSheet(buildContestSchedule(zone)).ws);
     expect(texts[0]).toContain('2026 UIL 5A Zone One-Act Play Contest');
   });

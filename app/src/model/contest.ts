@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 9;
+export const CONTEST_SCHEMA_VERSION = 10;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -43,8 +43,21 @@ export interface ContestIdentity {
   contestYear: string;
   contestLevel: ContestLevel;
   classification: Classification;
-  /** District / Zone / Area number, e.g. "20". Free text; may be empty. */
-  districtNumber: string;
+  /**
+   * Level identifiers, driven by contestLevel (see LEVEL_FIELDS). Each is free
+   * numeric text and may be empty. Only the fields LEVEL_FIELDS lists for the
+   * current level are shown/kept; the rest are cleared on a level switch.
+   *   Zone       → region, area, district, zone
+   *   District   → district
+   *   BiDistrict → region, area, district (First), districtSecond (Second)
+   *   Area       → region, area
+   *   Region     → region
+   */
+  region: string;
+  area: string;
+  district: string;
+  districtSecond: string;
+  zone: string;
   hostSchoolName: string;
   hostVenueName: string;
   hostAddress: string;
@@ -666,7 +679,11 @@ export function createContest(options: NewContestOptions = {}): Contest {
       contestYear: String(new Date(now).getFullYear()),
       contestLevel: 'District',
       classification: '5A',
-      districtNumber: '',
+      region: '',
+      area: '',
+      district: '',
+      districtSecond: '',
+      zone: '',
       hostSchoolName: '',
       hostVenueName: '',
       hostAddress: '',
@@ -869,13 +886,18 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     .sort((a, b) => a - b)
     .map((i) => contest.schools[i]);
 
-  // Identity: bump the level, carry classification + year, clear district + host
+  // Identity: bump the level, carry classification + year, clear level + host
   // fields; nextContest.location seeds the venue; the caller's overrides win last.
+  // (Overlap-carry of level fields across the transition lands in a later slice.)
   const identity: ContestIdentity = {
     contestYear: contest.identity.contestYear,
     contestLevel: nextLevel,
     classification: contest.identity.classification,
-    districtNumber: '',
+    region: '',
+    area: '',
+    district: '',
+    districtSecond: '',
+    zone: '',
     hostSchoolName: '',
     hostVenueName: seed && next.location ? next.location : '',
     hostAddress: '',
@@ -943,9 +965,18 @@ function touch(contest: Contest, now?: string): Contest {
   return { ...contest, updatedAt: now ?? new Date().toISOString() };
 }
 
-/** Returns a copy with new identity values and a bumped updatedAt. */
+/**
+ * Returns a copy with new identity values and a bumped updatedAt. When the
+ * patch changes contestLevel, level fields the new level doesn't use are
+ * cleared (retainLevelFields) — a manual switch drops now-hidden numbers while
+ * fields shared with the new level keep their values.
+ */
 export function withIdentity(contest: Contest, patch: Partial<ContestIdentity>, now?: string): Contest {
-  return { ...touch(contest, now), identity: { ...contest.identity, ...patch } };
+  const identity = { ...contest.identity, ...patch };
+  if ('contestLevel' in patch && patch.contestLevel !== contest.identity.contestLevel) {
+    Object.assign(identity, retainLevelFields(identity, identity.contestLevel));
+  }
+  return { ...touch(contest, now), identity };
 }
 
 export function withCmInfo(contest: Contest, patch: Partial<CmInfo>, now?: string): Contest {
@@ -1679,9 +1710,74 @@ export function removeReadinessItem(contest: Contest, itemId: string, now?: stri
 
 /* ────────────────────────── derived values ────────────────────────── */
 
-/** "District 20" / "Zone" — level plus number when a number is present. */
+/* ────────────────────────── level fields ──────────────────────────
+ * Structured, level-driven identifiers replace v12's single free-text
+ * "District / Zone / Area Number" box (PRD #136). This cluster is the single
+ * source of truth for which fields each level uses and how the level renders
+ * into a name; withIdentity and advanceContest both reuse retainLevelFields so
+ * "clear on switch" and "carry what overlaps on advance" are the same rule.
+ * Co-located here (not a sibling) so contest.ts stays a zero-import leaf.
+ */
+
+/** The identity fields that carry a level number. */
+export type LevelFieldKey = 'region' | 'area' | 'district' | 'districtSecond' | 'zone';
+
+const ALL_LEVEL_FIELDS: readonly LevelFieldKey[] = ['region', 'area', 'district', 'districtSecond', 'zone'];
+
+/** Which level fields each contest level uses. Totality-typed: a new level fails to compile. */
+export const LEVEL_FIELDS: Record<ContestLevel, readonly LevelFieldKey[]> = {
+  Zone: ['region', 'area', 'district', 'zone'],
+  District: ['district'],
+  BiDistrict: ['region', 'area', 'district', 'districtSecond'],
+  Area: ['region', 'area'],
+  Region: ['region'],
+};
+
+/** The single field whose value IS the level's own name number (BiDistrict is the pair — see levelNumberText). */
+const LEVEL_OWN_FIELD: Record<ContestLevel, LevelFieldKey> = {
+  Zone: 'zone',
+  District: 'district',
+  BiDistrict: 'district',
+  Area: 'area',
+  Region: 'region',
+};
+
+/**
+ * Returns the five level fields with every field NOT used by `level` blanked;
+ * fields the level uses keep their current value. This one rule powers both
+ * behaviors: on a manual level switch it clears the now-hidden fields, and on
+ * advance it "carries what overlaps" (shared fields survive, the rest blank).
+ */
+export function retainLevelFields(
+  identity: Pick<ContestIdentity, LevelFieldKey>,
+  level: ContestLevel,
+): Pick<ContestIdentity, LevelFieldKey> {
+  const keep = LEVEL_FIELDS[level];
+  const out = {} as Pick<ContestIdentity, LevelFieldKey>;
+  for (const key of ALL_LEVEL_FIELDS) {
+    out[key] = keep.includes(key) ? identity[key] : '';
+  }
+  return out;
+}
+
+/**
+ * The rendered number part for the current level, e.g. "20", "19-20", "" —
+ * BiDistrict joins its two districts with "-" (a lone district renders with no
+ * dash; both blank renders ""). Every other level renders its own field.
+ */
+export function levelNumberText(identity: ContestIdentity): string {
+  if (identity.contestLevel === 'BiDistrict') {
+    return [identity.district, identity.districtSecond]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join('-');
+  }
+  return identity[LEVEL_OWN_FIELD[identity.contestLevel]].trim();
+}
+
+/** "District 20" / "BiDistrict 19-20" / "Region" — level plus its number when present. */
 function levelWithNumber(identity: ContestIdentity): string {
-  const num = identity.districtNumber.trim();
+  const num = levelNumberText(identity);
   return identity.contestLevel + (num ? ' ' + num : '');
 }
 
@@ -1993,6 +2089,20 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // blank-safe — an old contest loads as an all-Pending checklist. LAST bump in
   // the A–E→G sequence.
   8: (raw) => ({ ...raw, readinessChecks: {}, customReadinessItems: [] }),
+  // v9 predates level-driven identifiers (PRD #136): the single free-text
+  // `districtNumber` is dropped and the structured level fields start blank.
+  // Per the PRD, the old value is NOT mapped — the operator re-enters under the
+  // level's fields. Additive/blank-safe; an old contest loads with no number
+  // until re-entered.
+  9: (raw) => {
+    const identity =
+      typeof raw.identity === 'object' && raw.identity !== null ? (raw.identity as Record<string, unknown>) : {};
+    const { districtNumber: _dropped, ...rest } = identity;
+    return {
+      ...raw,
+      identity: { ...rest, region: '', area: '', district: '', districtSecond: '', zone: '' },
+    };
+  },
 };
 
 export function parseContest(json: string): Contest {
