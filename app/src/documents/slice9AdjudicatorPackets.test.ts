@@ -169,7 +169,7 @@ describe('Adjudicator Packets — computed values (intent)', () => {
   });
 
   it('maps contest level to the Evaluation checkbox and Ranking dropdown', () => {
-    const zone = withIdentity(fixtureContest(), { contestLevel: 'Zone', districtNumber: '' }, FIXTURE_NOW);
+    const zone = withIdentity(fixtureContest(), { contestLevel: 'Zone' }, FIXTURE_NOW);
     const zctx = adjPacketContext(zone);
     expect(evaluationValues('J', docSchools(zone)[0], zctx).levelCheckbox).toBe('Check Box6');
     expect(rankingValues(0, docSchools(zone), zctx).dropdowns['Level/Zone']).toBe('Zone');

@@ -18,7 +18,7 @@ import { buildContestArchive, normalizeResult } from './generate';
 const NOW = '2026-07-05T12:00:00.000Z';
 
 function contest(): Contest {
-  return createContest({ id: 'test-id', now: NOW, identity: { districtNumber: '20' } });
+  return createContest({ id: 'test-id', now: NOW, identity: { district: '20' } });
 }
 
 describe('DOCUMENT_REGISTRY', () => {

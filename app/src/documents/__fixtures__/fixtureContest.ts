@@ -36,7 +36,7 @@ export const FIXTURE_LETTER_DATE = new Date(2026, 6, 6);
 
 /** A fully-populated contest — the documents read nearly every field. */
 export function fixtureContest(): Contest {
-  let c = createContest({ id: 'slice8-doc-fixture', now: FIXTURE_NOW, identity: { districtNumber: '20' } });
+  let c = createContest({ id: 'slice8-doc-fixture', now: FIXTURE_NOW, identity: { district: '20' } });
   c = withIdentity(
     c,
     {
