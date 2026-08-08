@@ -508,6 +508,16 @@ describe('derived names across every level (PRD #136)', () => {
     expect(named({ contestLevel: 'Region', region: '2' })).toBe('UIL 5A Region 2 One-Act Play Contest');
   });
 
+  it('a Zone contest names its parent district too (District N Zone M)', () => {
+    expect(named({ contestLevel: 'Zone', district: '20', zone: '1' })).toBe(
+      'UIL 5A District 20 Zone 1 One-Act Play Contest',
+    );
+    // A Zone with a district but no zone number still shows the district + word.
+    expect(named({ contestLevel: 'Zone', district: '20' })).toBe('UIL 5A District 20 Zone One-Act Play Contest');
+    // A Zone with no district falls back to just the zone.
+    expect(named({ contestLevel: 'Zone', zone: '1' })).toBe('UIL 5A Zone 1 One-Act Play Contest');
+  });
+
   it('a blank level number renders the level word with no stray dash or space', () => {
     expect(named({ contestLevel: 'District' })).toBe('UIL 5A District One-Act Play Contest');
     expect(named({ contestLevel: 'BiDistrict', district: '19' })).toBe(
