@@ -1773,8 +1773,19 @@ export function levelNumberText(identity: ContestIdentity): string {
   return identity[LEVEL_OWN_FIELD[identity.contestLevel]].trim();
 }
 
-/** "District 20" / "BiDistrict 19-20" / "Region" — level plus its number when present. */
+/**
+ * "District 20" / "BiDistrict 19-20" / "Region" — level plus its number when
+ * present. Zone is the exception: it names its parent district too, e.g.
+ * "District 20 Zone 1" (the "Zone" word always shows; "District N" is prefixed
+ * when the district is set). Everything downstream — display name, file name,
+ * full title — flows through here.
+ */
 function levelWithNumber(identity: ContestIdentity): string {
+  if (identity.contestLevel === 'Zone') {
+    const district = identity.district.trim();
+    const zone = identity.zone.trim();
+    return [district ? `District ${district}` : '', zone ? `Zone ${zone}` : 'Zone'].filter(Boolean).join(' ');
+  }
   const num = levelNumberText(identity);
   return identity.contestLevel + (num ? ' ' + num : '');
 }
