@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 10;
+export const CONTEST_SCHEMA_VERSION = 11;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -490,6 +490,12 @@ export interface Contest {
   /** ISO 8601 timestamps. updatedAt is bumped by every update helper. */
   createdAt: string;
   updatedAt: string;
+  /**
+   * True when the CM has archived (hidden) this contest from the default
+   * dashboard list (PRD #141). Reversible and non-destructive — archiving only
+   * changes list visibility; the contest and all its data are untouched.
+   */
+  archived: boolean;
   identity: ContestIdentity;
   cmInfo: CmInfo;
   details: ContestDetails;
@@ -675,6 +681,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     id: options.id ?? crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
+    archived: false,
     identity: {
       contestYear: String(new Date(now).getFullYear()),
       contestLevel: 'District',
@@ -768,6 +775,9 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     id: options.id ?? crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
+    // A roll-forward duplicate is a fresh, active contest even if its source was
+    // archived.
+    archived: false,
     // identity + cmInfo + documents carry forward untouched (stable data).
     details: { ...contest.details, ...CLEARED_DETAIL_FIELDS },
     // Judges change every contest — start fresh.
@@ -919,6 +929,8 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     id: options.id ?? crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
+    // The advanced contest is a fresh, active event.
+    archived: false,
     identity,
     cmInfo,
     details,
@@ -979,6 +991,11 @@ export function withIdentity(contest: Contest, patch: Partial<ContestIdentity>, 
 
 export function withCmInfo(contest: Contest, patch: Partial<CmInfo>, now?: string): Contest {
   return { ...touch(contest, now), cmInfo: { ...contest.cmInfo, ...patch } };
+}
+
+/** Archive (hide from the default dashboard) or unarchive a contest. Reversible; bumps updatedAt (PRD #141). */
+export function withArchived(contest: Contest, archived: boolean, now?: string): Contest {
+  return { ...touch(contest, now), archived };
 }
 
 /**
@@ -2112,6 +2129,9 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
       identity: { ...rest, region: '', area: '', district: '', districtSecond: '', zone: '' },
     };
   },
+  // v10 predates archiving (PRD #141): every existing contest loads active.
+  // Additive and blank-safe.
+  10: (raw) => ({ ...raw, archived: false }),
 };
 
 export function parseContest(json: string): Contest {

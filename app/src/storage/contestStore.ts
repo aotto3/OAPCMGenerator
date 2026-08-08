@@ -34,6 +34,8 @@ interface ContestRecord {
   contestDate?: string;
   /** Denormalized host school name; see `contestDate` for the optionality note. */
   hostSchoolName?: string;
+  /** Denormalized archived flag; see `contestDate` for the optionality note. */
+  archived?: boolean;
   /** Versioned envelope from serializeContest(). */
   payload: string;
   /**
@@ -149,24 +151,28 @@ export interface ContestSummary {
   contestDate: string;
   /** Denormalized host school name, or '' when unset. */
   hostSchoolName: string;
+  /** Denormalized archived flag (PRD #141); false for active contests. */
+  archived: boolean;
 }
 
 /**
- * Builds a dashboard summary from a stored record. The date and host school are
- * denormalized onto the record at save time (like `name`), but records written
- * before that denormalization existed lack those fields — for them, parse the
+ * Builds a dashboard summary from a stored record. The date, host school, and
+ * archived flag are denormalized onto the record at save time (like `name`), but
+ * records written before a given field existed lack it — for those, parse the
  * payload once to recover the values so they still display without a re-save.
  * Pure and exported so the summary/fallback logic is testable without IndexedDB.
  */
 export function contestSummaryFromRecord(record: ContestRecord): ContestSummary {
   let contestDate = record.contestDate;
   let hostSchoolName = record.hostSchoolName;
-  if (contestDate === undefined || hostSchoolName === undefined) {
+  let archived = record.archived;
+  if (contestDate === undefined || hostSchoolName === undefined || archived === undefined) {
     const contest = parseContest(record.payload);
     contestDate ??= contest.details.contestDate;
     hostSchoolName ??= contest.identity.hostSchoolName;
+    archived ??= contest.archived;
   }
-  return { id: record.id, name: record.name, updatedAt: record.updatedAt, contestDate, hostSchoolName };
+  return { id: record.id, name: record.name, updatedAt: record.updatedAt, contestDate, hostSchoolName, archived };
 }
 
 /** Newest-edited first, for the dashboard. */
@@ -192,6 +198,7 @@ export async function saveContest(contest: Contest): Promise<void> {
     updatedAt: contest.updatedAt,
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
+    archived: contest.archived,
     payload: serializeContest(contest),
     deviceOnly: contest.speechwire,
   });
@@ -258,6 +265,7 @@ export async function putPulledContest(
     updatedAt,
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
+    archived: contest.archived,
     // Store the contest-only envelope locally; checkpoints live in their store.
     payload: serializeContest(contest),
     deviceOnly: existing?.deviceOnly ?? contest.speechwire,

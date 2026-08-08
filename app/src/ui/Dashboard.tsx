@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { contestDisplayName, createContest, duplicateContest, importContest } from '../model/contest';
+import { contestDisplayName, createContest, duplicateContest, importContest, withArchived } from '../model/contest';
 import type { Contest } from '../model/contest';
 import { triggerContestFileDownload } from '../documents/generate';
 import { reportContestExported, reportContestImported } from '../telemetry/telemetryClient';
@@ -8,8 +8,18 @@ import {
   getContest,
   listContests,
   onContestPulled,
+  saveContest,
   type ContestSummary,
 } from '../storage/contestStore';
+
+/** Dashboard visibility filter (PRD #141). */
+type ContestFilter = 'active' | 'archived' | 'all';
+const FILTER_LABELS: Record<ContestFilter, string> = { active: 'Active', archived: 'Archived', all: 'All' };
+
+function matchesFilter(summary: ContestSummary, filter: ContestFilter): boolean {
+  if (filter === 'all') return true;
+  return filter === 'archived' ? summary.archived : !summary.archived;
+}
 
 function lastEdited(iso: string): string {
   const date = new Date(iso);
@@ -46,6 +56,7 @@ export function Dashboard({
   onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
   const [contests, setContests] = useState<ContestSummary[] | null>(null);
+  const [filter, setFilter] = useState<ContestFilter>('active');
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -108,6 +119,15 @@ export function Dashboard({
     setContests(await listContests());
   }
 
+  // Archive/unarchive is a reversible edit made without opening the contest:
+  // load it, flip the flag, persist (which syncs), and refresh the list.
+  async function handleSetArchived(summary: ContestSummary, archived: boolean) {
+    const source = await getContest(summary.id);
+    if (!source) return; // deleted out from under us
+    await saveContest(withArchived(source, archived));
+    setContests(await listContests());
+  }
+
   return (
     <main className="page">
       <header className="page-header">
@@ -144,14 +164,38 @@ export function Dashboard({
         </p>
       )}
 
+      {contests && contests.length > 0 && (
+        <div className="dashboard-filters" role="group" aria-label="Filter contests">
+          {(['active', 'archived', 'all'] as const).map((f) => {
+            const count = contests.filter((c) => matchesFilter(c, f)).length;
+            return (
+              <button
+                key={f}
+                className={filter === f ? 'filter-btn is-active' : 'filter-btn'}
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+              >
+                {FILTER_LABELS[f]} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {contests === null ? (
         <p className="muted">Loading…</p>
       ) : contests.length === 0 ? (
         <p className="muted">No contests yet. Create one to get started.</p>
+      ) : contests.filter((c) => matchesFilter(c, filter)).length === 0 ? (
+        <p className="muted">
+          {filter === 'archived' ? 'No archived contests.' : 'No active contests — check Archived.'}
+        </p>
       ) : (
         <ul className="contest-list">
-          {contests.map((c) => (
-            <li key={c.id} className="contest-row">
+          {contests
+            .filter((c) => matchesFilter(c, filter))
+            .map((c) => (
+            <li key={c.id} className={c.archived ? 'contest-row is-archived' : 'contest-row'}>
               <button className="contest-open" onClick={() => onOpen(c.id)}>
                 <span className="contest-row-line contest-row-title">
                   <span className="contest-name">{c.name}</span>
@@ -174,6 +218,13 @@ export function Dashboard({
                 aria-label={`Export ${c.name}`}
               >
                 Export
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => void handleSetArchived(c, !c.archived)}
+                aria-label={`${c.archived ? 'Unarchive' : 'Archive'} ${c.name}`}
+              >
+                {c.archived ? 'Unarchive' : 'Archive'}
               </button>
               <button
                 className="btn-danger"

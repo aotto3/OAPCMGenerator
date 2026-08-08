@@ -84,6 +84,7 @@ import {
   withAdjudicator,
   adjudicatorMilestoneStatus,
   setAdjudicatorMilestone,
+  withArchived,
   withCmInfo,
   withDetails,
   withDirector,
@@ -216,6 +217,16 @@ describe('update helpers', () => {
     const c = withCmInfo(contest(), { techContact: 'Brian Hamlin' }, LATER);
     expect(c.cmInfo.techContact).toBe('Brian Hamlin');
     expect(c.updatedAt).toBe(LATER);
+  });
+
+  it('withArchived flips the archived flag immutably and bumps updatedAt', () => {
+    const before = contest();
+    expect(before.archived).toBe(false); // new contests are active
+    const archived = withArchived(before, true, LATER);
+    expect(archived.archived).toBe(true);
+    expect(archived.updatedAt).toBe(LATER);
+    expect(before.archived).toBe(false); // original untouched
+    expect(withArchived(archived, false, LATER).archived).toBe(false); // reversible
   });
 
   it('withSpeechwire patches credentials', () => {
@@ -1139,6 +1150,11 @@ describe('duplicateContest (roll-forward)', () => {
     expect(duplicateContest(source).id).not.toBe(duplicateContest(source).id);
   });
 
+  it('starts active even when the source was archived', () => {
+    const dup = duplicateContest(withArchived(filledContest(), true));
+    expect(dup.archived).toBe(false);
+  });
+
   it('KEEPS stable, year-over-year data', () => {
     const source = filledContest();
     const dup = duplicateContest(source);
@@ -1677,6 +1693,24 @@ describe('v9 → v10 migration (level fields — PRD #136)', () => {
   });
 });
 
+describe('v10 → v11 migration (archiving — PRD #141)', () => {
+  it('defaults archived to false and preserves the rest of the contest', () => {
+    // A v10 record: a current contest with the archived field removed.
+    const envelope = JSON.parse(serializeContest(filledContest()));
+    envelope.schemaVersion = 10;
+    delete envelope.contest.archived;
+    const migrated = parseContest(JSON.stringify(envelope));
+    expect(migrated.archived).toBe(false);
+    expect(migrated.identity.hostSchoolName).toBe('Friendswood High School'); // other data intact
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('round-trips an archived contest through serialize → parse', () => {
+    const archived = withArchived(filledContest(), true);
+    expect(parseContest(serializeContest(archived)).archived).toBe(true);
+  });
+});
+
 describe('v3 → v4 migration (compliance tracker)', () => {
   it('migrates a pre-compliance (v3) payload to an all-Pending tracker', () => {
     const v3Contest = {
@@ -1841,6 +1875,11 @@ describe('advanceContest', () => {
     expect(adv.updatedAt).toBe(LATER);
     expect(adv.id).not.toBe(src.id);
     expect(JSON.stringify(src)).toBe(before); // source contest is unchanged
+  });
+
+  it('starts the advanced contest active even when the source was archived', () => {
+    const adv = advanceContest(withArchived(advancing(), true), { id: 'adv', now: LATER })!;
+    expect(adv.archived).toBe(false);
   });
 
   describe('level-field overlap carry (PRD #136 slice 2)', () => {
