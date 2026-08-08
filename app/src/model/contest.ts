@@ -886,18 +886,16 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     .sort((a, b) => a - b)
     .map((i) => contest.schools[i]);
 
-  // Identity: bump the level, carry classification + year, clear level + host
-  // fields; nextContest.location seeds the venue; the caller's overrides win last.
-  // (Overlap-carry of level fields across the transition lands in a later slice.)
+  // Identity: bump the level, carry classification + year, clear host fields.
+  // Level fields carry what the two levels share (retainLevelFields against the
+  // new level) — District 20 → BiDistrict seeds the First District, BiDistrict →
+  // Area carries Region + Area, etc. nextContest.location seeds the venue; the
+  // caller's overrides win last.
   const identity: ContestIdentity = {
     contestYear: contest.identity.contestYear,
     contestLevel: nextLevel,
     classification: contest.identity.classification,
-    region: '',
-    area: '',
-    district: '',
-    districtSecond: '',
-    zone: '',
+    ...retainLevelFields(contest.identity, nextLevel),
     hostSchoolName: '',
     hostVenueName: seed && next.location ? next.location : '',
     hostAddress: '',

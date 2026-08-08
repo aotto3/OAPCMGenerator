@@ -1766,13 +1766,15 @@ describe('advanceContest', () => {
     expect(adv.schools.map((s) => s.name)).toEqual(['Westlake HS', 'Anderson HS']); // idx5 dropped
   });
 
-  it('clears season data and next-level info; identity keeps classification + year, clears host/district', () => {
+  it('clears season data and next-level info; identity keeps classification + year, clears host', () => {
     const src = advancing();
     const adv = advanceContest(src, { id: 'adv', now: LATER, seedFromNextContest: false })!;
     // Identity carry vs clear.
     expect(adv.identity.classification).toBe(src.identity.classification);
     expect(adv.identity.contestYear).toBe(src.identity.contestYear);
-    expect(adv.identity.district).toBe('');
+    // District → BiDistrict carries the district into the First slot (see the
+    // level-field carry tests); host fields always clear.
+    expect(adv.identity.district).toBe('20');
     expect(adv.identity.hostSchoolName).toBe('');
     expect(adv.identity.hostVenueName).toBe('');
     expect(adv.identity.hostAddress).toBe('');
@@ -1829,6 +1831,54 @@ describe('advanceContest', () => {
     expect(adv.updatedAt).toBe(LATER);
     expect(adv.id).not.toBe(src.id);
     expect(JSON.stringify(src)).toBe(before); // source contest is unchanged
+  });
+
+  describe('level-field overlap carry (PRD #136 slice 2)', () => {
+    /** Advance a bare contest at `level` with the given level fields; no results needed. */
+    const advanced = (patch: Partial<Contest['identity']>) =>
+      advanceContest(contest(patch), { id: 'adv', now: LATER, seedFromNextContest: false })!.identity;
+
+    it('Zone → District carries the district only', () => {
+      const id = advanced({ contestLevel: 'Zone', region: '2', area: '1', district: '19', zone: '3' });
+      expect(id.contestLevel).toBe('District');
+      expect(id.district).toBe('19');
+      expect(id.region).toBe('');
+      expect(id.area).toBe('');
+      expect(id.zone).toBe('');
+    });
+
+    it('District → BiDistrict seeds the district into the First slot', () => {
+      const id = advanced({ contestLevel: 'District', district: '20' });
+      expect(id.contestLevel).toBe('BiDistrict');
+      expect(id.district).toBe('20'); // First District
+      expect(id.districtSecond).toBe(''); // partner entered by hand
+      expect(id.region).toBe('');
+      expect(id.area).toBe('');
+    });
+
+    it('BiDistrict → Area carries Region and Area, drops the districts', () => {
+      const id = advanced({ contestLevel: 'BiDistrict', region: '2', area: '1', district: '19', districtSecond: '20' });
+      expect(id.contestLevel).toBe('Area');
+      expect(id.region).toBe('2');
+      expect(id.area).toBe('1');
+      expect(id.district).toBe('');
+      expect(id.districtSecond).toBe('');
+    });
+
+    it('Area → Region carries Region only', () => {
+      const id = advanced({ contestLevel: 'Area', region: '2', area: '1' });
+      expect(id.contestLevel).toBe('Region');
+      expect(id.region).toBe('2');
+      expect(id.area).toBe('');
+    });
+
+    it('a carry-forward override still wins over the carried value', () => {
+      const id = advanceContest(contest({ contestLevel: 'District', district: '20' }), {
+        id: 'adv',
+        identity: { district: '7' },
+      })!.identity;
+      expect(id.district).toBe('7');
+    });
   });
 });
 
