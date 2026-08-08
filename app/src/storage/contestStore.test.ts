@@ -4,6 +4,7 @@ import {
   contestDisplayName,
   createContest,
   serializeContest,
+  withArchived,
   withDetails,
   withIdentity,
   type Contest,
@@ -20,6 +21,7 @@ function record(contest: Contest) {
     updatedAt: contest.updatedAt,
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
+    archived: contest.archived,
     payload: serializeContest(contest),
   };
 }
@@ -67,5 +69,25 @@ describe('contestSummaryFromRecord', () => {
     expect(summary.id).toBe(contest.id);
     expect(summary.name).toBe(contestDisplayName(contest.identity));
     expect(summary.updatedAt).toBe(contest.updatedAt);
+  });
+
+  it('carries the denormalized archived flag from a current record', () => {
+    expect(contestSummaryFromRecord(record(createContest())).archived).toBe(false);
+    const archived = withArchived(createContest(), true);
+    expect(contestSummaryFromRecord(record(archived)).archived).toBe(true);
+  });
+
+  it('falls back to the payload archived flag for records saved before the field existed', () => {
+    const contest = withArchived(contestWithDateAndSchool(), true);
+    // An old record predating the denormalized archived field: it simply is absent.
+    const legacy = {
+      id: contest.id,
+      name: contestDisplayName(contest.identity),
+      updatedAt: contest.updatedAt,
+      contestDate: contest.details.contestDate,
+      hostSchoolName: contest.identity.hostSchoolName,
+      payload: serializeContest(contest),
+    };
+    expect(contestSummaryFromRecord(legacy).archived).toBe(true);
   });
 });
