@@ -175,12 +175,13 @@ export function contestSummaryFromRecord(record: ContestRecord): ContestSummary 
   return { id: record.id, name: record.name, updatedAt: record.updatedAt, contestDate, hostSchoolName, archived };
 }
 
-/** Newest-edited first, for the dashboard. */
+/**
+ * All contest summaries for the dashboard, unordered. The dashboard owns
+ * sorting (ui/contestSort.ts, PRD #142), so the store no longer imposes one.
+ */
 export async function listContests(): Promise<ContestSummary[]> {
   const records = await (await db()).getAll('contests');
-  return records
-    .map(contestSummaryFromRecord)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return records.map(contestSummaryFromRecord);
 }
 
 export async function getContest(id: string): Promise<Contest | undefined> {
