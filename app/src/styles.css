@@ -183,7 +183,11 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .contest-open {
   flex: 1; text-align: left; background: none; border: none; padding: var(--space-2) var(--space-1);
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }
+/* Each line lays its pieces out inline; the title line keeps name + date on one row. */
+.contest-row-line { display: block; }
+.contest-row-title { font-size: var(--fs-base); }
 .contest-name { font-weight: 600; font-size: var(--fs-base); }
 
 .section {

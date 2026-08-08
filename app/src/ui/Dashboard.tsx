@@ -27,13 +27,12 @@ function contestDate(iso: string): string {
     : date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// The row's secondary line: contest date, host school, and last-edited note,
-// each shown only when present and joined so no separator ever dangles.
-function rowMeta({ contestDate: iso, hostSchoolName, updatedAt }: ContestSummary): string {
+// The row's second line: host school and last-edited note, each shown only when
+// present and joined so no separator ever dangles. (The contest date rides on
+// the first line next to the title.)
+function rowMetaSecondary({ hostSchoolName, updatedAt }: ContestSummary): string {
   const school = hostSchoolName.trim();
-  return [contestDate(iso), school ? `Hosted at ${school}` : '', lastEdited(updatedAt)]
-    .filter(Boolean)
-    .join(' · ');
+  return [school ? `Host: ${school}` : '', lastEdited(updatedAt)].filter(Boolean).join(' · ');
 }
 
 export function Dashboard({
@@ -154,8 +153,13 @@ export function Dashboard({
           {contests.map((c) => (
             <li key={c.id} className="contest-row">
               <button className="contest-open" onClick={() => onOpen(c.id)}>
-                <span className="contest-name">{c.name}</span>
-                <span className="muted"> · {rowMeta(c)}</span>
+                <span className="contest-row-line contest-row-title">
+                  <span className="contest-name">{c.name}</span>
+                  {contestDate(c.contestDate) && (
+                    <span className="muted"> · {contestDate(c.contestDate)}</span>
+                  )}
+                </span>
+                {rowMetaSecondary(c) && <span className="contest-row-line muted">{rowMetaSecondary(c)}</span>}
               </button>
               <button
                 className="btn-secondary"
