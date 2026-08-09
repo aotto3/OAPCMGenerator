@@ -22,18 +22,10 @@
  */
 
 import { numSchools, type Contest } from './contest';
+import { shuffle, type Rng } from './rng';
 
-/** A random source in [0, 1), same contract as Math.random. Injected for tests. */
-export type Rng = () => number;
-
-/** Fisher–Yates shuffle in place (v12's shuffle), using the injected RNG. */
-function shuffle<T>(arr: T[], rng: Rng): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
+/** Re-exported so existing `import { type Rng } from './critique'` keeps working. */
+export type { Rng };
 
 /**
  * Per-judge quotas: index 0 is Judge 1's share (floor(N/J)); the rest split the
