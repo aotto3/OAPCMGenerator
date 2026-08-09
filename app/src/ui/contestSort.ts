@@ -10,9 +10,10 @@
  * Persistence (localStorage) deliberately lives with the Dashboard, not here, so
  * this module stays pure and unit-testable without a browser.
  */
+import { CLASSIFICATIONS, CONTEST_LEVELS } from '../model/contest';
 import type { ContestSummary } from '../storage/contestStore';
 
-export type SortKey = 'date' | 'lastEdited' | 'name';
+export type SortKey = 'date' | 'lastEdited' | 'name' | 'level' | 'classification' | 'year';
 export type SortDirection = 'asc' | 'desc';
 
 export interface SortPref {
@@ -27,6 +28,9 @@ export const DEFAULT_SORT: SortPref = { key: 'lastEdited', direction: 'desc' };
 export const SORT_KEYS: ReadonlyArray<{ key: SortKey; label: string }> = [
   { key: 'lastEdited', label: 'Last edited' },
   { key: 'date', label: 'Contest date' },
+  { key: 'level', label: 'Level' },
+  { key: 'classification', label: 'Classification' },
+  { key: 'year', label: 'Contest year' },
   { key: 'name', label: 'Name' },
 ];
 
@@ -40,6 +44,12 @@ export function directionLabel(key: SortKey, direction: SortDirection): string {
       return asc ? 'Oldest first' : 'Newest first';
     case 'name':
       return asc ? 'A → Z' : 'Z → A';
+    case 'level':
+      return asc ? 'Zone → Region' : 'Region → Zone';
+    case 'classification':
+      return asc ? '1A → 6A' : '6A → 1A';
+    case 'year':
+      return asc ? 'Earliest first' : 'Latest first';
   }
 }
 
@@ -50,8 +60,13 @@ function isBlank(s: ContestSummary, key: SortKey): boolean {
       return s.contestDate.trim() === '';
     case 'name':
       return s.name.trim() === '';
+    case 'year':
+      return s.contestYear.trim() === '';
     case 'lastEdited':
       return s.updatedAt.trim() === ''; // always set in practice
+    case 'level':
+    case 'classification':
+      return false; // always set on a valid contest (enum with a default)
   }
 }
 
@@ -67,6 +82,19 @@ function comparePrimary(a: ContestSummary, b: ContestSummary, key: SortKey): num
       return a.updatedAt.localeCompare(b.updatedAt); // ISO timestamp sorts chronologically
     case 'name':
       return byName(a, b);
+    case 'level':
+      // UIL progression, not alphabetical: Zone → District → BiDistrict → Area → Region.
+      return CONTEST_LEVELS.indexOf(a.contestLevel) - CONTEST_LEVELS.indexOf(b.contestLevel);
+    case 'classification':
+      // Conference order 1A → 6A, not string order.
+      return CLASSIFICATIONS.indexOf(a.classification) - CLASSIFICATIONS.indexOf(b.classification);
+    case 'year': {
+      // Numeric when both parse (so "2026" < "2027"); fall back to string order.
+      const ay = Number(a.contestYear);
+      const by = Number(b.contestYear);
+      if (Number.isNaN(ay) || Number.isNaN(by)) return a.contestYear.localeCompare(b.contestYear);
+      return ay - by;
+    }
   }
 }
 
@@ -110,7 +138,14 @@ export function sortContests(summaries: ContestSummary[], { key, direction }: So
 
 /** Narrowing guards for restoring a persisted preference. */
 export function isSortKey(v: unknown): v is SortKey {
-  return v === 'date' || v === 'lastEdited' || v === 'name';
+  return (
+    v === 'date' ||
+    v === 'lastEdited' ||
+    v === 'name' ||
+    v === 'level' ||
+    v === 'classification' ||
+    v === 'year'
+  );
 }
 export function isSortDirection(v: unknown): v is SortDirection {
   return v === 'asc' || v === 'desc';

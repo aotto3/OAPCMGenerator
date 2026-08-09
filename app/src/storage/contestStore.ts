@@ -16,7 +16,9 @@ import {
   defaultSpeechwire,
   parseContest,
   serializeContest,
+  type Classification,
   type Contest,
+  type ContestLevel,
   type SpeechwireCredentials,
 } from '../model/contest';
 import type { Checkpoint } from '../model/checkpoint';
@@ -36,6 +38,10 @@ interface ContestRecord {
   hostSchoolName?: string;
   /** Denormalized archived flag; see `contestDate` for the optionality note. */
   archived?: boolean;
+  /** Denormalized sort keys (PRD #142); see `contestDate` for the optionality note. */
+  contestLevel?: ContestLevel;
+  classification?: Classification;
+  contestYear?: string;
   /** Versioned envelope from serializeContest(). */
   payload: string;
   /**
@@ -153,26 +159,54 @@ export interface ContestSummary {
   hostSchoolName: string;
   /** Denormalized archived flag (PRD #141); false for active contests. */
   archived: boolean;
+  /** Denormalized sort keys (PRD #142). */
+  contestLevel: ContestLevel;
+  classification: Classification;
+  contestYear: string;
 }
 
 /**
- * Builds a dashboard summary from a stored record. The date, host school, and
- * archived flag are denormalized onto the record at save time (like `name`), but
- * records written before a given field existed lack it — for those, parse the
- * payload once to recover the values so they still display without a re-save.
- * Pure and exported so the summary/fallback logic is testable without IndexedDB.
+ * Builds a dashboard summary from a stored record. The date, host school,
+ * archived flag, and sort keys are denormalized onto the record at save time
+ * (like `name`), but records written before a given field existed lack it — for
+ * those, parse the payload once to recover the values so they still display and
+ * sort without a re-save. Pure and exported so the summary/fallback logic is
+ * testable without IndexedDB.
  */
 export function contestSummaryFromRecord(record: ContestRecord): ContestSummary {
   let contestDate = record.contestDate;
   let hostSchoolName = record.hostSchoolName;
   let archived = record.archived;
-  if (contestDate === undefined || hostSchoolName === undefined || archived === undefined) {
+  let contestLevel = record.contestLevel;
+  let classification = record.classification;
+  let contestYear = record.contestYear;
+  if (
+    contestDate === undefined ||
+    hostSchoolName === undefined ||
+    archived === undefined ||
+    contestLevel === undefined ||
+    classification === undefined ||
+    contestYear === undefined
+  ) {
     const contest = parseContest(record.payload);
     contestDate ??= contest.details.contestDate;
     hostSchoolName ??= contest.identity.hostSchoolName;
     archived ??= contest.archived;
+    contestLevel ??= contest.identity.contestLevel;
+    classification ??= contest.identity.classification;
+    contestYear ??= contest.identity.contestYear;
   }
-  return { id: record.id, name: record.name, updatedAt: record.updatedAt, contestDate, hostSchoolName, archived };
+  return {
+    id: record.id,
+    name: record.name,
+    updatedAt: record.updatedAt,
+    contestDate,
+    hostSchoolName,
+    archived,
+    contestLevel,
+    classification,
+    contestYear,
+  };
 }
 
 /**
@@ -200,6 +234,9 @@ export async function saveContest(contest: Contest): Promise<void> {
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
     archived: contest.archived,
+    contestLevel: contest.identity.contestLevel,
+    classification: contest.identity.classification,
+    contestYear: contest.identity.contestYear,
     payload: serializeContest(contest),
     deviceOnly: contest.speechwire,
   });
@@ -267,6 +304,9 @@ export async function putPulledContest(
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
     archived: contest.archived,
+    contestLevel: contest.identity.contestLevel,
+    classification: contest.identity.classification,
+    contestYear: contest.identity.contestYear,
     // Store the contest-only envelope locally; checkpoints live in their store.
     payload: serializeContest(contest),
     deviceOnly: existing?.deviceOnly ?? contest.speechwire,

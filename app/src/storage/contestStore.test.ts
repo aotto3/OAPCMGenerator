@@ -22,6 +22,9 @@ function record(contest: Contest) {
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
     archived: contest.archived,
+    contestLevel: contest.identity.contestLevel,
+    classification: contest.identity.classification,
+    contestYear: contest.identity.contestYear,
     payload: serializeContest(contest),
   };
 }
@@ -89,5 +92,27 @@ describe('contestSummaryFromRecord', () => {
       payload: serializeContest(contest),
     };
     expect(contestSummaryFromRecord(legacy).archived).toBe(true);
+  });
+
+  it('carries the denormalized sort keys (level, classification, year) from a current record', () => {
+    const c = withIdentity(createContest(), { contestLevel: 'Area', classification: '3A', contestYear: '2027' });
+    const summary = contestSummaryFromRecord(record(c));
+    expect(summary.contestLevel).toBe('Area');
+    expect(summary.classification).toBe('3A');
+    expect(summary.contestYear).toBe('2027');
+  });
+
+  it('falls back to the payload for sort keys on records saved before those fields existed', () => {
+    const c = withIdentity(createContest(), { contestLevel: 'Region', classification: '1A', contestYear: '2025' });
+    const legacy = {
+      id: c.id,
+      name: contestDisplayName(c.identity),
+      updatedAt: c.updatedAt,
+      payload: serializeContest(c),
+    };
+    const summary = contestSummaryFromRecord(legacy);
+    expect(summary.contestLevel).toBe('Region');
+    expect(summary.classification).toBe('1A');
+    expect(summary.contestYear).toBe('2025');
   });
 });
