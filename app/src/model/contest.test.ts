@@ -50,6 +50,8 @@ import {
   contestNamePreview,
   contestTitleLong,
   createContest,
+  effectiveContestTitle,
+  withTitleOverride,
   LEVEL_FIELDS,
   retainLevelFields,
   levelNumberText,
@@ -227,6 +229,16 @@ describe('update helpers', () => {
     expect(archived.updatedAt).toBe(LATER);
     expect(before.archived).toBe(false); // original untouched
     expect(withArchived(archived, false, LATER).archived).toBe(false); // reversible
+  });
+
+  it('withTitleOverride sets/clears the custom title immutably and bumps updatedAt', () => {
+    const before = contest();
+    expect(before.titleOverride).toBe(''); // auto by default
+    const renamed = withTitleOverride(before, 'District 20 Regional', LATER);
+    expect(renamed.titleOverride).toBe('District 20 Regional');
+    expect(renamed.updatedAt).toBe(LATER);
+    expect(before.titleOverride).toBe(''); // original untouched
+    expect(withTitleOverride(renamed, '', LATER).titleOverride).toBe(''); // clears back to auto
   });
 
   it('withSpeechwire patches credentials', () => {
@@ -559,6 +571,29 @@ describe('withIdentity level switch (PRD #136)', () => {
   it('leaves level fields alone when the level is not part of the patch', () => {
     const c = withIdentity(contest({ district: '20' }), { hostSchoolName: 'Host HS' });
     expect(c.identity.district).toBe('20');
+  });
+});
+
+describe('effectiveContestTitle (PRD #143)', () => {
+  it('uses the auto-derived name when there is no override', () => {
+    const c = contest({ contestYear: '2026', district: '20' });
+    expect(effectiveContestTitle(c)).toBe(contestDisplayName(c.identity));
+  });
+
+  it('uses the custom override when set', () => {
+    const c = withTitleOverride(contest({ district: '20' }), 'My Regional Contest');
+    expect(effectiveContestTitle(c)).toBe('My Regional Contest');
+  });
+
+  it('falls back to the auto name for a whitespace-only override', () => {
+    const c = withTitleOverride(contest({ district: '20' }), '   ');
+    expect(effectiveContestTitle(c)).toBe(contestDisplayName(c.identity));
+  });
+
+  it('does not affect the document-facing names (display-only)', () => {
+    const c = withTitleOverride(contest({ contestYear: '2026', district: '20' }), 'Nickname');
+    expect(contestDisplayName(c.identity)).toBe('2026 — 5A District 20 OAP');
+    expect(contestFullName(c.identity)).toBe('UIL 5A District 20 One-Act Play Contest');
   });
 });
 
@@ -1155,6 +1190,11 @@ describe('duplicateContest (roll-forward)', () => {
     expect(dup.archived).toBe(false);
   });
 
+  it('resets the custom title to the auto name', () => {
+    const dup = duplicateContest(withTitleOverride(filledContest(), 'Last Year Nickname'));
+    expect(dup.titleOverride).toBe('');
+  });
+
   it('KEEPS stable, year-over-year data', () => {
     const source = filledContest();
     const dup = duplicateContest(source);
@@ -1711,6 +1751,23 @@ describe('v10 → v11 migration (archiving — PRD #141)', () => {
   });
 });
 
+describe('v11 → v12 migration (custom title — PRD #143)', () => {
+  it('defaults titleOverride to empty (auto name) and preserves the rest', () => {
+    const envelope = JSON.parse(serializeContest(filledContest())); // v12
+    envelope.schemaVersion = 11;
+    delete envelope.contest.titleOverride;
+    const migrated = parseContest(JSON.stringify(envelope));
+    expect(migrated.titleOverride).toBe('');
+    expect(migrated.archived).toBe(false); // other v-fields intact
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('round-trips a custom title through serialize → parse', () => {
+    const renamed = withTitleOverride(filledContest(), 'Championship Round');
+    expect(parseContest(serializeContest(renamed)).titleOverride).toBe('Championship Round');
+  });
+});
+
 describe('v3 → v4 migration (compliance tracker)', () => {
   it('migrates a pre-compliance (v3) payload to an all-Pending tracker', () => {
     const v3Contest = {
@@ -1880,6 +1937,11 @@ describe('advanceContest', () => {
   it('starts the advanced contest active even when the source was archived', () => {
     const adv = advanceContest(withArchived(advancing(), true), { id: 'adv', now: LATER })!;
     expect(adv.archived).toBe(false);
+  });
+
+  it('resets the custom title to the auto name on advance', () => {
+    const adv = advanceContest(withTitleOverride(advancing(), 'District Nickname'), { id: 'adv', now: LATER })!;
+    expect(adv.titleOverride).toBe('');
   });
 
   describe('level-field overlap carry (PRD #136 slice 2)', () => {

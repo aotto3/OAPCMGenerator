@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 11;
+export const CONTEST_SCHEMA_VERSION = 12;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -496,6 +496,13 @@ export interface Contest {
    * changes list visibility; the contest and all its data are untouched.
    */
   archived: boolean;
+  /**
+   * Optional custom display title (PRD #143). '' ⇒ use the auto-derived name
+   * (contestDisplayName). Display-only: it renames the contest in the workspace
+   * header and the dashboard list, but generated documents, the ZIP folder, and
+   * file names always use the auto-derived name. See effectiveContestTitle.
+   */
+  titleOverride: string;
   identity: ContestIdentity;
   cmInfo: CmInfo;
   details: ContestDetails;
@@ -682,6 +689,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     createdAt: now,
     updatedAt: now,
     archived: false,
+    titleOverride: '',
     identity: {
       contestYear: String(new Date(now).getFullYear()),
       contestLevel: 'District',
@@ -776,8 +784,9 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     createdAt: now,
     updatedAt: now,
     // A roll-forward duplicate is a fresh, active contest even if its source was
-    // archived.
+    // archived; its custom title resets to the auto name for the new occurrence.
     archived: false,
+    titleOverride: '',
     // identity + cmInfo + documents carry forward untouched (stable data).
     details: { ...contest.details, ...CLEARED_DETAIL_FIELDS },
     // Judges change every contest — start fresh.
@@ -929,8 +938,9 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     id: options.id ?? crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
-    // The advanced contest is a fresh, active event.
+    // The advanced contest is a fresh, active event with the auto name.
     archived: false,
+    titleOverride: '',
     identity,
     cmInfo,
     details,
@@ -996,6 +1006,11 @@ export function withCmInfo(contest: Contest, patch: Partial<CmInfo>, now?: strin
 /** Archive (hide from the default dashboard) or unarchive a contest. Reversible; bumps updatedAt (PRD #141). */
 export function withArchived(contest: Contest, archived: boolean, now?: string): Contest {
   return { ...touch(contest, now), archived };
+}
+
+/** Set the custom display title; '' reverts to the auto-derived name (PRD #143). Bumps updatedAt. */
+export function withTitleOverride(contest: Contest, titleOverride: string, now?: string): Contest {
+  return { ...touch(contest, now), titleOverride };
 }
 
 /**
@@ -1816,6 +1831,16 @@ export function contestDisplayName(identity: ContestIdentity): string {
 }
 
 /**
+ * The title shown on-screen (workspace header + dashboard list): the custom
+ * titleOverride when set, else the auto-derived contestDisplayName (PRD #143).
+ * Display-only — document titles and file names never use this.
+ */
+export function effectiveContestTitle(contest: Contest): string {
+  const custom = contest.titleOverride.trim();
+  return custom || contestDisplayName(contest.identity);
+}
+
+/**
  * Filename of the portable contest file bundled in every generated ZIP, e.g.
  * "2026 — 5A District 20 OAP — Contest File.json". This is the versioned
  * serializeContest() JSON — a backup / handoff that re-imports on any machine,
@@ -2132,6 +2157,9 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // v10 predates archiving (PRD #141): every existing contest loads active.
   // Additive and blank-safe.
   10: (raw) => ({ ...raw, archived: false }),
+  // v11 predates the custom display title (PRD #143): every existing contest
+  // starts with no override, i.e. the auto-derived name. Additive/blank-safe.
+  11: (raw) => ({ ...raw, titleOverride: '' }),
 };
 
 export function parseContest(json: string): Contest {
