@@ -72,24 +72,28 @@ export interface SyncClient {
 // origin to override.
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 
-async function request(path: string, init: RequestInit = {}): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      credentials: 'include',
-      headers: init.body ? { 'content-type': 'application/json' } : undefined,
-      ...init,
-    });
-  } catch {
-    // fetch rejects only on network-level failure (offline, DNS, CORS preflight).
-    throw new SyncNetworkError();
+/**
+ * The production SyncClient talking to the deployed API. `fetchImpl` is injectable
+ * (defaulting to the global fetch) so the URL/credential wiring and the error
+ * classification are testable without touching the network.
+ */
+export function createBrowserSyncClient(fetchImpl: typeof fetch = fetch): SyncClient {
+  async function request(path: string, init: RequestInit = {}): Promise<Response> {
+    let res: Response;
+    try {
+      res = await fetchImpl(`${API_URL}${path}`, {
+        credentials: 'include',
+        headers: init.body ? { 'content-type': 'application/json' } : undefined,
+        ...init,
+      });
+    } catch {
+      // fetch rejects only on network-level failure (offline, DNS, CORS preflight).
+      throw new SyncNetworkError();
+    }
+    if (!res.ok) throw new SyncHttpError(res.status);
+    return res;
   }
-  if (!res.ok) throw new SyncHttpError(res.status);
-  return res;
-}
 
-/** The production SyncClient talking to the deployed API. */
-export function createBrowserSyncClient(): SyncClient {
   return {
     async list() {
       const res = await request('/api/contests');
