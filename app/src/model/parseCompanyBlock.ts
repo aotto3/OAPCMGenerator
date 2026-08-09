@@ -26,9 +26,10 @@
  *   1. Jo Backup
  *   2. Lee Standby
  *
- * …and this turns it into `{ metadata, directors, roster }` that the UI (E3) maps
- * onto the contest via `importCompany` (E1). The parser is TOLERANT and never
- * guesses: unknown lines are ignored, "[Not provided]" reads as blank, and a
+ * …and this turns it into `{ metadata, directors, roster }`. `importCompanyBlock`
+ * (below) maps that onto the contest via `importCompany` (E1) in one call, so the
+ * UI (E3) passes raw pasted text. The parser is TOLERANT and never guesses:
+ * unknown lines are ignored, "[Not provided]" reads as blank, and a
  * director-swapped `name: role` line is imported verbatim for the CM to fix.
  *
  * Line-oriented and forgiving by design:
@@ -43,7 +44,13 @@
  *     chose which school to paste into, so the block's own school name is unused.
  */
 
-import type { ProductionType, RosterMember } from './contest';
+import {
+  importCompany,
+  type Contest,
+  type ParsedCompany,
+  type ProductionType,
+  type RosterMember,
+} from './contest';
 
 /** The labeled production metadata lifted from the block (parser-native names). */
 export interface CompanyBlockMetadata {
@@ -248,4 +255,47 @@ export function parseCompanyBlock(text: string): ParsedCompanyBlock {
 
   const directors = [...directorSlots, studentTeacher].filter((n) => n !== '');
   return { metadata, directors, roster };
+}
+
+/**
+ * Translates the parser's block-vocabulary output to the model's `ParsedCompany`
+ * (storage vocabulary): `title → playTitle`, `type → productionType`,
+ * `music → musicCredits`, `directors → directorNames`; author / publisher /
+ * setting / runtime / roster pass through unchanged.
+ */
+function toParsedCompany(block: ParsedCompanyBlock): ParsedCompany {
+  return {
+    playTitle: block.metadata.title,
+    metadata: {
+      author: block.metadata.author,
+      publisher: block.metadata.publisher,
+      productionType: block.metadata.type,
+      setting: block.metadata.setting,
+      runtime: block.metadata.runtime,
+      musicCredits: block.metadata.music,
+    },
+    directorNames: block.directors,
+    roster: block.roster,
+  };
+}
+
+/**
+ * Imports a director-submitted company block onto a school in one call: parse the
+ * pasted `text`, map it to the model's shape, and apply it via `importCompany`.
+ * This is the single entry point the UI uses (E3) — parse + translate + apply
+ * behind one boundary, so the whole "text → updated contest" path is testable at
+ * the model level rather than through the view.
+ *
+ * Preserves `importCompany`'s semantics exactly: an empty parsed director list
+ * leaves the school's existing directors untouched, and an out-of-range
+ * `schoolIndex` is a no-op. `now` is forwarded so the update is deterministic
+ * under test.
+ */
+export function importCompanyBlock(
+  contest: Contest,
+  schoolIndex: number,
+  text: string,
+  now?: string,
+): Contest {
+  return importCompany(contest, schoolIndex, toParsedCompany(parseCompanyBlock(text)), now);
 }
