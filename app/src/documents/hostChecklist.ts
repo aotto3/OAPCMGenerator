@@ -15,24 +15,21 @@
 
 import { contestTitleLong, type Contest } from '../model/contest';
 import { fmtDate } from './format';
+import { docCmInfo } from './docVars';
 import { makeDocx, ooP, ooPBullet, ooPEmpty, ooPHead, ooPLine } from './ooxml';
 
 /** Builds the Host School Checklist. The registry's `host_checklist` entry delegates here. */
 export async function buildHostChecklist(contest: Contest): Promise<Uint8Array> {
   const id = contest.identity;
-  const cm = contest.cmInfo;
   const d = contest.details;
 
   const hs = id.hostSchoolName || '[Host School]';
   const hv = id.hostVenueName || '[Venue TBD]';
   const cd = fmtDate(d.contestDate) || 'TBD';
-  const tech = cm.techContact || '[Host Technical Director]';
   const af = d.admissionFee ? '$' + d.admissionFee : null;
   const numSchools = contest.schools.length;
 
-  const cmName = cm.name || 'Allen Otto';
-  const cmEmail = cm.email || 'aotto3@gmail.com';
-  const cmPhone = cm.phone || '';
+  const { name: cmName, email: cmEmail, phone: cmPhone, techContact: tech } = docCmInfo(contest);
 
   const parts = [
     ooP(contestTitleLong(id), { bold: true, size: 26, color: '1F4E79', align: 'center', sb: 0, sa: 40 }),

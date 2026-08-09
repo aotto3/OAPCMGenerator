@@ -13,12 +13,12 @@
 import * as XLSX from 'xlsx-js-style';
 import { adjudicatorMilestoneStatus, contestTitleLong, type Contest } from '../model/contest';
 import { fmtDate } from './format';
+import { docCmInfo } from './docVars';
 import { xlsxBuf } from './xlsx';
 
 export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
   const id = contest.identity;
   const d = contest.details;
-  const cm = contest.cmInfo;
 
   const panelRows: string[][] = [];
   for (let i = 1; i <= d.numJudges; i++) {
@@ -40,8 +40,7 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
     }
   }
 
-  const cmName = cm.name || 'Allen Otto';
-  const cmEmail = cm.email || 'aotto3@gmail.com';
+  const { name: cmName, email: cmEmail, phone: cmPhone } = docCmInfo(contest);
 
   const rows: string[][] = [
     [contestTitleLong(id)],
@@ -62,7 +61,7 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
     ['CONTEST MANAGER'],
     ['Name', cmName],
     ['Email', cmEmail || ''],
-    ['Phone', cm.phone || ''],
+    ['Phone', cmPhone],
   ];
 
   const wb = XLSX.utils.book_new();

@@ -89,3 +89,41 @@ export function critiqueRows(contest: Contest): CritiqueRow[] | null {
     };
   });
 }
+
+/** The Contest Manager's identity with the letter-family fallback strings. */
+export interface DocCmInfo {
+  /** CM name, or 'Allen Otto' when blank (v12 default). */
+  name: string;
+  /** CM email, or 'aotto3@gmail.com' when blank (v12 default). */
+  email: string;
+  /** CM phone, or '' when blank. */
+  phone: string;
+  /** Mailing address for letter closings, or '' when blank. */
+  mailingAddress: string;
+  /** Website for letter closings, or '' when blank. */
+  website: string;
+  /** Host lighting-tech contact, or '[Host Technical Director]' when blank. */
+  techContact: string;
+}
+
+/**
+ * The CM identity projected with the fallback strings the letter-family documents
+ * share (the Director + Advancing letters, Host Checklist, Directors Meeting,
+ * Adjudicator Info, Contact List). Centralizes the defaults those docs each
+ * repeated — change 'Allen Otto' / 'aotto3@gmail.com' here, not in six files.
+ *
+ * Deliberately NOT used by the email templates or the venue/'TBD' placeholders:
+ * those carry their OWN (different) v12 fallbacks, and unifying them would change
+ * golden-locked output.
+ */
+export function docCmInfo(contest: Contest): DocCmInfo {
+  const cm = contest.cmInfo;
+  return {
+    name: cm.name || 'Allen Otto',
+    email: cm.email || 'aotto3@gmail.com',
+    phone: cm.phone || '',
+    mailingAddress: cm.mailingAddress || '',
+    website: cm.website || '',
+    techContact: cm.techContact || '[Host Technical Director]',
+  };
+}

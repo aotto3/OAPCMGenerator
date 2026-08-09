@@ -14,14 +14,11 @@
 
 import * as XLSX from 'xlsx-js-style';
 import { contestTitleLong, schoolsInPerformanceOrder, type Contest } from '../model/contest';
-import { docSchools } from './docVars';
+import { docCmInfo, docSchools } from './docVars';
 import { xlsxBuf } from './xlsx';
 
 export function buildContactList(contest: Contest): Uint8Array {
-  const cm = contest.cmInfo;
-  const cmName = cm.name || 'Allen Otto';
-  const cmEmail = cm.email || 'aotto3@gmail.com';
-  const cmPhone = cm.phone || '';
+  const { name: cmName, email: cmEmail, phone: cmPhone } = docCmInfo(contest);
 
   // Same performance order; docSchools supplies v12's name/play fallbacks, the
   // raw sorted list supplies the full director array for the "additional" column.
