@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx-js-style';
-import { withDetails, withIdentity, type Contest } from '../model/contest';
+import { withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildContestSchedule } from './contestSchedule';
@@ -226,5 +226,12 @@ describe('identity-driven variations', () => {
     const zone = withIdentity(fixtureContest(), { contestLevel: 'Zone', zone: '1' }, FIXTURE_NOW);
     const texts = cellTexts(firstSheet(buildContestSchedule(zone)).ws);
     expect(texts[0]).toContain('2026 UIL 5A District 20 Zone 1 One-Act Play Contest');
+  });
+
+  it('ignores a custom dashboard title in generated documents (display-only, PRD #143)', () => {
+    const renamed = withTitleOverride(fixtureContest(), 'Coach Nickname');
+    const texts = cellTexts(firstSheet(buildContestSchedule(renamed)).ws);
+    expect(texts[0]).toBe('2026 UIL 5A District 20 One-Act Play Contest — March 21, 2026'); // auto name
+    expect(texts.join('\n')).not.toContain('Coach Nickname');
   });
 });

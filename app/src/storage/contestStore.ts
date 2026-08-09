@@ -12,8 +12,8 @@
  */
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
-  contestDisplayName,
   defaultSpeechwire,
+  effectiveContestTitle,
   parseContest,
   serializeContest,
   type Classification,
@@ -229,7 +229,7 @@ export async function getContest(id: string): Promise<Contest | undefined> {
 export async function saveContest(contest: Contest): Promise<void> {
   await (await db()).put('contests', {
     id: contest.id,
-    name: contestDisplayName(contest.identity),
+    name: effectiveContestTitle(contest),
     updatedAt: contest.updatedAt,
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
@@ -299,7 +299,7 @@ export async function putPulledContest(
 
   await tx.objectStore('contests').put({
     id: contest.id,
-    name: contestDisplayName(contest.identity),
+    name: effectiveContestTitle(contest),
     updatedAt,
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,

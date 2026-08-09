@@ -3,10 +3,12 @@ import { contestSummaryFromRecord } from './contestStore';
 import {
   contestDisplayName,
   createContest,
+  effectiveContestTitle,
   serializeContest,
   withArchived,
   withDetails,
   withIdentity,
+  withTitleOverride,
   type Contest,
 } from '../model/contest';
 
@@ -17,7 +19,7 @@ import {
 function record(contest: Contest) {
   return {
     id: contest.id,
-    name: contestDisplayName(contest.identity),
+    name: effectiveContestTitle(contest), // mirrors saveContest (custom title or auto name)
     updatedAt: contest.updatedAt,
     contestDate: contest.details.contestDate,
     hostSchoolName: contest.identity.hostSchoolName,
@@ -72,6 +74,11 @@ describe('contestSummaryFromRecord', () => {
     expect(summary.id).toBe(contest.id);
     expect(summary.name).toBe(contestDisplayName(contest.identity));
     expect(summary.updatedAt).toBe(contest.updatedAt);
+  });
+
+  it('shows the custom title as the summary name when one is set (PRD #143)', () => {
+    const named = withTitleOverride(contestWithDateAndSchool(), 'My Big Contest');
+    expect(contestSummaryFromRecord(record(named)).name).toBe('My Big Contest');
   });
 
   it('carries the denormalized archived flag from a current record', () => {

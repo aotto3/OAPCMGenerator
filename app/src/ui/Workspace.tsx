@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
   contestDisplayName,
+  effectiveContestTitle,
   sectionCompletion,
   validateContest,
+  withTitleOverride,
   type Contest,
 } from '../model/contest';
+import { EditableContestTitle } from './EditableContestTitle';
 import { getContest } from '../storage/contestStore';
 import { useAutosave } from '../storage/useAutosave';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
@@ -131,7 +134,12 @@ export function Workspace({
             </button>
             <button className="btn-ghost" onClick={onBack}>← All contests</button>
           </div>
-          <h1>{contestDisplayName(contest.identity)}</h1>
+          <EditableContestTitle
+            title={effectiveContestTitle(contest)}
+            override={contest.titleOverride}
+            autoName={contestDisplayName(contest.identity)}
+            onChange={(v) => setContest(withTitleOverride(contest, v))}
+          />
           <p className="subtitle">Every change saves automatically.</p>
         </header>
 

@@ -232,6 +232,20 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .workspace-header { margin-bottom: var(--space-3); }
 .workspace-header-top { display: flex; align-items: center; gap: var(--space-3); }
 
+/* Click-to-edit contest title (PRD #143). The heading and its edit input share
+   the same box metrics so swapping between them doesn't shift the layout. */
+.ws-title { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 2px; font-size: var(--fs-xl); }
+.ws-title-edit {
+  background: none; border: none; padding: 2px 4px; font-size: var(--fs-base);
+  opacity: 0.55; line-height: 1;
+}
+.ws-title-edit:hover { opacity: 1; }
+.ws-title-input {
+  font: inherit; font-size: var(--fs-xl); color: var(--c-text); width: 100%; max-width: 100%;
+  padding: 0 2px; background: var(--c-input-bg);
+  border: none; border-bottom: 2px solid var(--c-blue); border-radius: 2px;
+}
+
 .workspace-shell { display: flex; align-items: flex-start; gap: var(--space-5); }
 .workspace-main { flex: 1 1 auto; min-width: 0; max-width: 860px; }
 
