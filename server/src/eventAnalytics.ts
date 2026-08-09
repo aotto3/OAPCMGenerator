@@ -15,7 +15,7 @@
  */
 import type { EventRecord } from './eventLog';
 import type { UserRecord } from './userDirectory';
-import { TELEMETRY_EVENTS } from './eventTypes';
+import { CONTEST_EVENTS, TELEMETRY_EVENTS } from './eventTypes';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -24,7 +24,7 @@ const WEEK_MS = 7 * DAY_MS;
 export const DAILY_BUCKET_MAX_DAYS = 31;
 
 /** The event types the series and adoption ratios key off. */
-const CONTEST_CREATED = 'contest.created';
+const CONTEST_CREATED = CONTEST_EVENTS.created;
 const DOCUMENTS_GENERATED = TELEMETRY_EVENTS.documentsGenerated;
 const CONTEST_EXPORTED = TELEMETRY_EVENTS.contestExported;
 const CLIENT_ERROR = TELEMETRY_EVENTS.clientError;

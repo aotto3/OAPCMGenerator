@@ -21,28 +21,14 @@ import { Router, type Request, type Response } from 'express';
 import type { ContestRepo } from './contestRepo';
 import type { EventInput, EventLog } from './eventLog';
 import { PayloadError, validatePayload } from './contestPayload';
-
-/** The authenticated caller. Email is denormalized into the events it produces. */
-export interface AuthUser {
-  id: string;
-  email: string;
-}
-
-/** Resolves the authenticated user from a request, or null if none. */
-export type ResolveUser = (req: Request) => Promise<AuthUser | null> | AuthUser | null;
+import { CONTEST_EVENTS } from './eventTypes';
+import { resolveUserOrNull, type AuthUser, type ResolveUser } from './requestAuth';
 
 export interface ContestRoutesDeps {
   repo: ContestRepo;
   resolveUser: ResolveUser;
   eventLog: EventLog;
 }
-
-/** Event types this router appends. Dotted names leave room for future actions. */
-const EVENT = {
-  created: 'contest.created',
-  updated: 'contest.updated',
-  deleted: 'contest.deleted',
-} as const;
 
 interface ContestBody {
   name: string;
@@ -94,12 +80,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
   const authed =
     (handler: (req: Request, res: Response, user: AuthUser) => Promise<void>) =>
     async (req: Request, res: Response): Promise<void> => {
-      let user: AuthUser | null;
-      try {
-        user = await resolveUser(req);
-      } catch {
-        user = null;
-      }
+      const user = await resolveUserOrNull(req, resolveUser);
       if (!user) {
         res.status(401).json({ error: 'Authentication required' });
         return;
@@ -159,7 +140,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
         occurredAt: now,
         userId: user.id,
         userEmail: user.email,
-        type: EVENT.created,
+        type: CONTEST_EVENTS.created,
         contestId: id,
         contestName: name,
       });
@@ -182,7 +163,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
         occurredAt: new Date().toISOString(),
         userId: user.id,
         userEmail: user.email,
-        type: EVENT.updated,
+        type: CONTEST_EVENTS.updated,
         contestId: id,
         contestName: name,
       });
@@ -207,7 +188,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
         occurredAt: new Date().toISOString(),
         userId: user.id,
         userEmail: user.email,
-        type: EVENT.deleted,
+        type: CONTEST_EVENTS.deleted,
         contestId: id,
         contestName: existing.name,
       });

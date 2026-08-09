@@ -8,7 +8,8 @@
 import cors from 'cors';
 import express, { type Express } from 'express';
 import { createAdminRoutes } from './adminRoutes';
-import { createContestRoutes, type ResolveUser } from './contestRoutes';
+import { createContestRoutes } from './contestRoutes';
+import type { ResolveUser } from './requestAuth';
 import { createTelemetryRoutes } from './telemetryRoutes';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
