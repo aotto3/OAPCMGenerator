@@ -113,3 +113,73 @@ export function xlsxBuf(wb: XLSX.WorkBook): Uint8Array {
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
   return out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 }
+
+/** A cell in a SheetBuilder row: a styled cell, a bare value, or blank (null/undefined). */
+export type SheetCell = StyledCell | string | number | null | undefined;
+
+/**
+ * Fluent builder for a single-sheet workbook — the row / `!ref` / merge / column
+ * bookkeeping the .xlsx generators otherwise hand-manage (`let row; ws['A'+row] =
+ * …; row++; ws['!ref'] = …`). Rows are appended in order and placed across columns
+ * A, B, C…; a bare value becomes a typed cell exactly as `aoa_to_sheet` would, a
+ * StyledCell (from `sc()`) carries its style, and null/undefined leaves the cell
+ * blank. `worksheet()` exposes the assembled sheet for tests; `buffer(name)`
+ * packages it into a workbook and returns .xlsx bytes.
+ *
+ * Assembly delegates to `XLSX.utils.aoa_to_sheet`, so a plain value grid produces
+ * byte-identical output to building the AOA directly — the migration path for the
+ * existing generators is provably neutral.
+ */
+export interface SheetBuilder {
+  /** Append one row across columns A.. ; advances the row cursor. */
+  row(cells: SheetCell[]): SheetBuilder;
+  /** Append an empty row (advances the cursor with no cells). */
+  blank(): SheetBuilder;
+  /** Set column widths in character units (v12's `wch`), left to right. */
+  cols(widths: number[]): SheetBuilder;
+  /** Add a merged-cell range. */
+  merge(range: XLSX.Range): SheetBuilder;
+  /** The assembled worksheet (cells + `!ref` / `!cols` / `!merges`). For tests. */
+  worksheet(): XLSX.WorkSheet;
+  /** Finalize: package the worksheet under `name`, return .xlsx bytes. */
+  buffer(name: string): Uint8Array;
+}
+
+export function makeSheet(): SheetBuilder {
+  const rows: SheetCell[][] = [];
+  let colWidths: number[] | undefined;
+  const merges: XLSX.Range[] = [];
+
+  const worksheet = (): XLSX.WorkSheet => {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    if (colWidths) ws['!cols'] = colWidths.map((wch) => ({ wch }));
+    if (merges.length) ws['!merges'] = merges;
+    return ws;
+  };
+
+  const builder: SheetBuilder = {
+    row(cells) {
+      rows.push(cells);
+      return builder;
+    },
+    blank() {
+      rows.push([]);
+      return builder;
+    },
+    cols(widths) {
+      colWidths = widths;
+      return builder;
+    },
+    merge(range) {
+      merges.push(range);
+      return builder;
+    },
+    worksheet,
+    buffer(name) {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, worksheet(), name);
+      return xlsxBuf(wb);
+    },
+  };
+  return builder;
+}

@@ -12,10 +12,9 @@
  * Pure: no DOM. Synchronous — XLSX.write packs the workbook directly.
  */
 
-import * as XLSX from 'xlsx-js-style';
 import { contestTitleLong, schoolsInPerformanceOrder, type Contest } from '../model/contest';
 import { docCmInfo, docSchools } from './docVars';
-import { xlsxBuf } from './xlsx';
+import { makeSheet } from './xlsx';
 
 export function buildContactList(contest: Contest): Uint8Array {
   const { name: cmName, email: cmEmail, phone: cmPhone } = docCmInfo(contest);
@@ -25,36 +24,32 @@ export function buildContactList(contest: Contest): Uint8Array {
   const sorted = schoolsInPerformanceOrder(contest);
   const docS = docSchools(contest);
 
-  const rows: (string | number)[][] = [
-    [contestTitleLong(contest.identity)],
-    ['School & Director Contact List'],
-    [],
-    ['Order', 'School Name', 'Director', 'Email', 'Additional Directors', 'Play Title'],
-  ];
+  const sheet = makeSheet()
+    .row([contestTitleLong(contest.identity)])
+    .row(['School & Director Contact List'])
+    .blank()
+    .row(['Order', 'School Name', 'Director', 'Email', 'Additional Directors', 'Play Title']);
   sorted.forEach((s, i) => {
     const ds = docS[i];
     const addl = s.directors
       .slice(1)
       .map((d) => d.name + (d.email ? ' <' + d.email + '>' : ''))
       .join('; ');
-    rows.push([ds.order, ds.name, ds.director, ds.email, addl, ds.play]);
+    sheet.row([ds.order, ds.name, ds.director, ds.email, addl, ds.play]);
   });
-  rows.push([]);
-  rows.push(['Contest Manager:', cmName, cmEmail, cmPhone, '', '']);
-  rows.push([]);
-  rows.push(['All-Director Email List (Gmail — paste into To: field):', '', '', '', '', '']);
   const allEmails = sorted
     .flatMap((s) => s.directors.map((d) => d.email).filter(Boolean))
     .join(', ');
-  rows.push([allEmails, '', '', '', '', '']);
+  sheet
+    .blank()
+    .row(['Contest Manager:', cmName, cmEmail, cmPhone, '', ''])
+    .blank()
+    .row(['All-Director Email List (Gmail — paste into To: field):', '', '', '', '', ''])
+    .row([allEmails, '', '', '', '', '']);
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 8 }, { wch: 36 }, { wch: 26 }, { wch: 34 }, { wch: 40 }, { wch: 40 }];
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
-  ];
-  XLSX.utils.book_append_sheet(wb, ws, 'Contact List');
-  return xlsxBuf(wb);
+  return sheet
+    .cols([8, 36, 26, 34, 40, 40])
+    .merge({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } })
+    .merge({ s: { r: 1, c: 0 }, e: { r: 1, c: 5 } })
+    .buffer('Contact List');
 }
