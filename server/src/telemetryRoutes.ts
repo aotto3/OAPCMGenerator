@@ -13,7 +13,7 @@
  */
 import { Router, type Request, type Response } from 'express';
 import type { EventLog } from './eventLog';
-import type { AuthUser, ResolveUser } from './contestRoutes';
+import { resolveUserOrNull, type ResolveUser } from './requestAuth';
 import { TELEMETRY_EVENT_TYPES } from './eventTypes';
 
 /** Max serialized size of a telemetry `detail` blob. Bigger ⇒ 400. */
@@ -34,12 +34,7 @@ export function createTelemetryRoutes(deps: TelemetryRoutesDeps): Router {
   const router = Router();
 
   router.post('/', async (req: Request, res: Response): Promise<void> => {
-    let user: AuthUser | null;
-    try {
-      user = await resolveUser(req);
-    } catch {
-      user = null;
-    }
+    const user = await resolveUserOrNull(req, resolveUser);
     if (!user) {
       res.status(401).json({ error: 'Authentication required' });
       return;

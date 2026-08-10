@@ -10,7 +10,7 @@
  * A future sync layer reads/writes the same store — IndexedDB stays the
  * source of truth on-device, the server is a replica (PRD issue #13).
  */
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
   defaultSpeechwire,
   effectiveContestTitle,
@@ -341,4 +341,20 @@ export async function bumpContestForCheckpointChange(
   if (!record) return;
   await database.put('contests', { ...record, updatedAt: now });
   emitChange(contestId, 'save');
+}
+
+/**
+ * TEST ONLY. Resets the module singletons between tests: closes and forgets the
+ * cached DB handle, clears both notifier registries, and deletes the underlying
+ * database so each test starts from an empty store. Never called in production —
+ * the app keeps one long-lived DB + listener set for the page's lifetime.
+ */
+export async function __resetStoreForTests(): Promise<void> {
+  if (dbPromise) {
+    (await dbPromise).close();
+    dbPromise = undefined;
+  }
+  changeListeners.clear();
+  pullListeners.clear();
+  await deleteDB(DB_NAME);
 }
