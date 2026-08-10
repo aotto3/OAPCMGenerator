@@ -16,7 +16,7 @@
 
 import * as XLSX from 'xlsx-js-style';
 import { contestTitleLong, type Contest } from '../model/contest';
-import { xlsxBuf } from './xlsx';
+import { makeSheet } from './xlsx';
 
 interface ChecklistItem {
   t: 'task' | 'note' | 'sub';
@@ -204,10 +204,7 @@ export function buildChecklist(contest: Contest): Uint8Array {
   rows.push(['', '  • Add custom tasks as needed', '']);
   ri++;
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 9 }, { wch: 80 }, { wch: 52 }];
-  ws['!merges'] = merges;
-  XLSX.utils.book_append_sheet(wb, ws, 'Year-Round Checklist');
-  return xlsxBuf(wb);
+  const sheet = makeSheet().rows(rows).cols([9, 80, 52]);
+  merges.forEach((m) => sheet.merge(m));
+  return sheet.buffer('Year-Round Checklist');
 }

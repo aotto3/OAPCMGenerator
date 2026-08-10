@@ -10,10 +10,9 @@
  * Pure: no DOM. Synchronous — XLSX.write packs the workbook directly.
  */
 
-import * as XLSX from 'xlsx-js-style';
 import { adjudicatorMilestoneStatus, contestTitleLong, type Contest } from '../model/contest';
 import { fmtDate } from './format';
-import { xlsxBuf } from './xlsx';
+import { makeSheet } from './xlsx';
 
 export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
   const id = contest.identity;
@@ -65,13 +64,10 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
     ['Phone', cm.phone || ''],
   ];
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 20 }, { wch: 32 }, { wch: 50 }];
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
-  ];
-  XLSX.utils.book_append_sheet(wb, ws, 'Adjudicator Info');
-  return xlsxBuf(wb);
+  return makeSheet()
+    .rows(rows)
+    .cols([20, 32, 50])
+    .merge({ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } })
+    .merge({ s: { r: 1, c: 0 }, e: { r: 1, c: 2 } })
+    .buffer('Adjudicator Info');
 }
