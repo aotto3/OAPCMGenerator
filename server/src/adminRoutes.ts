@@ -16,11 +16,11 @@ import { Router, type Request, type Response } from 'express';
 import type { ContestRepo } from './contestRepo';
 import type { EventFilter, EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
-import type { AuthUser, ResolveUser } from './contestRoutes';
+import { resolveUserOrNull, type AuthUser, type ResolveUser } from './requestAuth';
 import { DOCUMENTS_GENERATED_EVENT } from './eventTypes';
 import { bucketForDays, computeAnalytics, type AnalyticsWindow } from './eventAnalytics';
 import { groupErrors } from './errorTriage';
-import { TELEMETRY_EVENTS } from './eventTypes';
+import { ADMIN_EVENTS, TELEMETRY_EVENTS } from './eventTypes';
 import { computeSyncHealth } from './syncHealth';
 import { createRateLimiter } from './rateLimiter';
 import type { AuthAdmin } from './authAdmin';
@@ -28,8 +28,6 @@ import type { AuthAdmin } from './authAdmin';
 /** How far back the drill-down looks for a user's "recent" errors. */
 const RECENT_EVENT_WINDOW_DAYS = 14;
 
-/** Server-authored audit event for the one account-acting support action. */
-const ADMIN_SIGNIN_LINK_RESENT = 'admin.signin_link_resent';
 /** Resend sign-in link: at most this many sends per target email per window. */
 const RESEND_LIMIT = 3;
 const RESEND_WINDOW_MS = 15 * 60 * 1000;
@@ -115,12 +113,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   const adminOnly =
     (handler: (req: Request, res: Response, admin: AuthUser) => Promise<void>) =>
     async (req: Request, res: Response): Promise<void> => {
-      let user: AuthUser | null;
-      try {
-        user = await resolveUser(req);
-      } catch {
-        user = null;
-      }
+      const user = await resolveUserOrNull(req, resolveUser);
       if (!user || !adminEmails.has(user.email.toLowerCase())) {
         res.status(404).json({ error: 'Not found' });
         return;
@@ -272,7 +265,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
           occurredAt: new Date().toISOString(),
           userId: admin.id,
           userEmail: admin.email,
-          type: ADMIN_SIGNIN_LINK_RESENT,
+          type: ADMIN_EVENTS.signInLinkResent,
           detail: { targetUserId: id, targetEmail: user.email },
         });
       } catch (err) {

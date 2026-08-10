@@ -80,12 +80,11 @@ describe('telemetry ingest', () => {
   });
 
   it('rejects an unknown event type with 400 and records nothing', async () => {
-    await asUser(request(ctx.app).post('/api/telemetry'), 'alice')
-      .send({ type: 'contest.deleted' }) // a real server event, but not client-reportable
-      .expect(400);
-    await asUser(request(ctx.app).post('/api/telemetry'), 'alice')
-      .send({ type: 'made.up' })
-      .expect(400);
+    // Server-authored events (CONTEST_EVENTS / ADMIN_EVENTS) are NOT client-reportable:
+    // the telemetry allowlist is a security boundary and must reject every one of them.
+    for (const type of ['contest.created', 'contest.updated', 'contest.deleted', 'admin.signin_link_resent', 'made.up']) {
+      await asUser(request(ctx.app).post('/api/telemetry'), 'alice').send({ type }).expect(400);
+    }
     expect(await ctx.eventLog.queryEvents()).toHaveLength(0);
   });
 
