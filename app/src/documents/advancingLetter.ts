@@ -16,7 +16,9 @@
 
 import { contestTitleLong, type Contest } from '../model/contest';
 import { fmtDateShort, formatLongDate } from './format';
-import { makeDocx, ooP, ooPBullet, ooPEmpty, ooPHead, ooPLine, ooTable2Col } from './ooxml';
+import { docCmInfo } from './docVars';
+import { letterhead, signatureBlock } from './letterhead';
+import { makeDocx, ooP, ooPBullet, ooPEmpty, ooPHead, ooTable2Col } from './ooxml';
 
 export interface AdvancingLetterOptions {
   /** Date printed at the top. v12 used the clock; injectable so the golden is stable. */
@@ -37,13 +39,8 @@ export async function buildAdvancingLetter(
   contest: Contest,
   options: AdvancingLetterOptions = {},
 ): Promise<Uint8Array> {
-  const cm = contest.cmInfo;
+  const cm = docCmInfo(contest);
   const id = contest.identity;
-
-  const cmName = cm.name || 'Allen Otto';
-  const cmEmail = cm.email || 'aotto3@gmail.com';
-  const cmPhone = cm.phone || '';
-  const cmAddress = cm.mailingAddress || '';
 
   const today = formatLongDate(options.now ?? new Date());
   const lv = id.contestLevel || 'District';
@@ -57,13 +54,7 @@ export async function buildAdvancingLetter(
   const titleLong = contestTitleLong(id);
 
   const parts = [
-    ooP(cmName, { bold: true, size: 26, color: '1F4E79', sb: 0, sa: 40 }),
-    ooP('UIL One-Act Play Contest Manager', { size: 18, color: '555555', sa: 20 }),
-    cmEmail ? ooP(cmEmail, { size: 18, color: '2E75B6', sa: 20 }) : '',
-    cmPhone ? ooP(cmPhone, { size: 18, color: '555555', sa: 20 }) : '',
-    ooPLine('2E75B6'),
-    ooPEmpty(160),
-    ooP(today, { size: 20, sa: 200 }),
+    ...letterhead(cm, today),
 
     ooP('Dear [Director Name] and Company,', { size: 20, sa: 120 }),
     ooP('Congratulations! On behalf of the ' + titleLong + ', it is my pleasure to inform you that your company has advanced to the ' + nextLevel + ' level of competition. Your hard work and dedication have earned you this honor, and I know your students and staff have much to be proud of.', { size: 20, sa: 200 }),
@@ -89,12 +80,7 @@ export async function buildAdvancingLetter(
     ooP('Acting awards (All-Star Cast, Honorable Mention All-Star Cast, Best Performers) earned at this contest do not automatically carry over to the ' + nextLevel + '. The ' + nextLevel + ' adjudicators will make their own selections independently.', { size: 20, sa: 120 }),
 
     ooP('Please do not hesitate to contact me with any questions. It has been a pleasure working with you this season.', { size: 20, sa: 200 }),
-    ooP('Play with Love,', { size: 20, sa: 360 }),
-    ooP(cmName + ', J.D.', { bold: true, size: 20, sa: 40 }),
-    ooP('UIL One-Act Play Contest Manager', { size: 18, color: '555555', sa: 20 }),
-    cmPhone ? ooP(cmPhone, { size: 18, color: '555555', sa: 20 }) : '',
-    cmEmail ? ooP(cmEmail, { size: 18, color: '2E75B6', sa: 20 }) : '',
-    cmAddress ? ooP(cmAddress, { size: 18, color: '555555', sa: 20 }) : '',
+    ...signatureBlock(cm),
     ooPEmpty(120),
     ooP('Contest Site: ' + hs, { size: 18, color: '555555', sa: 0 }),
   ];

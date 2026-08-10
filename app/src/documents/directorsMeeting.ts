@@ -23,7 +23,7 @@
 
 import { contestTitleLong, type Contest } from '../model/contest';
 import { fmtDateShort } from './format';
-import { critiqueRows, docSchools } from './docVars';
+import { critiqueRows, docCmInfo, docSchools } from './docVars';
 import { makeDocx, ooP, ooPBullet, ooPEmpty, ooPHead, ooPLine } from './ooxml';
 
 /** Builds the Directors Meeting Agenda. The registry's `directors_meeting` entry delegates here. */
@@ -47,9 +47,7 @@ export async function buildDirectorsMeeting(contest: Contest): Promise<Uint8Arra
   // unlocked or stale assignment leaves the section in its no-assignments state.
   const critAssign = contest.critique?.locked ? critiqueRows(contest) : null;
 
-  const cmName = contest.cmInfo.name || 'Allen Otto';
-  const cmEmail = contest.cmInfo.email || 'aotto3@gmail.com';
-  const cmPhone = contest.cmInfo.phone || '';
+  const { name: cmName, email: cmEmail, phone: cmPhone } = docCmInfo(contest);
 
   const parts = [
     ooP(contestTitleLong(id), { bold: true, size: 26, color: '1F4E79', align: 'center', sb: 0, sa: 40 }),

@@ -24,7 +24,9 @@ import {
   type Contest,
 } from '../model/contest';
 import { fmtDate, fmtDateNumeric, fmtDateShort, formatLongDate } from './format';
-import { makeDocx, ooP, ooPBullet, ooPEmpty, ooPHead, ooPLine, ooTable2Col } from './ooxml';
+import { docCmInfo } from './docVars';
+import { letterhead, signatureBlock } from './letterhead';
+import { makeDocx, ooP, ooPBullet, ooPEmpty, ooPHead, ooTable2Col } from './ooxml';
 
 export interface LetterOptions {
   /**
@@ -39,17 +41,9 @@ export interface LetterOptions {
  * a ZIP (makeDocx). The registry's `letter` entry delegates to this.
  */
 export async function buildDirectorLetter(contest: Contest, options: LetterOptions = {}): Promise<Uint8Array> {
-  const cm = contest.cmInfo;
+  const cm = docCmInfo(contest);
   const id = contest.identity;
   const d = contest.details;
-
-  // ── vars mapping (v12 FormState._buildVars fallbacks, then the letter's own) ──
-  const cmName = cm.name || 'Allen Otto';
-  const cmEmail = cm.email || 'aotto3@gmail.com';
-  const cmPhone = cm.phone || '';
-  const cmAddress = cm.mailingAddress || '';
-  const cmWebsite = cm.website || '';
-  const tech = cm.techContact || '[Host Technical Director]';
 
   const lv = id.contestLevel || 'District';
   const hs = id.hostSchoolName || '[Host School]';
@@ -91,13 +85,7 @@ export async function buildDirectorLetter(contest: Contest, options: LetterOptio
 
   const parts = [
     // Letterhead
-    ooP(cmName, { bold: true, size: 26, color: '1F4E79', sb: 0, sa: 40 }),
-    ooP('UIL One-Act Play Contest Manager', { size: 18, color: '555555', sa: 20 }),
-    cmEmail ? ooP(cmEmail, { size: 18, color: '2E75B6', sa: 20 }) : '',
-    cmPhone ? ooP(cmPhone, { size: 18, color: '555555', sa: 20 }) : '',
-    ooPLine('2E75B6'),
-    ooPEmpty(160),
-    ooP(today, { size: 20, sa: 200 }),
+    ...letterhead(cm, today),
     // Salutation & opening
     ooP('Directors,', { size: 20, sa: 120 }),
     ooP('Congratulations on surviving through the rigors of preparing a OAP show.  I know that each one of your students and staff has worked hard for this moment, and please take a moment to enjoy it.  We are now nearing contest day, so take a moment to begin thinking about the upcoming ' + lv + ' contest at ' + hs + ' on ' + cd + '.  Please, read this letter thoroughly as it contains a lot of information.', { size: 20, sa: 200 }),
@@ -105,10 +93,10 @@ export async function buildDirectorLetter(contest: Contest, options: LetterOptio
     ooPHead('Time-Sensitive To-Dos (Details Below)'),
     ooPBullet('Send your scripts to the judges (information below). Please ensure your scripts are documented in accordance with Pg. 34 of the UIL Handbook for One-Act Play.'),
     ooPBullet(esdNum + ' — Deadline for Contestant entry, play and set information, and additional directors to be entered via the UIL Spring Meet Entry System.'),
-    ooPBullet('BY ' + lcDate + ' at ' + lcTime + ', provide a copy of your light cues, complete and send your light cue sheet to me and ' + tech + '.'),
+    ooPBullet('BY ' + lcDate + ' at ' + lcTime + ', provide a copy of your light cues, complete and send your light cue sheet to me and ' + cm.techContact + '.'),
     ooPEmpty(120),
     // First / contact
-    ooP('First, please contact me as soon as possible if there are any changes to your contact information, so that I can keep it up to date with information as it develops.  You can contact me directly at ' + cmEmail + '.', { size: 20, sa: 160 }),
+    ooP('First, please contact me as soon as possible if there are any changes to your contact information, so that I can keep it up to date with information as it develops.  You can contact me directly at ' + cm.email + '.', { size: 20, sa: 160 }),
     // Scripts
     ooPHead('Scripts'),
     ooP('Second, please send your scripts to the judges as soon as possible.  When you send scripts, do not send them in a way which requires a signature.  Because our judges are very busy during this time, they may be traveling and may not be available to sign.  Additionally, please ensure all scripts conform to the requirements of the UIL OAP Handbook, including cuts and highlights.  The judge\'s addresses are as followed:', { size: 20, sa: 120 }),
@@ -159,13 +147,8 @@ export async function buildDirectorLetter(contest: Contest, options: LetterOptio
     ooPEmpty(200),
     // Closing
     ooP('Please do not hesitate to contact me with any questions you may have regarding the competition.  Thank you for your time, and I hope to make everything go as smoothly as possible!', { size: 20, sa: 200 }),
-    ooP('Play with Love,', { size: 20, sa: 360 }),
-    ooP(cmName + ', J.D.', { bold: true, size: 20, sa: 40 }),
-    ooP('UIL One-Act Play Contest Manager', { size: 18, color: '555555', sa: 20 }),
-    cmPhone ? ooP(cmPhone, { size: 18, color: '555555', sa: 20 }) : '',
-    cmEmail ? ooP(cmEmail, { size: 18, color: '2E75B6', sa: 20 }) : '',
-    cmAddress ? ooP(cmAddress, { size: 18, color: '555555', sa: 20 }) : '',
-    cmWebsite ? ooP(cmWebsite, { size: 18, color: '2E75B6', sa: 20 }) : '',
+    ...signatureBlock(cm),
+    cm.website ? ooP(cm.website, { size: 18, color: '2E75B6', sa: 20 }) : '',
     ooPEmpty(120),
     ooP('Contest Site: ' + hs, { size: 18, color: '555555', sa: 20 }),
     ooP(hv + (ha ? ',  ' + ha : ''), { size: 18, color: '555555', sa: 0 }),
