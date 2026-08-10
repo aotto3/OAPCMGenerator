@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseCompanyBlock } from './parseCompanyBlock';
-import type { RosterMember } from './contest';
+import { importCompanyBlock, parseCompanyBlock } from './parseCompanyBlock';
+import { createContest, setNumSchools, type RosterMember } from './contest';
 
 /* Three realistic director-submitted blocks exercise the full parser; the focused
  * cases below pin the individual rules. The parser is pure and total — every input
@@ -229,5 +229,57 @@ Author line should not be swallowed`;
     const parsed = parseCompanyBlock('Title: Windows Paste\r\nCast -- Lead: Star\r\n');
     expect(parsed.metadata.title).toBe('Windows Paste');
     expect(parsed.roster).toEqual<RosterMember[]>([{ name: 'Star', role: 'Lead', category: 'cast' }]);
+  });
+});
+
+const IMPORT_NOW = '2026-07-05T12:00:00.000Z';
+
+/** A fresh contest with `n` blank schools, for exercising importCompanyBlock end-to-end. */
+function contestWith(n: number) {
+  return setNumSchools(createContest({ id: 'import-test', now: IMPORT_NOW }), n);
+}
+
+describe('importCompanyBlock — parse + translate + apply', () => {
+  it('maps a full block onto the target school (block vocabulary → storage vocabulary)', () => {
+    const s = importCompanyBlock(contestWith(3), 0, BLOCK_SCENES, IMPORT_NOW).schools[0];
+    // The rename the view used to do inline, now covered at the model boundary:
+    expect(s.playTitle).toBe('Our Town'); // title → playTitle
+    expect(s.productionType).toBe('scenes'); // type → productionType
+    expect(s.musicCredits).toBe('"Clair de Lune" by Debussy'); // music → musicCredits
+    // Straight-through fields:
+    expect(s.author).toBe('Thornton Wilder');
+    expect(s.publisher).toBe('Samuel French');
+    expect(s.setting).toBe("Grover's Corners, New Hampshire");
+    expect(s.runtime).toBe('38 minutes');
+    expect(s.directors.map((d) => d.name)).toEqual(['Pat Rivera', 'Chris Lang', 'Dana Okafor']);
+    expect(s.roster).toEqual<RosterMember[]>([
+      { name: 'Jane Smith', role: 'Emily Webb', category: 'cast' },
+      { name: 'Alex Ruiz', role: 'George Gibbs', category: 'cast' },
+      { name: 'Sam Board', role: 'Stage Manager', category: 'crew' },
+      { name: 'Morgan Lee', role: 'Lighting Designer', category: 'crew' },
+      { name: 'Jo Backup', role: '', category: 'alternate' },
+      { name: 'Lee Standby', role: '', category: 'alternate' },
+    ]);
+  });
+
+  it('leaves existing directors untouched when the block names none (a partial paste never wipes them)', () => {
+    // First paste seeds the directors; a second, director-less paste must keep them.
+    const seeded = importCompanyBlock(contestWith(2), 0, BLOCK_SCENES, IMPORT_NOW);
+    expect(seeded.schools[0].directors.map((d) => d.name)).toEqual(['Pat Rivera', 'Chris Lang', 'Dana Okafor']);
+    const s = importCompanyBlock(seeded, 0, 'Title: Just A Title', IMPORT_NOW).schools[0];
+    expect(s.playTitle).toBe('Just A Title');
+    expect(s.directors.map((d) => d.name)).toEqual(['Pat Rivera', 'Chris Lang', 'Dana Okafor']);
+  });
+
+  it('is a no-op for an out-of-range school index', () => {
+    const c = contestWith(2);
+    expect(importCompanyBlock(c, 5, BLOCK_SCENES, IMPORT_NOW)).toBe(c);
+  });
+
+  it('touches only the target school', () => {
+    const c = importCompanyBlock(contestWith(3), 1, BLOCK_SCENES, IMPORT_NOW);
+    expect(c.schools[0].playTitle).toBe('');
+    expect(c.schools[1].playTitle).toBe('Our Town');
+    expect(c.schools[2].playTitle).toBe('');
   });
 });

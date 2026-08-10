@@ -4,23 +4,21 @@ import {
   PRODUCTION_TYPES,
   addRosterMember,
   companyCounts,
-  importCompany,
   moveRosterMember,
   removeRosterMember,
   updateRosterMember,
   withSchool,
   type Contest,
-  type ParsedCompany,
   type ProductionType,
   type RosterCategory,
 } from '../../model/contest';
-import { parseCompanyBlock } from '../../model/parseCompanyBlock';
+import { importCompanyBlock } from '../../model/parseCompanyBlock';
 import { Section } from './Section';
 import { TextField } from './fields';
 
 /**
  * Companies workspace section (PRD #68, Group E). One card per school (form
- * order): a paste box that runs E2's parseCompanyBlock → E1's importCompany, the
+ * order): a paste box that runs the E2 parse + E1 apply via importCompanyBlock, the
  * editable cast/crew/alternate roster, the production-metadata inputs, and the
  * informational 20/4/24 counter.
  *
@@ -82,22 +80,7 @@ function CompanyCard({
   function handleImport() {
     const text = paste.trim();
     if (!text) return;
-    const block = parseCompanyBlock(text);
-    // Bridge the parser's native shape to importCompany's ParsedCompany.
-    const parsed: ParsedCompany = {
-      playTitle: block.metadata.title,
-      metadata: {
-        author: block.metadata.author,
-        publisher: block.metadata.publisher,
-        productionType: block.metadata.type,
-        setting: block.metadata.setting,
-        runtime: block.metadata.runtime,
-        musicCredits: block.metadata.music,
-      },
-      directorNames: block.directors,
-      roster: block.roster,
-    };
-    onChange(importCompany(contest, schoolIndex, parsed));
+    onChange(importCompanyBlock(contest, schoolIndex, text));
     setPaste('');
   }
 
