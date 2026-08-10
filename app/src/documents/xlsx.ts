@@ -133,6 +133,8 @@ export type SheetCell = StyledCell | string | number | null | undefined;
 export interface SheetBuilder {
   /** Append one row across columns A.. ; advances the row cursor. */
   row(cells: SheetCell[]): SheetBuilder;
+  /** Append several rows in order — the bulk form of `row()` for grid generators. */
+  rows(rowsToAdd: SheetCell[][]): SheetBuilder;
   /** Append an empty row (advances the cursor with no cells). */
   blank(): SheetBuilder;
   /** Set column widths in character units (v12's `wch`), left to right. */
@@ -160,6 +162,10 @@ export function makeSheet(): SheetBuilder {
   const builder: SheetBuilder = {
     row(cells) {
       rows.push(cells);
+      return builder;
+    },
+    rows(rowsToAdd) {
+      for (const r of rowsToAdd) rows.push(r);
       return builder;
     },
     blank() {
