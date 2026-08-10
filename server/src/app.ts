@@ -26,6 +26,12 @@ export interface AppDeps {
   /** Lowercased admin email allowlist; empty means the admin API is dark. */
   adminEmails: ReadonlySet<string>;
   resolveUser: ResolveUser;
+  /**
+   * Injected clock (epoch ms) for the admin API's time-based derivations
+   * (sync-health staleness). Defaults to Date.now; tests pass a fixed clock so
+   * results don't drift with the wall clock. Omitted in production.
+   */
+  now?: () => number;
   /** Allowed browser origin for CORS (the deployed frontend). Omitted in tests. */
   corsOrigin?: string;
   /**
@@ -89,6 +95,7 @@ export function createApp(deps: AppDeps): Express {
       authAdmin: deps.authAdmin,
       resolveUser: deps.resolveUser,
       adminEmails: deps.adminEmails,
+      now: deps.now,
     }),
   );
 

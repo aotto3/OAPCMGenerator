@@ -50,6 +50,13 @@ export interface AdminRoutesDeps {
   resolveUser: ResolveUser;
   /** Lowercased admin email allowlist (see env.adminEmails). */
   adminEmails: ReadonlySet<string>;
+  /**
+   * Injected clock (epoch ms). Defaults to Date.now (same idiom as rateLimiter).
+   * Threaded so the sync-health drill-down's freshness math is deterministic
+   * under test — staleness is judged against this, not the wall clock, so a
+   * fixture stamped in the past does not age past STALE_AFTER_DAYS over time.
+   */
+  now?: () => number;
 }
 
 /** Parses ?limit / ?offset, leaving them unset (log defaults apply) when absent/invalid. */
@@ -102,6 +109,7 @@ function parseWindow(req: Request): AnalyticsWindow {
 
 export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   const { repo, eventLog, userDirectory, authAdmin, resolveUser, adminEmails } = deps;
+  const now = deps.now ?? Date.now;
   const router = Router();
 
   // Per-target-email limiter for the resend action (in-memory; one API process).
@@ -237,12 +245,12 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      const from = new Date(Date.now() - RECENT_EVENT_WINDOW_DAYS * DAY_MS).toISOString();
+      const from = new Date(now() - RECENT_EVENT_WINDOW_DAYS * DAY_MS).toISOString();
       const [contests, events] = await Promise.all([
         repo.listByOwner(id),
         eventLog.listEvents({ userId: id, from }),
       ]);
-      const syncHealth = computeSyncHealth({ contests, events, now: new Date().toISOString() });
+      const syncHealth = computeSyncHealth({ contests, events, now: now() });
       res.json({ user, syncHealth });
     }),
   );

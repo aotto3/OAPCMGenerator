@@ -24,6 +24,13 @@ import { migrate, type Pool } from '../src/db';
 const iso = (msAgo = 0) => new Date(Date.now() - msAgo).toISOString();
 const DAY = 24 * 60 * 60 * 1000;
 
+// `contestBody` stamps a FIXED updatedAt (2026-07-07); sync-health staleness is
+// judged against the admin API's injected clock, so a test that asserts a
+// 'healthy' status must pin that clock near the fixture. Without it the stored
+// copy ages past STALE_AFTER_DAYS (14) as the real date advances and the status
+// silently flips to 'stale'. One day after the fixture ⇒ staleDays = 1.
+const SYNC_HEALTH_NOW = () => Date.parse('2026-07-08T12:00:00.000Z');
+
 // Three accounts: an admin plus two users, one seen recently and one long ago.
 const USERS: UserRecord[] = [
   { id: 'admin', email: 'admin@example.test', createdAt: '2026-01-01T00:00:00.000Z', lastSeenAt: iso(0) },
@@ -31,7 +38,10 @@ const USERS: UserRecord[] = [
   { id: 'bob', email: 'bob@example.test', createdAt: '2026-03-01T00:00:00.000Z', lastSeenAt: iso(30 * DAY) },
 ];
 
-async function buildApp(admins: ReadonlySet<string> = new Set(['admin@example.test'])) {
+async function buildApp(
+  admins: ReadonlySet<string> = new Set(['admin@example.test']),
+  now?: () => number,
+) {
   const mem = newDb();
   const adapter = mem.adapters.createPg();
   const pool = new adapter.Pool() as unknown as Pool;
@@ -48,6 +58,7 @@ async function buildApp(admins: ReadonlySet<string> = new Set(['admin@example.te
       },
     },
     adminEmails: admins,
+    now,
     // Fake session: authenticated iff x-user-id is present; email is derived to
     // match the directory's `${id}@example.test` scheme so the allowlist works.
     resolveUser: (req) => {
@@ -433,8 +444,11 @@ describe('additive index migration is idempotent', () => {
 
 describe('per-user record + sync-health', () => {
   it('returns the user record and derived sync-health for an admin', async () => {
-    await seed(app); // alice has 3 contests, recorded ~now
-    const res = await asUser(request(app).get('/api/admin/users/alice'), 'admin').expect(200);
+    // Pin the admin clock near the seeded contests' fixed updatedAt so staleness
+    // is deterministic regardless of the real date (see SYNC_HEALTH_NOW).
+    const { app: a } = await buildApp(undefined, SYNC_HEALTH_NOW);
+    await seed(a); // alice has 3 contests, updatedAt 2026-07-07 (contestBody)
+    const res = await asUser(request(a).get('/api/admin/users/alice'), 'admin').expect(200);
     expect(res.body.user).toMatchObject({ id: 'alice', email: 'alice@example.test' });
     expect(res.body.user).not.toHaveProperty('payload');
     expect(res.body.syncHealth).toMatchObject({ contestCount: 3, status: 'healthy', recentErrorCount: 0 });
