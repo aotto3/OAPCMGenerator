@@ -65,7 +65,10 @@ const envelope = (id: string): string =>
 const contestBody = (id: string, name = id) => ({
   id,
   name,
-  updatedAt: '2026-07-07T12:00:00.000Z',
+  // Recent (relative to the run), so sync-health reads a freshly-pushed account as
+  // "healthy" no matter the calendar date. A fixed past date rots into "stale" once
+  // the real clock is >STALE_AFTER_DAYS beyond it — the route uses the real clock.
+  updatedAt: iso(),
   payload: envelope(id),
 });
 
