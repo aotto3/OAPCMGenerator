@@ -29,6 +29,20 @@ describe('makeSheet — cell placement and !ref', () => {
     const ws = makeSheet().row(['title']).row(['a', 'b', 'c']).worksheet();
     expect(ws['!ref']).toBe('A1:C2');
   });
+
+  it('rows() appends several rows in order (bulk form of row())', () => {
+    const ws = makeSheet()
+      .rows([
+        ['a', 'b'],
+        ['c', 'd'],
+      ])
+      .worksheet();
+    expect(ws['A1'].v).toBe('a');
+    expect(ws['B1'].v).toBe('b');
+    expect(ws['A2'].v).toBe('c');
+    expect(ws['B2'].v).toBe('d');
+    expect(ws['!ref']).toBe('A1:B2');
+  });
 });
 
 describe('makeSheet — columns and merges', () => {
