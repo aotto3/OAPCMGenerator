@@ -1,4 +1,5 @@
 import { computeContestDay, fmtTime, type ScheduleEvent } from '../model/schedule';
+import { validateSchedule } from '../model/scheduleValidation';
 import type { Contest } from '../model/contest';
 import { Section } from './sections/Section';
 
@@ -29,36 +30,52 @@ export function SchedulePreview({ contest }: { contest: Contest }) {
   // The whole day: for a same-day rehearsal contest this includes the CM-arrival
   // and rehearsal rows ahead of the contest timeline (PRD #179).
   const events = computeContestDay(contest);
+  // Advisory only — flags mark rows in the preview and list plain-language
+  // reasons below. They never block generation and are never in the document.
+  const flags = validateSchedule(events);
+  const flagged = new Set(flags.map((f) => f.index));
 
   return (
     <Section title="🗓️ Contest Day Schedule Preview" badge="Live">
       {events.length === 0 ? (
         <p className="muted schedule-empty">Enter a First Show / Setup Time to see schedule preview.</p>
       ) : (
-        <table className="schedule-preview">
-          <thead>
-            <tr>
-              <th>Start</th>
-              <th>End</th>
-              <th>What</th>
-              <th>School</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((ev, i) => (
-              <tr key={i} style={{ background: rowColor(ev) }}>
-                <td>{fmtTime(ev.start)}</td>
-                <td>{fmtTime(ev.end)}</td>
-                <td>{ev.label}</td>
-                <td>
-                  {ev.type === 'show' || ev.type === 'rehearsal'
-                    ? ev.school + (ev.play ? ` — ${ev.play}` : '')
-                    : ''}
-                </td>
+        <>
+          <table className="schedule-preview">
+            <thead>
+              <tr>
+                <th>Start</th>
+                <th>End</th>
+                <th>What</th>
+                <th>School</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {events.map((ev, i) => (
+                <tr key={i} className={flagged.has(i) ? 'is-flagged' : undefined} style={{ background: rowColor(ev) }}>
+                  <td>{fmtTime(ev.start)}</td>
+                  <td>{fmtTime(ev.end)}</td>
+                  <td>
+                    {ev.label}
+                    {flagged.has(i) ? ' ⚠️' : ''}
+                  </td>
+                  <td>
+                    {ev.type === 'show' || ev.type === 'rehearsal'
+                      ? ev.school + (ev.play ? ` — ${ev.play}` : '')
+                      : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {flags.length > 0 && (
+            <ul className="schedule-flags">
+              {flags.map((f, i) => (
+                <li key={i}>⚠️ {f.message}</li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </Section>
   );
