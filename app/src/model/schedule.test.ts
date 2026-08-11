@@ -99,6 +99,7 @@ const names = (n: number): string[] => Array.from({ length: n }, (_, i) => `Scho
 
 describe('parseTime', () => {
   it.each([
+    // v12 spaced forms — must never regress (the goldens depend on these).
     ['8:30 AM', 510],
     ['12:00 AM', 0],
     ['12:00 PM', 720],
@@ -107,13 +108,34 @@ describe('parseTime', () => {
     ['2:15 PM', 855],
     ['12 PM', 720],
     ['12 AM', 0],
+    // PRD #179 — meridiem with no separating space (the reported AM/PM bug).
+    ['1:00PM', 780],
+    ['8:00AM', 480],
+    ['12PM', 720],
+    ['12AM', 0],
+    // Single-letter, lowercase, and periods.
+    ['1pm', 780],
+    ['1p', 780],
+    ['1a', 60],
+    ['9:00 am', 540],
+    ['2:30p.m.', 870],
+    ['7:30 P', 1170],
+    // 24-hour input.
+    ['13:00', 780],
+    ['0:30', 30],
+    // Bare time, NO meridiem → taken literally (AM), never inferred.
+    ['8', 480],
+    ['1:00', 60],
   ])('parses %s → %i minutes', (input, mins) => {
     expect(parseTime(input)).toBe(mins);
   });
 
-  it.each(['', '   ', 'noon', 'lunchtime', 'TBD'])('returns null for unparseable %j', (input) => {
-    expect(parseTime(input)).toBeNull();
-  });
+  it.each(['', '   ', 'noon', 'lunchtime', 'TBD', '25:00', '1:99', 'map'])(
+    'returns null for unparseable %j',
+    (input) => {
+      expect(parseTime(input)).toBeNull();
+    },
+  );
 });
 
 describe('fmtTime', () => {
