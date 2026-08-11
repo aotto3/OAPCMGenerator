@@ -7,7 +7,14 @@ import {
   type Contest,
   type CritiqueFormat,
 } from './contest';
-import { computeSchedule, fmtTime, parseTime, type ScheduleEvent } from './schedule';
+import {
+  computeContestDay,
+  computeSchedule,
+  fmtTime,
+  isSameDayRehearsal,
+  parseTime,
+  type ScheduleEvent,
+} from './schedule';
 
 const NOW = '2026-07-05T12:00:00.000Z';
 
@@ -136,6 +143,56 @@ describe('parseTime', () => {
       expect(parseTime(input)).toBeNull();
     },
   );
+});
+
+describe('isSameDayRehearsal', () => {
+  it('is true only when rehearsal day 1 equals the contest date with no second day', () => {
+    const base = makeContest('after_all', 3, { firstShow: '1:00 PM' });
+    const same = withDetails(base, { contestDate: '2026-03-21', rehearsalDate1: '2026-03-21', rehearsalDate2: '' });
+    expect(isSameDayRehearsal(same)).toBe(true);
+    expect(isSameDayRehearsal(withDetails(same, { rehearsalDate1: '2026-03-20' }))).toBe(false); // different date
+    expect(isSameDayRehearsal(withDetails(same, { rehearsalDate2: '2026-03-22' }))).toBe(false); // has a day 2
+    expect(isSameDayRehearsal(base)).toBe(false); // no dates set
+  });
+});
+
+describe('computeContestDay', () => {
+  const sameDay = (): Contest =>
+    withDetails(makeContest('after_all', 3, { firstShow: '1:00 PM', dm: '12:30 PM' }), {
+      contestDate: '2026-03-21',
+      rehearsalDate1: '2026-03-21',
+      rehearsalDate2: '',
+      rehearsalStartTime1: '8:00 AM',
+      rehearsalLengthMinutes: 90,
+    });
+
+  it('equals computeSchedule for a normal (non-same-day) contest', () => {
+    const c = makeContest('after_all', 4, { firstShow: '11:00 AM', dm: '10:00 AM' });
+    expect(computeContestDay(c)).toEqual(computeSchedule(c));
+  });
+
+  it('leads with CM arrival then one rehearsal per school, ahead of the contest timeline', () => {
+    const c = sameDay();
+    const day = computeContestDay(c);
+    // Arrival is first, an hour before rehearsals begin (8:00 AM → 7:00 AM).
+    expect(day[0]).toMatchObject({ type: 'arrival', label: 'CM Arrival', start: 7 * 60 });
+    // One rehearsal per school in performance order, each 90 + 10-min transition.
+    const reh = day.filter((e) => e.type === 'rehearsal');
+    expect(reh.map((e) => e.label)).toEqual(['School 1 Rehearsal', 'School 2 Rehearsal', 'School 3 Rehearsal']);
+    expect(reh[0]).toMatchObject({ start: 8 * 60, end: 8 * 60 + 100, school: 'School A' });
+    expect(reh[1].start).toBe(8 * 60 + 100);
+    // The rest of the day is exactly the contest timeline computeSchedule returns.
+    expect(day.slice(1 + reh.length)).toEqual(computeSchedule(c));
+    // Chronological: arrival < first rehearsal < first show.
+    const firstShow = day.find((e) => e.type === 'show');
+    expect(day[0].start).toBeLessThan(reh[0].start);
+    expect(reh[0].start).toBeLessThan(firstShow!.start);
+  });
+
+  it('returns [] with no first-show time, even when rehearsals are same-day', () => {
+    const c = withDetails(sameDay(), { firstShowTime: '' });
+    expect(computeContestDay(c)).toEqual([]);
+  });
 });
 
 describe('fmtTime', () => {

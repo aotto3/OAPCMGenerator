@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx-js-style';
-import { withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
+import { setNumSchools, withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildContestSchedule } from './contestSchedule';
@@ -160,6 +160,35 @@ describe('Rehearsal + Contest Schedule — content', () => {
     const { ws } = firstSheet(buildRehearsalSchedule(fixtureContest()));
     const r = rowWhere(ws, 'School 1 Rehearsal');
     expect(fillOf(ws, 'A' + r)).toBe('FEF2CB');
+  });
+
+  it('same-day: matches the golden and leads with CM Arrival before rehearsals, then the contest', async () => {
+    // A realistic single-day contest: 3 companies rehearse in the morning, then
+    // compete the same afternoon (a 6-school same-day would be an ~18-hour day).
+    let same = setNumSchools(fixtureContest(), 3);
+    same = withDetails(
+      same,
+      {
+        rehearsalDate1: '2026-03-21',
+        rehearsalDate2: '',
+        rehearsalStartTime1: '8:00 AM',
+        rehearsalLengthMinutes: 45,
+        directorsMeetingTime: '1:00 PM',
+        firstShowTime: '1:30 PM',
+      },
+      FIXTURE_NOW,
+    );
+    const bytes = buildRehearsalSchedule(same);
+    await expectArchiveMatchesGolden(bytes, goldenPath('Schedule - Reh. and Contest (Same Day).xlsx'));
+    const joined = cellTexts(firstSheet(bytes).ws).join('\n');
+    // v12 printed CM Arrival *after* the rehearsals though it was timed before them;
+    // the unified engine timeline now leads the day with it, before rehearsals,
+    // which in turn precede the first contest show.
+    expect(joined.indexOf('CM Arrival')).toBeGreaterThanOrEqual(0);
+    expect(joined.indexOf('CM Arrival')).toBeLessThan(joined.indexOf('School 1 Rehearsal'));
+    expect(joined.indexOf('School 1 Rehearsal')).toBeLessThan(joined.indexOf('Setup and Performance'));
+    // No dated section headers in the same-day layout.
+    expect(joined).not.toContain('Saturday, March 21, 2026');
   });
 });
 

@@ -1,4 +1,4 @@
-import { computeSchedule, fmtTime, type ScheduleEvent } from '../model/schedule';
+import { computeContestDay, fmtTime, type ScheduleEvent } from '../model/schedule';
 import type { Contest } from '../model/contest';
 import { Section } from './sections/Section';
 
@@ -16,14 +16,19 @@ const SCHOOL_COLORS_HEX = ['#FEF2CB', '#B4C6E7', '#F4B083', '#C5E0B3', '#FFFF00'
 const GREY = '#DADADA';
 
 function rowColor(ev: ScheduleEvent): string {
-  if (ev.type === 'show') return SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
-  // Directors' Meeting is grey — distinct from school 1, which used to share
-  // this row's color (Slice 16, #29). Mirrors contestSchedule.ts's generated .xlsx.
+  // Shows and same-day rehearsals wear their school's palette color; everything
+  // else (arrival, Directors' Meeting, admin/critique/awards) is grey — distinct
+  // from school 1. Mirrors the generated .xlsx.
+  if (ev.type === 'show' || ev.type === 'rehearsal') {
+    return SCHOOL_COLORS_HEX[ev.colorIdx % SCHOOL_COLORS_HEX.length];
+  }
   return GREY;
 }
 
 export function SchedulePreview({ contest }: { contest: Contest }) {
-  const events = computeSchedule(contest);
+  // The whole day: for a same-day rehearsal contest this includes the CM-arrival
+  // and rehearsal rows ahead of the contest timeline (PRD #179).
+  const events = computeContestDay(contest);
 
   return (
     <Section title="🗓️ Contest Day Schedule Preview" badge="Live">
@@ -45,7 +50,11 @@ export function SchedulePreview({ contest }: { contest: Contest }) {
                 <td>{fmtTime(ev.start)}</td>
                 <td>{fmtTime(ev.end)}</td>
                 <td>{ev.label}</td>
-                <td>{ev.type === 'show' ? ev.school + (ev.play ? ` — ${ev.play}` : '') : ''}</td>
+                <td>
+                  {ev.type === 'show' || ev.type === 'rehearsal'
+                    ? ev.school + (ev.play ? ` — ${ev.play}` : '')
+                    : ''}
+                </td>
               </tr>
             ))}
           </tbody>
