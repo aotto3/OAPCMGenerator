@@ -67,29 +67,38 @@ export interface ScheduleOverrides {
 }
 
 /**
- * Parses a 12-hour time string such as "8:30 AM" or "2 PM" into
- * minutes-since-midnight. Returns null for empty / unparseable input.
- * Ported verbatim from v12 parseTime(); reused by schedule documents later.
+ * Parses a 12-hour (or 24-hour) time string into minutes-since-midnight, or
+ * null for empty / unparseable input.
+ *
+ * Forgiving on purpose (PRD #179): the meridiem is detected wherever it trails
+ * the digits, so "1:00 PM", "1:00PM", "1pm", "1 PM", "1p", and "2:30 p.m." all
+ * read the same — no space required. 24-hour input ("13:00") works too. Crucially
+ * there is NO inference: a bare time with no meridiem ("1:00", "8") is taken
+ * literally (→ AM), never guessed, so the UI's normalize-on-blur can surface it.
+ *
+ * This replaces v12's parseTime, whose `\b(AM|PM)\b` needed a word boundary
+ * (i.e. a space) before the meridiem and silently dropped "1:00PM" to AM. The
+ * accepted spaced forms parse identically, so the schedule goldens are unmoved.
  */
 export function parseTime(str: string): number | null {
   if (!str) return null;
   str = str.trim();
-  const ampm = (str.match(/\b(AM|PM)\b/i) || [])[1];
-  const m = str.match(/(\d{1,2}):(\d{2})/);
-  let h: number;
-  let mn: number;
-  if (m) {
-    h = parseInt(m[1], 10);
-    mn = parseInt(m[2], 10);
-  } else {
-    const b = str.match(/^(\d{1,2})\s*(AM|PM)?$/i);
-    if (!b) return null;
-    h = parseInt(b[1], 10);
-    mn = 0;
+  // Detach a trailing meridiem (a/p, optional '.', optional 'm', optional '.'),
+  // with or without a separating space, so it never has to touch the digits.
+  let ap = '';
+  const mer = str.match(/([ap])\.?\s*m?\.?\s*$/i);
+  if (mer && mer.index != null) {
+    ap = mer[1].toUpperCase(); // 'A' or 'P'
+    str = str.slice(0, mer.index).trim();
   }
-  const ap = ampm ? ampm.toUpperCase() : '';
-  if (ap === 'PM' && h !== 12) h += 12;
-  if (ap === 'AM' && h === 12) h = 0;
+  // What remains must be H, H:MM, or HH:MM (24-hour when no meridiem was given).
+  const m = str.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const mn = m[2] != null ? parseInt(m[2], 10) : 0;
+  if (h > 23 || mn > 59) return null;
+  if (ap === 'P' && h !== 12) h += 12;
+  if (ap === 'A' && h === 12) h = 0;
   return h * 60 + mn;
 }
 

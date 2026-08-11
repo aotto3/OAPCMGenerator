@@ -1,4 +1,47 @@
 import { useRef, useState } from 'react';
+import { fmtTime, parseTime } from '../../model/schedule';
+
+/**
+ * Labeled free-text TIME input that normalizes on blur (PRD #179). While you
+ * type it stays exactly what you typed; when you leave the field, a parseable
+ * value is rewritten to its canonical form ("1:00 PM") so you see how it was
+ * read — the defense against a silent AM/PM flip. Unparseable text (e.g.
+ * "lunchtime") is left untouched. The parsing itself is the tested pure model
+ * function; this component is the thin UI over it.
+ */
+export function TimeField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  hint?: string;
+}) {
+  const normalize = () => {
+    const mins = parseTime(value);
+    if (mins == null) return; // leave unparseable / empty text as the user wrote it
+    const canonical = fmtTime(mins);
+    if (canonical && canonical !== value) onChange(canonical);
+  };
+  return (
+    <label className="field">
+      {label}
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={normalize}
+      />
+      {hint && <span className="hint">{hint}</span>}
+    </label>
+  );
+}
 
 /** Labeled input — the one field pattern every section uses. */
 export function TextField({

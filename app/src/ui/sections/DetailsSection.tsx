@@ -17,7 +17,7 @@ import {
   type SectionCompletion,
 } from '../../model/contest';
 import { Section } from './Section';
-import { CopyButton, Divider, SelectField, TextField } from './fields';
+import { CopyButton, Divider, SelectField, TextField, TimeField } from './fields';
 
 const CRITIQUE_LABELS: Record<CritiqueFormat, string> = {
   after_each: 'After Each Show',
@@ -57,13 +57,13 @@ export function DetailsSection({
           value={details.contestDate}
           onChange={(v) => edit({ contestDate: v })}
         />
-        <TextField
+        <TimeField
           label="Directors Meeting Time"
           placeholder="e.g. 10:00 AM"
           value={details.directorsMeetingTime}
           onChange={(v) => edit({ directorsMeetingTime: v })}
         />
-        <TextField
+        <TimeField
           label="First Show / Setup Time"
           placeholder="e.g. 11:00 AM"
           value={details.firstShowTime}
@@ -118,7 +118,7 @@ export function DetailsSection({
           value={details.rehearsalDate2}
           onChange={(v) => edit({ rehearsalDate2: v })}
         />
-        <TextField
+        <TimeField
           label="Day 1 Start Time"
           placeholder="e.g. 2:00 PM"
           value={details.rehearsalStartTime1}
@@ -126,7 +126,7 @@ export function DetailsSection({
         />
         {details.rehearsalDate2 && (
           <>
-            <TextField
+            <TimeField
               label="Day 2 Start Time"
               placeholder="e.g. 2:00 PM"
               value={details.rehearsalStartTime2}
@@ -186,7 +186,7 @@ export function DetailsSection({
           value={details.lightCueDeadlineDate}
           onChange={(v) => edit({ lightCueDeadlineDate: v })}
         />
-        <TextField
+        <TimeField
           label="Light Cue Deadline — Time"
           value={details.lightCueDeadlineTime}
           onChange={(v) => edit({ lightCueDeadlineTime: v })}
