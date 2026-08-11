@@ -778,6 +778,15 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
    text stays dark in both themes — it must never follow the dark text token. */
 .schedule-preview td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid #ccc; color: #1e1e1e; }
 .schedule-empty { font-style: italic; }
+/* Validation flags (PRD #179) — advisory only. A warn-colored left edge marks a
+   flagged row (box-shadow survives border-collapse over the fixed pastel fills). */
+.schedule-preview tr.is-flagged td:first-child { box-shadow: inset 4px 0 0 var(--c-warn); }
+.schedule-flags {
+  margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); list-style: none;
+  background: var(--c-warn-bg); border: 1px solid var(--c-warn-border); border-radius: var(--radius-md);
+  color: var(--c-warn); font-size: 0.82rem;
+}
+.schedule-flags li { margin: 2px 0; font-weight: 600; }
 
 .generate-row { margin-top: var(--space-3); }
 .generate-row .btn-primary:disabled { opacity: 0.6; cursor: default; }
