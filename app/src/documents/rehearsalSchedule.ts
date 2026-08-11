@@ -23,7 +23,7 @@
 
 import * as XLSX from 'xlsx-js-style';
 import { contestTitleLong, rehearsalDay1Count, type Contest } from '../model/contest';
-import { computeSchedule, parseTime } from '../model/schedule';
+import { computeContestDay, computeSchedule, isSameDayRehearsal, parseTime } from '../model/schedule';
 import { docSchools } from './docVars';
 import { fmtDate } from './format';
 import { THEME } from './ooxml';
@@ -48,7 +48,7 @@ export function buildRehearsalSchedule(contest: Contest): Uint8Array {
 
   // Layout flags — schools already in performance order with v12's name/play fallbacks.
   const schools = docSchools(contest);
-  const sameDay = !!(d.rehearsalDate1 && d.contestDate && d.rehearsalDate1 === d.contestDate);
+  const sameDay = isSameDayRehearsal(contest);
   const hasDay2 = !!d.rehearsalDate2;
   const day1Count = hasDay2 ? rehearsalDay1Count(contest) : schools.length;
   const day1Schools = schools.slice(0, day1Count);
@@ -78,10 +78,12 @@ export function buildRehearsalSchedule(contest: Contest): Uint8Array {
     });
   }
 
-  function addContestRows(cmArrivalMins: number): void {
-    ws['A' + row] = sc(minToFrac(cmArrivalMins), null, false, true);
-    ws['C' + row] = sc('CM Arrival', null, false, false);
-    row++;
+  function addContestRows(cmArrivalMins: number, skipArrival = false): void {
+    if (!skipArrival) {
+      ws['A' + row] = sc(minToFrac(cmArrivalMins), null, false, true);
+      ws['C' + row] = sc('CM Arrival', null, false, false);
+      row++;
+    }
     const dmMins = parseTime(dmTime);
     if (dmMins != null) {
       ws['A' + row] = sc(minToFrac(dmMins), SCHOOL_COLORS[0], false, true);
@@ -129,14 +131,33 @@ export function buildRehearsalSchedule(contest: Contest): Uint8Array {
 
   if (sameDay) {
     // ── ONE-DAY: continuous schedule, no date section headers ──────
+    // Rehearsal + arrival timing comes from the engine (computeContestDay), so
+    // CM Arrival leads the day (fixing v12's out-of-order arrival row) and the
+    // sheet reads identically to the live preview. The contest portion (its own
+    // Director's Meeting block + the timeline + footnotes) is rendered by
+    // addContestRows with the arrival suppressed — the engine already emitted it.
     HEADERS.forEach((h, ci) => {
       ws[COLS[ci] + row] = sc(h, THEME.xlsx.black, true, false);
     });
     row++;
-    addRehearsalRows(schools, rehearsalStart, 0);
+    for (const ev of computeContestDay(contest)) {
+      if (ev.type === 'arrival') {
+        ws['A' + row] = sc(minToFrac(ev.start), null, false, true);
+        ws['C' + row] = sc('CM Arrival', null, false, false);
+        row++;
+      } else if (ev.type === 'rehearsal') {
+        const rgb = SCHOOL_COLORS[ev.colorIdx % SCHOOL_COLORS.length];
+        ws['A' + row] = sc(minToFrac(ev.start), rgb, false, true);
+        ws['B' + row] = sc(minToFrac(ev.end), rgb, false, true);
+        ws['C' + row] = sc(ev.label, rgb, false, false);
+        ws['D' + row] = sc(ev.school + (ev.play ? ' — ' + ev.play : ''), rgb, false, false);
+        row++;
+      }
+      // 'dm' and the contest events are rendered by addContestRows below, so the
+      // sheet keeps its 30-minute Director's Meeting block and footnotes.
+    }
     row++; // blank gap before contest rows
-    const cmArr = (rehearsalStart ?? 14 * 60) - 60;
-    addContestRows(cmArr);
+    addContestRows(0, true);
   } else {
     // ── MULTI-DAY: dated sections — rehearsal day(s) then contest ──
     addSectionHeader(fmtDate(d.rehearsalDate1) || 'Rehearsal Day 1');

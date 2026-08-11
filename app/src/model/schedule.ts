@@ -34,8 +34,18 @@ const AWARDS = 30;
 /** Minutes allocated per critique slot per judge (v12 CRIT_MINS_PER_SHOW). */
 const CRIT_MINS_PER_SHOW = 15;
 
-/** What a timeline row is. Drives both the preview and the .xlsx generator. */
-export type ScheduleEventType = 'dm' | 'show' | 'trans' | 'admin' | 'crit' | 'awards';
+/** What a timeline row is. Drives both the preview and the .xlsx generator.
+ *  'arrival'/'rehearsal' appear only on a same-day rehearsal timeline (PRD #179;
+ *  see computeContestDay); computeSchedule() itself never emits them. */
+export type ScheduleEventType =
+  | 'arrival'
+  | 'dm'
+  | 'rehearsal'
+  | 'show'
+  | 'trans'
+  | 'admin'
+  | 'crit'
+  | 'awards';
 
 export interface ScheduleEvent {
   /** Minutes since midnight. */
@@ -215,4 +225,51 @@ export function computeSchedule(contest: Contest, overrides: ScheduleOverrides =
   }
 
   return applyOverrides(events, overrides);
+}
+
+/**
+ * Whether rehearsals fall ON the contest date with no second rehearsal day — the
+ * one shape where the engine folds the rehearsal block into the contest-day
+ * timeline (PRD #179). Multi-day and different-date rehearsals stay laid out by
+ * the Rehearsal + Contest document itself (dated sections), not here.
+ */
+export function isSameDayRehearsal(contest: Contest): boolean {
+  const d = contest.details;
+  return !!d.rehearsalDate1 && !!d.contestDate && d.rehearsalDate1 === d.contestDate && !d.rehearsalDate2;
+}
+
+/**
+ * The same-day rehearsal block that leads the contest day: a single CM-arrival
+ * row (an hour before rehearsals begin, per v12) followed by one rehearsal slot
+ * per school in performance order, each length + a fixed 10-minute transition.
+ * Emitted as engine events so the live preview and the .xlsx render identically.
+ */
+function sameDayRehearsalBlock(contest: Contest): ScheduleEvent[] {
+  const d = contest.details;
+  const slotLen = d.rehearsalLengthMinutes + 10;
+  const start = parseTime(d.rehearsalStartTime1 || '2:00 PM') ?? 14 * 60;
+  const events: ScheduleEvent[] = [];
+  const arrival = start - 60;
+  events.push({ start: arrival, end: arrival, dur: 0, label: 'CM Arrival', play: '', school: '', type: 'arrival', colorIdx: -1 });
+  let t = start;
+  schoolsInPerformanceOrder(contest).forEach((s, i) => {
+    const name = schoolLabel(contest, s);
+    events.push({ start: t, end: t + slotLen, dur: slotLen, label: `School ${i + 1} Rehearsal`, play: s.playTitle || '', school: name, type: 'rehearsal', colorIdx: i });
+    t += slotLen;
+  });
+  return events;
+}
+
+/**
+ * The whole contest DAY as one ordered timeline. Identical to computeSchedule()
+ * for a normal contest; when rehearsals are on the contest date
+ * (isSameDayRehearsal) it prepends the CM-arrival + rehearsal block so the preview
+ * and the Rehearsal + Contest .xlsx read as one continuous, chronological day
+ * (PRD #179). Returns [] with no valid first-show time, exactly like
+ * computeSchedule() — a same-day contest still needs a first-show time to schedule.
+ */
+export function computeContestDay(contest: Contest, overrides: ScheduleOverrides = {}): ScheduleEvent[] {
+  const contestEvents = computeSchedule(contest, overrides);
+  if (contestEvents.length === 0 || !isSameDayRehearsal(contest)) return contestEvents;
+  return [...sameDayRehearsalBlock(contest), ...contestEvents];
 }
