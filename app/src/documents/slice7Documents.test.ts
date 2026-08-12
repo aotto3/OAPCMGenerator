@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx-js-style';
-import { setNumSchools, withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
+import { addBreak, setNumSchools, withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildContestSchedule } from './contestSchedule';
@@ -122,6 +122,18 @@ describe('Contest Day Schedule — content', () => {
     const { ws } = firstSheet(buildContestSchedule(fixtureContest()));
     const firstShow = rowWhere(ws, 'Bravo HS — Setup and Performance');
     expect(ws['A' + firstShow].w).toBe('10:00 AM');
+  });
+
+  it('renders an inserted break at its anchor and shifts later rows (PRD #179)', () => {
+    // Bravo (draw 1) is the first performance slot → key "show:0". Insert 30 min after it.
+    const withGap = addBreak(fixtureContest(), 'show:0', 30, 'Lunch', FIXTURE_NOW);
+    const { ws } = firstSheet(buildContestSchedule(withGap));
+    const lunch = rowWhere(ws, 'Lunch');
+    expect(lunch).toBeGreaterThan(0);
+    expect(ws['A' + lunch].w).toBe('10:50 AM'); // right after Bravo's 10:00–10:50 show
+    // The second show is pushed 30 min later: originally 11:05 AM → 11:35 AM.
+    const secondShow = rowWhere(ws, 'Delta HS — Performance');
+    expect(ws['A' + secondShow].w).toBe('11:35 AM');
   });
 
   it('produces only the meeting rows (no timeline) when the first-show time is unset', () => {

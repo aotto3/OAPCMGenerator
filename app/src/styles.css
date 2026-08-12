@@ -787,6 +787,9 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   color: var(--c-warn); font-size: 0.82rem;
 }
 .schedule-flags li { margin: 2px 0; font-weight: 600; }
+/* Inline break controls in the editable preview (PRD #179). */
+.schedule-preview .schedule-actions { text-align: right; white-space: nowrap; }
+.schedule-preview .schedule-actions .btn-util { padding: 1px 6px; font-size: 0.72rem; }
 
 .generate-row { margin-top: var(--space-3); }
 .generate-row .btn-primary:disabled { opacity: 0.6; cursor: default; }

@@ -3,6 +3,8 @@ import {
   BUILT_IN_COMPLIANCE_ITEMS,
   BUILT_IN_READINESS_ITEMS,
   READINESS_PHASES,
+  addBreak,
+  removeBreak,
   addReadinessItem,
   removeReadinessItem,
   setReadinessStatus,
@@ -1170,6 +1172,56 @@ describe('importContest', () => {
     expect(() =>
       importContest(JSON.stringify({ schemaVersion: CONTEST_SCHEMA_VERSION, contest: { nope: true } })),
     ).toThrow(/malformed/);
+  });
+});
+
+describe('schedule overrides — inserted breaks (PRD #179)', () => {
+  it('a fresh contest has no inserted breaks', () => {
+    expect(createContest({ id: 'c', now: NOW }).scheduleOverrides).toEqual({ gaps: [] });
+  });
+
+  it('addBreak appends a gap with a fresh id, immutably, bumping updatedAt', () => {
+    const c = createContest({ id: 'c', now: NOW });
+    const withGap = addBreak(c, 'show:1', 30, 'Lunch', LATER);
+    expect(withGap.scheduleOverrides.gaps).toHaveLength(1);
+    expect(withGap.scheduleOverrides.gaps[0]).toMatchObject({ anchor: 'show:1', minutes: 30, label: 'Lunch' });
+    expect(withGap.scheduleOverrides.gaps[0].id).toBeTruthy();
+    expect(withGap.updatedAt).toBe(LATER);
+    expect(c.scheduleOverrides.gaps).toHaveLength(0); // source untouched
+  });
+
+  it('addBreak keeps existing gaps in append order', () => {
+    let c = createContest({ id: 'c', now: NOW });
+    c = addBreak(c, 'show:0', 10, 'A');
+    c = addBreak(c, 'awards', 5, 'B');
+    expect(c.scheduleOverrides.gaps.map((g) => g.label)).toEqual(['A', 'B']);
+  });
+
+  it('removeBreak drops by id; an unknown id is a no-op (same reference)', () => {
+    let c = addBreak(createContest({ id: 'c', now: NOW }), 'show:0', 10, 'A');
+    const id = c.scheduleOverrides.gaps[0].id;
+    expect(removeBreak(c, 'nope')).toBe(c);
+    c = removeBreak(c, id);
+    expect(c.scheduleOverrides.gaps).toHaveLength(0);
+  });
+
+  it('breaks survive a serialize/parse round-trip', () => {
+    const c = addBreak(createContest({ id: 'c', now: NOW }), 'show:2', 20, 'Meal');
+    expect(parseContest(serializeContest(c)).scheduleOverrides).toEqual(c.scheduleOverrides);
+  });
+
+  it('MIGRATION: a v12 payload gains an empty scheduleOverrides', () => {
+    const cur = createContest({ id: 'm', now: NOW });
+    const { scheduleOverrides: _o, speechwire: _s, ...v12contest } = cur;
+    const migrated = parseContest(JSON.stringify({ schemaVersion: 12, contest: v12contest }));
+    expect(migrated.scheduleOverrides).toEqual({ gaps: [] });
+  });
+
+  it('duplicate and advance clear inserted breaks (per-occurrence)', () => {
+    const c = addBreak(contest({ contestLevel: 'District' }), 'show:0', 15, 'Lunch');
+    expect(c.scheduleOverrides.gaps).toHaveLength(1);
+    expect(duplicateContest(c).scheduleOverrides).toEqual({ gaps: [] });
+    expect(advanceContest(c)?.scheduleOverrides).toEqual({ gaps: [] });
   });
 });
 
