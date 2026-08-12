@@ -42,6 +42,16 @@ export function DetailsSection({
   const edit = (patch: Partial<ContestDetails>) => onChange(withDetails(contest, patch));
   const [showPassword, setShowPassword] = useState(false);
 
+  // Changing the school count or critique format restructures the timeline, so
+  // the engine clears any manual schedule breaks (PRD #179). Warn first when the
+  // CM actually has breaks to lose, so the wipe is never a surprise.
+  const breakCount = contest.scheduleOverrides.gaps.length;
+  const confirmClear = () =>
+    breakCount === 0 ||
+    window.confirm(
+      `This will clear your ${breakCount} manual schedule break${breakCount === 1 ? '' : 's'}. Continue?`,
+    );
+
   const n = numSchools(contest);
   const day1 = rehearsalDay1Count(contest);
   const day2 = rehearsalDay2Count(contest);
@@ -82,7 +92,10 @@ export function DetailsSection({
                   type="radio"
                   name="critique_format"
                   checked={details.critiqueFormat === format}
-                  onChange={() => edit({ critiqueFormat: format })}
+                  onChange={() => {
+                    if (details.critiqueFormat !== format && !confirmClear()) return;
+                    edit({ critiqueFormat: format });
+                  }}
                 />
                 {CRITIQUE_LABELS[format]}
               </label>
@@ -100,7 +113,10 @@ export function DetailsSection({
           label="Number of Schools"
           value={n}
           options={SCHOOL_OPTIONS}
-          onChange={(v) => onChange(setNumSchools(contest, v))}
+          onChange={(v) => {
+            if (v !== n && !confirmClear()) return;
+            onChange(setNumSchools(contest, v));
+          }}
         />
       </div>
 

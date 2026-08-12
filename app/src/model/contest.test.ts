@@ -5,6 +5,7 @@ import {
   READINESS_PHASES,
   addBreak,
   removeBreak,
+  updateBreak,
   addReadinessItem,
   removeReadinessItem,
   setReadinessStatus,
@@ -1222,6 +1223,29 @@ describe('schedule overrides — inserted breaks (PRD #179)', () => {
     expect(c.scheduleOverrides.gaps).toHaveLength(1);
     expect(duplicateContest(c).scheduleOverrides).toEqual({ gaps: [] });
     expect(advanceContest(c)?.scheduleOverrides).toEqual({ gaps: [] });
+  });
+
+  it('updateBreak patches label / minutes / anchor by id; unknown id is a no-op', () => {
+    let c = addBreak(createContest({ id: 'c', now: NOW }), 'show:0', 15, 'Break');
+    const id = c.scheduleOverrides.gaps[0].id;
+    c = updateBreak(c, id, { label: 'Lunch', minutes: 45, anchor: 'show:1' }, LATER);
+    expect(c.scheduleOverrides.gaps[0]).toMatchObject({ id, label: 'Lunch', minutes: 45, anchor: 'show:1' });
+    expect(c.updatedAt).toBe(LATER);
+    expect(updateBreak(c, 'nope', { minutes: 5 })).toBe(c); // same reference — no-op
+  });
+
+  it('CLEAN-SLATE: changing the school count clears breaks; keeping it keeps them', () => {
+    const c = addBreak(setNumSchools(contest(), 4), 'show:0', 15, 'Lunch');
+    expect(setNumSchools(c, 5).scheduleOverrides.gaps).toHaveLength(0); // count changed → wiped
+    expect(setNumSchools(c, 4).scheduleOverrides.gaps).toHaveLength(1); // unchanged → kept
+  });
+
+  it('CLEAN-SLATE: flipping the critique format clears breaks; other detail edits keep them', () => {
+    const c = addBreak(contest(), 'show:0', 15, 'Lunch'); // default format is after_all
+    expect(withDetails(c, { critiqueFormat: 'after_each' }).scheduleOverrides.gaps).toHaveLength(0);
+    expect(withDetails(c, { critiqueFormat: 'after_all' }).scheduleOverrides.gaps).toHaveLength(1); // same → kept
+    expect(withDetails(c, { numJudges: 1 }).scheduleOverrides.gaps).toHaveLength(1); // judges → kept
+    expect(withDetails(c, { firstShowTime: '9:00 AM' }).scheduleOverrides.gaps).toHaveLength(1); // anchor → kept
   });
 });
 
