@@ -1,4 +1,11 @@
-import { computeContestDay, fmtTime, scheduleEventKey, type ScheduleEvent } from '../model/schedule';
+import {
+  computeContestDay,
+  fmtTime,
+  parseTime,
+  scheduleEventKey,
+  setRowStart,
+  type ScheduleEvent,
+} from '../model/schedule';
 import { validateSchedule } from '../model/scheduleValidation';
 import { addBreak, removeBreak, updateBreak, type Contest } from '../model/contest';
 import { Section } from './sections/Section';
@@ -80,9 +87,28 @@ export function SchedulePreview({
                     ? contest.scheduleOverrides.gaps.find((g) => g.id === ev.overrideId)
                     : undefined;
                 const isBreak = editable && !!gap;
+                // Non-first shows can have their start typed directly (#190) — it
+                // resizes/inserts the break above them. The first show is the
+                // anchor (edit via First Show Time).
+                const startEditable = editable && ev.type === 'show' && ev.colorIdx >= 1;
                 return (
                   <tr key={i} className={flagged.has(i) ? 'is-flagged' : undefined} style={{ background: rowColor(ev) }}>
-                    <td>{fmtTime(ev.start)}</td>
+                    <td>
+                      {startEditable ? (
+                        <input
+                          className="schedule-start-input"
+                          key={ev.start}
+                          defaultValue={fmtTime(ev.start)}
+                          aria-label={`${ev.school} start time`}
+                          onBlur={(e) => {
+                            const mins = parseTime(e.target.value);
+                            if (mins != null && mins !== ev.start) onChange!(setRowStart(contest, events, i, mins));
+                          }}
+                        />
+                      ) : (
+                        fmtTime(ev.start)
+                      )}
+                    </td>
                     <td>{fmtTime(ev.end)}</td>
                     <td>
                       {isBreak ? (
