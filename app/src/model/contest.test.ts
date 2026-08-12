@@ -6,6 +6,7 @@ import {
   addBreak,
   removeBreak,
   updateBreak,
+  setArrival,
   addReadinessItem,
   removeReadinessItem,
   setReadinessStatus,
@@ -1223,6 +1224,15 @@ describe('schedule overrides — inserted breaks (PRD #179)', () => {
     expect(c.scheduleOverrides.gaps).toHaveLength(1);
     expect(duplicateContest(c).scheduleOverrides).toEqual({ gaps: [] });
     expect(advanceContest(c)?.scheduleOverrides).toEqual({ gaps: [] });
+  });
+
+  it('setArrival sets and clears the CM-arrival override (#192)', () => {
+    const c = createContest({ id: 'c', now: NOW });
+    expect(c.scheduleOverrides.arrival).toBeUndefined();
+    const set = setArrival(c, 420, LATER);
+    expect(set.scheduleOverrides.arrival).toBe(420);
+    expect(set.updatedAt).toBe(LATER);
+    expect(setArrival(set, null).scheduleOverrides.arrival).toBeUndefined();
   });
 
   it('updateBreak patches label / minutes / anchor by id; unknown id is a no-op', () => {

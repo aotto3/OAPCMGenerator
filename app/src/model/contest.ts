@@ -512,10 +512,15 @@ export interface InsertedGap {
   label: string;
 }
 
-/** Manual schedule overrides carried on a Contest (PRD #179). */
+/** Manual schedule overrides carried on a Contest (PRD #179 / #192). */
 export interface ScheduleOverrides {
   /** Inserted gaps/breaks, applied in order by the engine. */
   gaps: InsertedGap[];
+  /**
+   * Absolute CM-arrival time (minutes since midnight) for a same-day rehearsal
+   * day. Absent ⇒ derived (one hour before rehearsals). Same-day preview only.
+   */
+  arrival?: number;
 }
 
 export interface Contest {
@@ -1123,6 +1128,17 @@ export function addBreak(
     ...touch(contest, now),
     scheduleOverrides: { gaps: [...contest.scheduleOverrides.gaps, gap] },
   };
+}
+
+/**
+ * Sets (or clears) the absolute CM-arrival time for a same-day rehearsal day
+ * (PRD #192). `null` reverts to the derived value (one hour before rehearsals).
+ */
+export function setArrival(contest: Contest, minutes: number | null, now?: string): Contest {
+  const scheduleOverrides = { ...contest.scheduleOverrides };
+  if (minutes == null) delete scheduleOverrides.arrival;
+  else scheduleOverrides.arrival = minutes;
+  return { ...touch(contest, now), scheduleOverrides };
 }
 
 /** Removes the inserted gap with the given id. Unknown id ⇒ no-op (returns as-is). */

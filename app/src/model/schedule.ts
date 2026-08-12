@@ -128,12 +128,11 @@ export function fmtTime(mins: number | null): string {
 }
 
 /**
- * A stable key for the computed row a manual gap anchors to (PRD #179). Only the
- * cascade's own rows are anchorable — shows/transitions by their school position,
- * the singleton admin rows by name. Rows that don't come from the cascade
- * (arrival/rehearsal, and inserted breaks themselves) return null and can't be
- * anchored to. The UI reuses this to record the anchor when adding a break, so
- * the two can never compute the key differently.
+ * A stable key for the computed row a manual gap anchors to (PRD #179 / #192).
+ * Shows/transitions/rehearsals key by their position, the singleton admin rows by
+ * name. The CM-arrival row (its own override, setArrival) and inserted break rows
+ * return null and can't be anchored to. The UI reuses this to record the anchor
+ * when adding a break, so the two can never compute the key differently.
  */
 export function scheduleEventKey(ev: ScheduleEvent): string | null {
   switch (ev.type) {
@@ -141,6 +140,8 @@ export function scheduleEventKey(ev: ScheduleEvent): string | null {
       return `show:${ev.colorIdx}`;
     case 'trans':
       return `trans:${ev.colorIdx}`;
+    case 'rehearsal':
+      return `reh:${ev.colorIdx}`;
     case 'dm':
       return 'dm';
     case 'admin':
@@ -150,37 +151,42 @@ export function scheduleEventKey(ev: ScheduleEvent): string | null {
     case 'awards':
       return 'awards';
     default:
-      return null; // arrival / rehearsal / break — not anchorable
+      return null; // arrival / break — not anchorable
   }
 }
 
 /**
- * Applies manual overrides (PRD #179): each inserted gap becomes a 'break' row
- * right after its anchor, and every later row slides by the gap's length
- * (forward ripple, durations preserved). Gaps apply in list order; an orphaned
- * anchor — the row no longer exists, e.g. after a school-count change — is
- * skipped rather than dropped, so nothing throws. Pure: returns a new array.
+ * Applies manual overrides (PRD #179 / #192). Each gap slides every later row
+ * forward by its length (ripple, durations preserved). A LABELED gap also draws
+ * a visible 'break' row right after its anchor (a deliberate break — "Lunch");
+ * an UNLABELED gap (label '') is a plain time nudge — it just moves the rows,
+ * leaving blank space, with no phantom row. Gaps apply in list order; an
+ * orphaned anchor is skipped rather than dropped. Pure: returns a new array.
  */
 function applyOverrides(events: ScheduleEvent[], overrides: ScheduleOverrides): ScheduleEvent[] {
   let result = events;
   for (const gap of overrides.gaps) {
     const idx = result.findIndex((ev) => scheduleEventKey(ev) === gap.anchor);
     if (idx === -1) continue; // orphaned anchor — leave the timeline untouched
+    const after = result
+      .slice(idx + 1)
+      .map((ev) => ({ ...ev, start: ev.start + gap.minutes, end: ev.end + gap.minutes }));
+    if (gap.label === '') {
+      result = [...result.slice(0, idx + 1), ...after]; // nudge — shift only, no row
+      continue;
+    }
     const at = result[idx].end;
     const breakRow: ScheduleEvent = {
       start: at,
       end: at + gap.minutes,
       dur: gap.minutes,
-      label: gap.label || 'Break',
+      label: gap.label,
       play: '',
       school: '',
       type: 'break',
       colorIdx: -1,
       overrideId: gap.id,
     };
-    const after = result
-      .slice(idx + 1)
-      .map((ev) => ({ ...ev, start: ev.start + gap.minutes, end: ev.end + gap.minutes }));
     result = [...result.slice(0, idx + 1), breakRow, ...after];
   }
   return result;
@@ -296,16 +302,18 @@ export function isSameDayRehearsal(contest: Contest): boolean {
 
 /**
  * The same-day rehearsal block that leads the contest day: a single CM-arrival
- * row (an hour before rehearsals begin, per v12) followed by one rehearsal slot
- * per school in performance order, each length + a fixed 10-minute transition.
- * Emitted as engine events so the live preview and the .xlsx render identically.
+ * row (an hour before rehearsals begin, per v12 — or the CM's explicit override,
+ * PRD #192) followed by one rehearsal slot per school in performance order, each
+ * length + a fixed 10-minute transition. Overrides are applied here too, so a
+ * gap/nudge anchored to a rehearsal row lands in the block (PRD #192); gaps
+ * anchored to contest rows have no match here and are skipped.
  */
-function sameDayRehearsalBlock(contest: Contest): ScheduleEvent[] {
+function sameDayRehearsalBlock(contest: Contest, overrides: ScheduleOverrides): ScheduleEvent[] {
   const d = contest.details;
   const slotLen = d.rehearsalLengthMinutes + 10;
   const start = parseTime(d.rehearsalStartTime1 || '2:00 PM') ?? 14 * 60;
   const events: ScheduleEvent[] = [];
-  const arrival = start - 60;
+  const arrival = overrides.arrival ?? start - 60;
   events.push({ start: arrival, end: arrival, dur: 0, label: 'CM Arrival', play: '', school: '', type: 'arrival', colorIdx: -1 });
   let t = start;
   schoolsInPerformanceOrder(contest).forEach((s, i) => {
@@ -313,7 +321,7 @@ function sameDayRehearsalBlock(contest: Contest): ScheduleEvent[] {
     events.push({ start: t, end: t + slotLen, dur: slotLen, label: `School ${i + 1} Rehearsal`, play: s.playTitle || '', school: name, type: 'rehearsal', colorIdx: i });
     t += slotLen;
   });
-  return events;
+  return applyOverrides(events, overrides);
 }
 
 /**
@@ -330,21 +338,22 @@ export function computeContestDay(
 ): ScheduleEvent[] {
   const contestEvents = computeSchedule(contest, overrides);
   if (contestEvents.length === 0 || !isSameDayRehearsal(contest)) return contestEvents;
-  return [...sameDayRehearsalBlock(contest), ...contestEvents];
+  return [...sameDayRehearsalBlock(contest, overrides), ...contestEvents];
 }
 
 /**
  * Moves a computed row to start at `newStart` by adjusting the gap directly
- * before it (PRD #179 / #190) — the pin-free "just change the time of a row."
- * Inline typing is sugar over the break primitive:
- *   • if the row directly above is a break, resize it (remove it when the new
- *     length reaches zero — this clamps the row to its natural position);
- *   • otherwise insert a break anchored to the (anchorable) predecessor.
+ * before it (PRD #179 / #192) — the pin-free "just change the time of a row." A
+ * time edit stores an UNLABELED nudge, so the row simply moves (blank space), no
+ * phantom break row:
+ *   • if the row directly above is a LABELED break, resize it (its length is what
+ *     positions this row) — removing it when the new length reaches zero;
+ *   • otherwise create/resize the unlabeled nudge anchored to the predecessor.
  * It never moves a row EARLIER than back-to-back with what precedes it (a
- * negative delta with no break to shrink is a no-op), so an inline edit can't
- * create a backward overlap. `events` is the timeline the row came from
- * (computeContestDay). Out-of-range / first-row / non-anchorable-predecessor ⇒
- * the contest is returned unchanged.
+ * negative delta with no gap to shrink is a no-op), so a time edit can't create a
+ * backward overlap. `events` is the timeline the row came from (computeContestDay).
+ * Out-of-range / first-row / non-anchorable-predecessor ⇒ the contest is returned
+ * unchanged.
  */
 export function setRowStart(
   contest: Contest,
@@ -358,6 +367,7 @@ export function setRowStart(
   if (!target || !prev) return contest;
   const delta = newStart - target.start;
   if (delta === 0) return contest;
+  // Directly below a labeled break: that break's length positions this row.
   if (prev.type === 'break' && prev.overrideId) {
     const minutes = prev.dur + delta;
     return minutes <= 0
@@ -365,6 +375,13 @@ export function setRowStart(
       : updateBreak(contest, prev.overrideId, { minutes }, now);
   }
   const anchor = scheduleEventKey(prev);
-  if (anchor == null || delta <= 0) return contest; // can't go earlier than natural
-  return addBreak(contest, anchor, delta, 'Break', now);
+  if (anchor == null) return contest;
+  // Adjust the one unlabeled nudge for this anchor (there is at most one).
+  const nudge = contest.scheduleOverrides.gaps.find((g) => g.anchor === anchor && g.label === '');
+  if (nudge) {
+    const minutes = nudge.minutes + delta;
+    return minutes <= 0 ? removeBreak(contest, nudge.id, now) : updateBreak(contest, nudge.id, { minutes }, now);
+  }
+  if (delta <= 0) return contest; // no nudge to shrink — can't go earlier than natural
+  return addBreak(contest, anchor, delta, '', now); // '' ⇒ unlabeled nudge (blank space)
 }
