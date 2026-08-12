@@ -793,6 +793,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .schedule-preview .schedule-break-label { width: 100%; min-width: 8ch; font-size: 0.82rem; padding: 1px 4px; }
 .schedule-preview .schedule-break-min { font-size: 0.78rem; white-space: nowrap; }
 .schedule-preview .schedule-break-min input { width: 4ch; font-size: 0.82rem; padding: 1px 4px; }
+.schedule-preview .schedule-start-input { width: 9ch; font-size: 0.82rem; padding: 1px 4px; }
 
 .generate-row { margin-top: var(--space-3); }
 .generate-row .btn-primary:disabled { opacity: 0.6; cursor: default; }

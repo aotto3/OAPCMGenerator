@@ -18,7 +18,15 @@
  * belong to the view and document layers, never to this engine.
  */
 
-import { schoolsInPerformanceOrder, type Contest, type ScheduleOverrides, type School } from './contest';
+import {
+  addBreak,
+  removeBreak,
+  updateBreak,
+  schoolsInPerformanceOrder,
+  type Contest,
+  type ScheduleOverrides,
+  type School,
+} from './contest';
 
 /* ── v12 schedule constants (calculateSchedule + CRIT_MINS_PER_SHOW). ── */
 /** First school: setup(7) + performance(40) + buffer(3). */
@@ -323,4 +331,40 @@ export function computeContestDay(
   const contestEvents = computeSchedule(contest, overrides);
   if (contestEvents.length === 0 || !isSameDayRehearsal(contest)) return contestEvents;
   return [...sameDayRehearsalBlock(contest), ...contestEvents];
+}
+
+/**
+ * Moves a computed row to start at `newStart` by adjusting the gap directly
+ * before it (PRD #179 / #190) — the pin-free "just change the time of a row."
+ * Inline typing is sugar over the break primitive:
+ *   • if the row directly above is a break, resize it (remove it when the new
+ *     length reaches zero — this clamps the row to its natural position);
+ *   • otherwise insert a break anchored to the (anchorable) predecessor.
+ * It never moves a row EARLIER than back-to-back with what precedes it (a
+ * negative delta with no break to shrink is a no-op), so an inline edit can't
+ * create a backward overlap. `events` is the timeline the row came from
+ * (computeContestDay). Out-of-range / first-row / non-anchorable-predecessor ⇒
+ * the contest is returned unchanged.
+ */
+export function setRowStart(
+  contest: Contest,
+  events: ScheduleEvent[],
+  index: number,
+  newStart: number,
+  now?: string,
+): Contest {
+  const target = events[index];
+  const prev = events[index - 1];
+  if (!target || !prev) return contest;
+  const delta = newStart - target.start;
+  if (delta === 0) return contest;
+  if (prev.type === 'break' && prev.overrideId) {
+    const minutes = prev.dur + delta;
+    return minutes <= 0
+      ? removeBreak(contest, prev.overrideId, now)
+      : updateBreak(contest, prev.overrideId, { minutes }, now);
+  }
+  const anchor = scheduleEventKey(prev);
+  if (anchor == null || delta <= 0) return contest; // can't go earlier than natural
+  return addBreak(contest, anchor, delta, 'Break', now);
 }

@@ -16,6 +16,7 @@ import {
   isSameDayRehearsal,
   parseTime,
   scheduleEventKey,
+  setRowStart,
   type ScheduleEvent,
 } from './schedule';
 
@@ -398,5 +399,47 @@ describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
     const out = computeSchedule(g);
     const bi = out.findIndex((e) => e.type === 'break');
     expect(scheduleEventKey(out[bi - 1])).toBe('show:1'); // now sits right after the 2nd show
+  });
+});
+
+describe('setRowStart — inline "type a row\'s start time" (PRD #179 / #190)', () => {
+  const c = makeContest('after_all', 3, { firstShow: '11:00 AM' });
+  const events = computeContestDay(c);
+  const show1Index = events.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
+  const naturalStart = events[show1Index].start;
+
+  it('inserts a break before the row so it lands at the typed time', () => {
+    const out = setRowStart(c, events, show1Index, naturalStart + 20);
+    expect(out.scheduleOverrides.gaps).toHaveLength(1);
+    expect(out.scheduleOverrides.gaps[0]).toMatchObject({ anchor: 'trans:0', minutes: 20, label: 'Break' });
+    const moved = computeContestDay(out).find((e) => e.type === 'show' && e.colorIdx === 1)!;
+    expect(moved.start).toBe(naturalStart + 20);
+  });
+
+  it('editing the same row again resizes the existing break, not a second one', () => {
+    let out = setRowStart(c, events, show1Index, naturalStart + 20);
+    const ev2 = computeContestDay(out);
+    const i2 = ev2.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
+    out = setRowStart(out, ev2, i2, ev2[i2].start + 10);
+    expect(out.scheduleOverrides.gaps).toHaveLength(1);
+    expect(out.scheduleOverrides.gaps[0].minutes).toBe(30);
+  });
+
+  it('moving the row back to (or before) its natural time removes the break — clamp', () => {
+    let out = setRowStart(c, events, show1Index, naturalStart + 20);
+    const ev2 = computeContestDay(out);
+    const i2 = ev2.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
+    out = setRowStart(out, ev2, i2, naturalStart); // delta = -20 → break hits 0
+    expect(out.scheduleOverrides.gaps).toHaveLength(0);
+  });
+
+  it('never moves a row earlier than natural when there is no break to shrink', () => {
+    expect(setRowStart(c, events, show1Index, naturalStart - 15)).toBe(c);
+  });
+
+  it('is a no-op for a zero delta, the first row, or an out-of-range index', () => {
+    expect(setRowStart(c, events, show1Index, naturalStart)).toBe(c);
+    expect(setRowStart(c, events, 0, 999)).toBe(c); // no predecessor
+    expect(setRowStart(c, events, 999, 100)).toBe(c);
   });
 });
