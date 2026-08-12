@@ -47,13 +47,13 @@ export function WorkspacePane({
 }) {
   return (
     <>
-      {paneModules(pane).map(({ module, mirror }) => (
+      {paneModules(pane).map(({ module, mirror, readOnly }) => (
         <div
           key={mirror ? `${module}-mirror` : module}
           id={mirror ? undefined : moduleAnchorId(module)}
           className="ws-section-anchor"
         >
-          {renderModule(module, contest, progress, onChange, onOpenSaved)}
+          {renderModule(module, contest, progress, onChange, onOpenSaved, readOnly)}
         </div>
       ))}
     </>
@@ -72,6 +72,7 @@ function renderModule(
   progress: Record<SectionId, SectionCompletion>,
   onChange: (next: Contest) => void,
   onOpenSaved: (contest: Contest) => void | Promise<void>,
+  readOnly?: boolean,
 ): ReactNode {
   switch (module) {
     case 'cm':
@@ -93,7 +94,8 @@ function renderModule(
     case 'compliance':
       return <ComplianceSection contest={contest} onChange={onChange} />;
     case 'schedule':
-      return <SchedulePreview contest={contest} />;
+      // Editable at its canonical home; the Setup mirror stays read-only.
+      return <SchedulePreview contest={contest} onChange={readOnly ? undefined : onChange} />;
     case 'critique':
       return <CritiqueSection contest={contest} onChange={onChange} />;
     case 'results':

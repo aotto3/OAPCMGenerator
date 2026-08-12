@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addBreak,
   createContest,
   setNumSchools,
   withDetails,
@@ -13,6 +14,7 @@ import {
   fmtTime,
   isSameDayRehearsal,
   parseTime,
+  scheduleEventKey,
   type ScheduleEvent,
 } from './schedule';
 
@@ -339,9 +341,53 @@ describe('computeSchedule — schools consumed in performance order', () => {
   });
 });
 
-describe('computeSchedule — overrides argument (future manual-edit hook)', () => {
-  it('accepts an empty overrides object and returns the same timeline', () => {
-    const c = makeContest('after_all', 5, { dm: '10:00 AM' });
-    expect(computeSchedule(c, {})).toEqual(computeSchedule(c));
+describe('scheduleEventKey', () => {
+  it('keys cascade rows and returns null for non-anchorable rows', () => {
+    const base = computeSchedule(makeContest('after_all', 3, { firstShow: '11:00 AM', dm: '10:00 AM' }));
+    expect(scheduleEventKey(base.find((e) => e.type === 'dm')!)).toBe('dm');
+    expect(scheduleEventKey(base.find((e) => e.type === 'show')!)).toBe('show:0');
+    expect(scheduleEventKey(base.find((e) => e.type === 'awards')!)).toBe('awards');
+    // arrival / rehearsal / break come from outside the cascade — not anchorable.
+    expect(scheduleEventKey({ ...base[0], type: 'arrival' })).toBeNull();
+    expect(scheduleEventKey({ ...base[0], type: 'break' })).toBeNull();
+  });
+});
+
+describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
+  const c = makeContest('after_all', 3, { firstShow: '11:00 AM' });
+  const base = computeSchedule(c);
+
+  it('inserts a break after its anchor and ripples every later row forward', () => {
+    const out = computeSchedule(addBreak(c, 'show:0', 20, 'Lunch')); // reads contest.scheduleOverrides
+    // The break sits immediately after the first show, at that show's end.
+    expect(out).toHaveLength(base.length + 1);
+    expect(out[0]).toEqual(base[0]); // anchor + everything before it is untouched
+    expect(out[1]).toMatchObject({ type: 'break', label: 'Lunch', start: base[0].end, end: base[0].end + 20, dur: 20 });
+    expect(out[1].overrideId).toBeTruthy();
+    // Every row after the anchor shifted by exactly the gap length; durations kept.
+    for (let i = 1; i < base.length; i++) {
+      expect(out[i + 1]).toMatchObject({ ...base[i], start: base[i].start + 20, end: base[i].end + 20 });
+    }
+  });
+
+  it('uses the label "Break" when the gap has no name', () => {
+    const out = computeSchedule(addBreak(c, 'show:0', 10, ''));
+    expect(out.find((e) => e.type === 'break')!.label).toBe('Break');
+  });
+
+  it('ignores an orphaned anchor rather than throwing', () => {
+    expect(computeSchedule(addBreak(c, 'show:99', 20, 'X'))).toEqual(base);
+  });
+
+  it('applies multiple gaps cumulatively', () => {
+    let g = addBreak(c, 'show:0', 10, 'A');
+    g = addBreak(g, 'awards', 5, 'B');
+    const out = computeSchedule(g);
+    expect(out.filter((e) => e.type === 'break')).toHaveLength(2);
+    expect(out).toHaveLength(base.length + 2);
+  });
+
+  it('honors an explicitly injected overrides argument over the contest field', () => {
+    expect(computeSchedule(c, { gaps: [] })).toEqual(base);
   });
 });

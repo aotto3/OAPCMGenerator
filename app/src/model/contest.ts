@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 12;
+export const CONTEST_SCHEMA_VERSION = 13;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -484,6 +484,40 @@ export interface NextContestInfo {
   cmPhone: string;
 }
 
+/* ────────────────────────── schedule overrides ──────────────────────────
+ * PRD #179. The pin-free manual-schedule model: the contest day is fully
+ * determined by absolute anchors (rehearsal/DM/first-show times) plus relative
+ * durations, so the only thing a CM overrides is EXTRA TIME. One primitive — an
+ * inserted gap — covers both a named break ("Lunch") and a plain "drag a row
+ * later" nudge (empty label). A gap is anchored RELATIVE to a computed row (by a
+ * stable key), so it rides the cascade when an upstream anchor moves. The data
+ * lives here; the schedule engine (schedule.ts applyOverrides) applies it, the
+ * same split as PerformanceDraw/draw.ts. Blank-safe: an empty `gaps` costs
+ * nothing serialized and is inert.
+ */
+
+/** One inserted gap on the contest-day timeline (a break, or drag-slack). */
+export interface InsertedGap {
+  /** Stable id; lets the UI target this gap for removal. */
+  id: string;
+  /**
+   * Stable key of the computed row this gap follows (schedule.ts
+   * scheduleEventKey — e.g. "show:2", "trans:0", "awards"). An orphaned anchor
+   * (the row no longer exists) is simply ignored by the engine.
+   */
+  anchor: string;
+  /** Gap length in minutes. */
+  minutes: number;
+  /** '' for a plain drag-gap; a name (e.g. "Lunch") for a labeled break. */
+  label: string;
+}
+
+/** Manual schedule overrides carried on a Contest (PRD #179). */
+export interface ScheduleOverrides {
+  /** Inserted gaps/breaks, applied in order by the engine. */
+  gaps: InsertedGap[];
+}
+
 export interface Contest {
   /** Stable unique id; never changes after creation. */
   id: string;
@@ -538,6 +572,12 @@ export interface Contest {
    * as the CM's reusable process template.
    */
   customReadinessItems: ReadinessItemDef[];
+  /**
+   * Manual contest-day schedule overrides (PRD #179) — inserted breaks/gaps.
+   * Serialized/synced/exported like every other field; per-occurrence (cleared
+   * on duplicate and advance). Blank-safe: `{ gaps: [] }` is inert.
+   */
+  scheduleOverrides: ScheduleOverrides;
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -652,6 +692,11 @@ export function defaultSpeechwire(): SpeechwireCredentials {
   return { username: '', password: '' };
 }
 
+/** A blank schedule-overrides block — no inserted gaps (PRD #179). */
+export function defaultScheduleOverrides(): ScheduleOverrides {
+  return { gaps: [] };
+}
+
 /** A blank next-level info block — all-empty strings (PRD #66). */
 export function defaultNextContest(): NextContestInfo {
   return { date: '', location: '', cmName: '', cmEmail: '', cmPhone: '' };
@@ -716,6 +761,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     nextContest: defaultNextContest(),
     readinessChecks: {},
     customReadinessItems: [],
+    scheduleOverrides: defaultScheduleOverrides(),
     speechwire: defaultSpeechwire(),
   };
 }
@@ -820,6 +866,8 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     // template (PRD #75 user story 21). Derived items recompute from new data.
     readinessChecks: {},
     customReadinessItems: contest.customReadinessItems.map((it) => ({ ...it })),
+    // Manual schedule breaks belong to one contest occurrence — start clean.
+    scheduleOverrides: defaultScheduleOverrides(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -970,6 +1018,8 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     // process template (PRD #75 user story 22). Derived items recompute.
     readinessChecks: {},
     customReadinessItems: contest.customReadinessItems.map((it) => ({ ...it })),
+    // Manual schedule breaks belong to one contest occurrence — start clean.
+    scheduleOverrides: defaultScheduleOverrides(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -1040,6 +1090,37 @@ export function withDetails(contest: Contest, patch: Partial<ContestDetails>, no
 
 export function withSpeechwire(contest: Contest, patch: Partial<SpeechwireCredentials>, now?: string): Contest {
   return { ...touch(contest, now), speechwire: { ...contest.speechwire, ...patch } };
+}
+
+/* ────────────────────────── schedule overrides ──────────────────────────
+ * PRD #179. Immutable updaters over the inserted-gap list. `anchor` is a stable
+ * row key (schedule.ts scheduleEventKey); the engine ignores an orphaned anchor,
+ * so these never need to validate against a computed timeline.
+ */
+
+/**
+ * Inserts a break/gap after the row identified by `anchor`. `minutes` is its
+ * length and `label` its name ('' ⇒ a plain drag-gap). Appends with a fresh id.
+ */
+export function addBreak(
+  contest: Contest,
+  anchor: string,
+  minutes: number,
+  label: string,
+  now?: string,
+): Contest {
+  const gap: InsertedGap = { id: crypto.randomUUID(), anchor, minutes, label };
+  return {
+    ...touch(contest, now),
+    scheduleOverrides: { gaps: [...contest.scheduleOverrides.gaps, gap] },
+  };
+}
+
+/** Removes the inserted gap with the given id. Unknown id ⇒ no-op (returns as-is). */
+export function removeBreak(contest: Contest, id: string, now?: string): Contest {
+  const gaps = contest.scheduleOverrides.gaps.filter((g) => g.id !== id);
+  if (gaps.length === contest.scheduleOverrides.gaps.length) return contest;
+  return { ...touch(contest, now), scheduleOverrides: { gaps } };
 }
 
 export function withAdjudicator(
@@ -2160,6 +2241,9 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // v11 predates the custom display title (PRD #143): every existing contest
   // starts with no override, i.e. the auto-derived name. Additive/blank-safe.
   11: (raw) => ({ ...raw, titleOverride: '' }),
+  // v12 predates manual schedule overrides (PRD #179): every existing contest
+  // loads with no inserted breaks. Additive/blank-safe.
+  12: (raw) => ({ ...raw, scheduleOverrides: { gaps: [] } }),
 };
 
 export function parseContest(json: string): Contest {

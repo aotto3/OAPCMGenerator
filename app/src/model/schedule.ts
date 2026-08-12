@@ -18,7 +18,7 @@
  * belong to the view and document layers, never to this engine.
  */
 
-import { schoolsInPerformanceOrder, type Contest, type School } from './contest';
+import { schoolsInPerformanceOrder, type Contest, type ScheduleOverrides, type School } from './contest';
 
 /* ── v12 schedule constants (calculateSchedule + CRIT_MINS_PER_SHOW). ── */
 /** First school: setup(7) + performance(40) + buffer(3). */
@@ -36,13 +36,15 @@ const CRIT_MINS_PER_SHOW = 15;
 
 /** What a timeline row is. Drives both the preview and the .xlsx generator.
  *  'arrival'/'rehearsal' appear only on a same-day rehearsal timeline (PRD #179;
- *  see computeContestDay); computeSchedule() itself never emits them. */
+ *  see computeContestDay); 'break' is an inserted manual gap (applyOverrides);
+ *  computeSchedule()'s own cascade emits only dm/show/trans/admin/crit/awards. */
 export type ScheduleEventType =
   | 'arrival'
   | 'dm'
   | 'rehearsal'
   | 'show'
   | 'trans'
+  | 'break'
   | 'admin'
   | 'crit'
   | 'awards';
@@ -63,17 +65,9 @@ export interface ScheduleEvent {
   /** School index for shows, 0 for the directors' meeting, -1 for everything
    *  else. The view maps this onto the color palette; the engine never does. */
   colorIdx: number;
-}
-
-/**
- * Manual timing overrides — the future manual-edit hook (PRD user story 28).
- * Empty in v1; it is part of the computeSchedule contract now so that later
- * slices add manual edits additively, without changing the signature or
- * touching any caller. See applyOverrides().
- */
-export interface ScheduleOverrides {
-  /** Reserved. No override fields exist yet. */
-  readonly reserved?: never;
+  /** Set only on a 'break' row — the InsertedGap id that produced it, so the UI
+   *  can target it for removal (PRD #179). */
+  overrideId?: string;
 }
 
 /**
@@ -126,13 +120,62 @@ export function fmtTime(mins: number | null): string {
 }
 
 /**
- * Applies manual timing overrides to a computed timeline. The overrides hook is
- * empty in v1, so this is the identity function today — but it is a real seam:
- * future manual-edit slices land here, leaving the core loop and every caller
- * untouched. It also makes `overrides` part of the compiled contract now.
+ * A stable key for the computed row a manual gap anchors to (PRD #179). Only the
+ * cascade's own rows are anchorable — shows/transitions by their school position,
+ * the singleton admin rows by name. Rows that don't come from the cascade
+ * (arrival/rehearsal, and inserted breaks themselves) return null and can't be
+ * anchored to. The UI reuses this to record the anchor when adding a break, so
+ * the two can never compute the key differently.
  */
-function applyOverrides(events: ScheduleEvent[], _overrides: ScheduleOverrides): ScheduleEvent[] {
-  return events;
+export function scheduleEventKey(ev: ScheduleEvent): string | null {
+  switch (ev.type) {
+    case 'show':
+      return `show:${ev.colorIdx}`;
+    case 'trans':
+      return `trans:${ev.colorIdx}`;
+    case 'dm':
+      return 'dm';
+    case 'admin':
+      return 'admin';
+    case 'crit':
+      return 'crit';
+    case 'awards':
+      return 'awards';
+    default:
+      return null; // arrival / rehearsal / break — not anchorable
+  }
+}
+
+/**
+ * Applies manual overrides (PRD #179): each inserted gap becomes a 'break' row
+ * right after its anchor, and every later row slides by the gap's length
+ * (forward ripple, durations preserved). Gaps apply in list order; an orphaned
+ * anchor — the row no longer exists, e.g. after a school-count change — is
+ * skipped rather than dropped, so nothing throws. Pure: returns a new array.
+ */
+function applyOverrides(events: ScheduleEvent[], overrides: ScheduleOverrides): ScheduleEvent[] {
+  let result = events;
+  for (const gap of overrides.gaps) {
+    const idx = result.findIndex((ev) => scheduleEventKey(ev) === gap.anchor);
+    if (idx === -1) continue; // orphaned anchor — leave the timeline untouched
+    const at = result[idx].end;
+    const breakRow: ScheduleEvent = {
+      start: at,
+      end: at + gap.minutes,
+      dur: gap.minutes,
+      label: gap.label || 'Break',
+      play: '',
+      school: '',
+      type: 'break',
+      colorIdx: -1,
+      overrideId: gap.id,
+    };
+    const after = result
+      .slice(idx + 1)
+      .map((ev) => ({ ...ev, start: ev.start + gap.minutes, end: ev.end + gap.minutes }));
+    result = [...result.slice(0, idx + 1), breakRow, ...after];
+  }
+  return result;
 }
 
 /** A school's display name, with v12's "School {formIndex}" blank fallback. */
@@ -149,10 +192,15 @@ function schoolLabel(contest: Contest, school: School): string {
  * A missing or unparseable first-show time yields an empty timeline ([]) — no
  * NaN rows, ever.
  *
- * @param overrides Reserved future manual-edit hook (PRD user story 28); empty
- *   and inert in v1. See ScheduleOverrides / applyOverrides.
+ * @param overrides Manual overrides applied after the cascade (PRD #179 —
+ *   inserted breaks). Defaults to the contest's own `scheduleOverrides`, so every
+ *   caller (preview + both .xlsx generators) picks up stored breaks with no
+ *   change; tests can inject an explicit set. See applyOverrides.
  */
-export function computeSchedule(contest: Contest, overrides: ScheduleOverrides = {}): ScheduleEvent[] {
+export function computeSchedule(
+  contest: Contest,
+  overrides: ScheduleOverrides = contest.scheduleOverrides,
+): ScheduleEvent[] {
   const startMin = parseTime(contest.details.firstShowTime);
   if (startMin == null || isNaN(startMin)) return [];
 
@@ -268,7 +316,10 @@ function sameDayRehearsalBlock(contest: Contest): ScheduleEvent[] {
  * (PRD #179). Returns [] with no valid first-show time, exactly like
  * computeSchedule() — a same-day contest still needs a first-show time to schedule.
  */
-export function computeContestDay(contest: Contest, overrides: ScheduleOverrides = {}): ScheduleEvent[] {
+export function computeContestDay(
+  contest: Contest,
+  overrides: ScheduleOverrides = contest.scheduleOverrides,
+): ScheduleEvent[] {
   const contestEvents = computeSchedule(contest, overrides);
   if (contestEvents.length === 0 || !isSameDayRehearsal(contest)) return contestEvents;
   return [...sameDayRehearsalBlock(contest), ...contestEvents];
