@@ -794,6 +794,12 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .schedule-preview .schedule-break-min { font-size: 0.78rem; white-space: nowrap; }
 .schedule-preview .schedule-break-min input { width: 4ch; font-size: 0.82rem; padding: 1px 4px; }
 .schedule-preview .schedule-start-input { width: 9ch; font-size: 0.82rem; padding: 1px 4px; }
+/* Click-to-edit start time: reads as plain text with a subtle "editable" hint. */
+.schedule-preview .schedule-time-btn {
+  background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 2px;
+}
+.schedule-preview .schedule-time-btn:hover { text-decoration: underline; }
 
 .generate-row { margin-top: var(--space-3); }
 .generate-row .btn-primary:disabled { opacity: 0.6; cursor: default; }

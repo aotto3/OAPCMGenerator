@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addBreak,
   updateBreak,
+  setArrival,
   createContest,
   setNumSchools,
   withDetails,
@@ -372,9 +373,17 @@ describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
     }
   });
 
-  it('uses the label "Break" when the gap has no name', () => {
+  it('an unlabeled gap is a blank nudge — it shifts later rows but draws no row (#192)', () => {
     const out = computeSchedule(addBreak(c, 'show:0', 10, ''));
-    expect(out.find((e) => e.type === 'break')!.label).toBe('Break');
+    expect(out.some((e) => e.type === 'break')).toBe(false); // no phantom row
+    expect(out).toHaveLength(base.length);
+    expect(out[1].start).toBe(base[1].start + 10); // everything after show:0 shifted
+  });
+
+  it('a labeled gap still draws a visible break row', () => {
+    const out = computeSchedule(addBreak(c, 'show:0', 10, 'Lunch'));
+    expect(out.find((e) => e.type === 'break')!.label).toBe('Lunch');
+    expect(out).toHaveLength(base.length + 1);
   });
 
   it('ignores an orphaned anchor rather than throwing', () => {
@@ -408,15 +417,18 @@ describe('setRowStart — inline "type a row\'s start time" (PRD #179 / #190)', 
   const show1Index = events.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
   const naturalStart = events[show1Index].start;
 
-  it('inserts a break before the row so it lands at the typed time', () => {
+  it('stores an unlabeled nudge so the row moves without a phantom break row', () => {
     const out = setRowStart(c, events, show1Index, naturalStart + 20);
     expect(out.scheduleOverrides.gaps).toHaveLength(1);
-    expect(out.scheduleOverrides.gaps[0]).toMatchObject({ anchor: 'trans:0', minutes: 20, label: 'Break' });
-    const moved = computeContestDay(out).find((e) => e.type === 'show' && e.colorIdx === 1)!;
-    expect(moved.start).toBe(naturalStart + 20);
+    expect(out.scheduleOverrides.gaps[0]).toMatchObject({ anchor: 'trans:0', minutes: 20, label: '' });
+    const day = computeContestDay(out);
+    // The row moved to the typed time …
+    expect(day.find((e) => e.type === 'show' && e.colorIdx === 1)!.start).toBe(naturalStart + 20);
+    // … and no visible break row was materialized (blank space instead).
+    expect(day.some((e) => e.type === 'break')).toBe(false);
   });
 
-  it('editing the same row again resizes the existing break, not a second one', () => {
+  it('editing the same row again resizes the existing nudge, not a second one', () => {
     let out = setRowStart(c, events, show1Index, naturalStart + 20);
     const ev2 = computeContestDay(out);
     const i2 = ev2.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
@@ -425,7 +437,7 @@ describe('setRowStart — inline "type a row\'s start time" (PRD #179 / #190)', 
     expect(out.scheduleOverrides.gaps[0].minutes).toBe(30);
   });
 
-  it('moving the row back to (or before) its natural time removes the break — clamp', () => {
+  it('moving the row back to (or before) its natural time removes the nudge — clamp', () => {
     let out = setRowStart(c, events, show1Index, naturalStart + 20);
     const ev2 = computeContestDay(out);
     const i2 = ev2.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
@@ -441,5 +453,45 @@ describe('setRowStart — inline "type a row\'s start time" (PRD #179 / #190)', 
     expect(setRowStart(c, events, show1Index, naturalStart)).toBe(c);
     expect(setRowStart(c, events, 0, 999)).toBe(c); // no predecessor
     expect(setRowStart(c, events, 999, 100)).toBe(c);
+  });
+});
+
+describe('computeContestDay — rehearsal & arrival overrides (#192)', () => {
+  const sameDay = (): Contest =>
+    withDetails(makeContest('after_all', 3, { firstShow: '1:00 PM', dm: '12:30 PM' }), {
+      contestDate: '2026-03-21',
+      rehearsalDate1: '2026-03-21',
+      rehearsalDate2: '',
+      rehearsalStartTime1: '8:00 AM',
+      rehearsalLengthMinutes: 45,
+    });
+
+  const firstShowStart = (d: ScheduleEvent[]) => d.find((e) => e.type === 'show' && e.colorIdx === 0)!.start;
+
+  it('nudging a rehearsal shifts the later rehearsals only, not the contest', () => {
+    const c = sameDay();
+    const day = computeContestDay(c);
+    const reh1 = day.findIndex((e) => e.type === 'rehearsal' && e.colorIdx === 1);
+
+    const out = setRowStart(c, day, reh1, day[reh1].start + 20);
+    // Stored as an unlabeled nudge anchored to the previous rehearsal.
+    expect(out.scheduleOverrides.gaps[0]).toMatchObject({ anchor: 'reh:0', minutes: 20, label: '' });
+
+    const day2 = computeContestDay(out);
+    expect(day2.find((e) => e.type === 'rehearsal' && e.colorIdx === 1)!.start).toBe(day[reh1].start + 20);
+    expect(day2.find((e) => e.type === 'rehearsal' && e.colorIdx === 2)!.start).toBe(
+      day.find((e) => e.type === 'rehearsal' && e.colorIdx === 2)!.start + 20,
+    );
+    expect(firstShowStart(day2)).toBe(firstShowStart(day)); // contest timeline untouched
+    expect(day2.some((e) => e.type === 'break')).toBe(false); // blank nudge, no row
+  });
+
+  it('setArrival overrides the derived CM-arrival time; clearing reverts', () => {
+    const c = sameDay();
+    const derived = computeContestDay(c).find((e) => e.type === 'arrival')!.start;
+    expect(derived).toBe(7 * 60); // 8:00 AM − 60
+    const set = setArrival(c, 6 * 60 + 30); // 6:30 AM
+    expect(computeContestDay(set).find((e) => e.type === 'arrival')!.start).toBe(6 * 60 + 30);
+    expect(computeContestDay(setArrival(set, null)).find((e) => e.type === 'arrival')!.start).toBe(derived);
   });
 });

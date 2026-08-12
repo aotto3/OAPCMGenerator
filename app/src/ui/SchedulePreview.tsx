@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import {
   computeContestDay,
   fmtTime,
@@ -7,7 +8,7 @@ import {
   type ScheduleEvent,
 } from '../model/schedule';
 import { validateSchedule } from '../model/scheduleValidation';
-import { addBreak, removeBreak, updateBreak, type Contest } from '../model/contest';
+import { addBreak, removeBreak, setArrival, updateBreak, withDetails, type Contest } from '../model/contest';
 import { Section } from './sections/Section';
 
 /**
@@ -15,10 +16,11 @@ import { Section } from './sections/Section';
  * does the math; this component owns the presentation — the school color palette
  * and the empty state — which the engine deliberately does not.
  *
- * With an `onChange` it is also a light editor (PRD #179): "+ break" on any
- * anchorable row inserts a gap after it, and each inserted break row can be
- * renamed, resized, moved earlier/later (re-anchored to the adjacent row), or
- * removed. Without `onChange` (the read-only Setup mirror) it just renders.
+ * With an `onChange` it is also a light editor (PRD #179 / #192): every row's
+ * start time is click-to-edit (anchor rows route to their field; downstream rows
+ * store a blank nudge that just moves them), and "+ break" inserts a deliberate,
+ * labeled break row that can be renamed / resized / moved / removed. Without
+ * `onChange` (the read-only Setup mirror) it just renders.
  */
 
 /** A new break's default length; the CM edits it inline. */
@@ -55,12 +57,46 @@ export function SchedulePreview({
   const flagged = new Set(flags.map((f) => f.index));
   const editable = !!onChange;
 
+  // Click-to-edit start times: which row's time input is currently open, and a
+  // flag so Escape closes it without committing the typed value.
+  const [editing, setEditing] = useState<number | null>(null);
+  const cancelRef = useRef(false);
+
   // The anchorable rows in day order — moving a break re-anchors it to the
   // previous/next of these (breaks and arrival/rehearsal rows are not anchors).
   const anchorKeys = events.map(scheduleEventKey).filter((k): k is string => k != null);
   const moveTarget = (current: string, dir: -1 | 1): string | null => {
     const j = anchorKeys.indexOf(current) + dir;
     return j >= 0 && j < anchorKeys.length ? anchorKeys[j] : null;
+  };
+
+  // How a row's start edit is applied. Anchor rows write their own field (the
+  // whole day/block moves); downstream rows store a nudge before them. Rows with
+  // no editor (breaks, and — for now — arrival/rehearsals) return null.
+  const startCommit = (ev: ScheduleEvent, i: number): ((mins: number) => Contest) | null => {
+    if (!onChange) return null;
+    switch (ev.type) {
+      case 'show':
+        return ev.colorIdx === 0
+          ? (mins) => withDetails(contest, { firstShowTime: fmtTime(mins) })
+          : (mins) => setRowStart(contest, events, i, mins);
+      case 'rehearsal':
+        // First rehearsal is the anchor (its start-time field); the rest nudge.
+        return ev.colorIdx === 0
+          ? (mins) => withDetails(contest, { rehearsalStartTime1: fmtTime(mins) })
+          : (mins) => setRowStart(contest, events, i, mins);
+      case 'dm':
+        return (mins) => withDetails(contest, { directorsMeetingTime: fmtTime(mins) });
+      case 'arrival':
+        return (mins) => setArrival(contest, mins);
+      case 'trans':
+      case 'admin':
+      case 'crit':
+      case 'awards':
+        return (mins) => setRowStart(contest, events, i, mins);
+      default:
+        return null; // break rows are edited via their own controls
+    }
   };
 
   return (
@@ -87,24 +123,41 @@ export function SchedulePreview({
                     ? contest.scheduleOverrides.gaps.find((g) => g.id === ev.overrideId)
                     : undefined;
                 const isBreak = editable && !!gap;
-                // Non-first shows can have their start typed directly (#190) — it
-                // resizes/inserts the break above them. The first show is the
-                // anchor (edit via First Show Time).
-                const startEditable = editable && ev.type === 'show' && ev.colorIdx >= 1;
+                const commitStart = startCommit(ev, i);
                 return (
                   <tr key={i} className={flagged.has(i) ? 'is-flagged' : undefined} style={{ background: rowColor(ev) }}>
                     <td>
-                      {startEditable ? (
+                      {commitStart && editing === i ? (
                         <input
                           className="schedule-start-input"
-                          key={ev.start}
+                          autoFocus
                           defaultValue={fmtTime(ev.start)}
-                          aria-label={`${ev.school} start time`}
+                          aria-label="Edit start time"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                            else if (e.key === 'Escape') {
+                              cancelRef.current = true;
+                              e.currentTarget.blur();
+                            }
+                          }}
                           onBlur={(e) => {
+                            const cancelled = cancelRef.current;
+                            cancelRef.current = false;
+                            setEditing(null);
+                            if (cancelled) return;
                             const mins = parseTime(e.target.value);
-                            if (mins != null && mins !== ev.start) onChange!(setRowStart(contest, events, i, mins));
+                            if (mins != null && mins !== ev.start) onChange!(commitStart(mins));
                           }}
                         />
+                      ) : commitStart ? (
+                        <button
+                          type="button"
+                          className="schedule-time-btn"
+                          title="Click to edit the start time"
+                          onClick={() => setEditing(i)}
+                        >
+                          {fmtTime(ev.start)}
+                        </button>
                       ) : (
                         fmtTime(ev.start)
                       )}
