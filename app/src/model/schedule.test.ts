@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addBreak,
+  updateBreak,
   createContest,
   setNumSchools,
   withDetails,
@@ -389,5 +390,13 @@ describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
 
   it('honors an explicitly injected overrides argument over the contest field', () => {
     expect(computeSchedule(c, { gaps: [] })).toEqual(base);
+  });
+
+  it('re-anchoring a break (updateBreak) moves it to follow the new row', () => {
+    let g = addBreak(c, 'show:0', 20, 'Lunch');
+    g = updateBreak(g, g.scheduleOverrides.gaps[0].id, { anchor: 'show:1' });
+    const out = computeSchedule(g);
+    const bi = out.findIndex((e) => e.type === 'break');
+    expect(scheduleEventKey(out[bi - 1])).toBe('show:1'); // now sits right after the 2nd show
   });
 });

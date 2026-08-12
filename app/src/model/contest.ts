@@ -1085,7 +1085,16 @@ export function withDetails(contest: Contest, patch: Partial<ContestDetails>, no
       if (stillAuto(details.lightCueDeadlineDate)) details.lightCueDeadlineDate = auto;
     }
   }
-  return { ...touch(contest, now), details };
+  // A critique-format flip rebuilds the transition/critique rows, so manual
+  // breaks are cleared to a clean slate (PRD #179). Other detail edits — judge
+  // count, the anchor times — keep them (they only shift, not restructure).
+  const clearsBreaks =
+    'critiqueFormat' in patch && patch.critiqueFormat !== contest.details.critiqueFormat;
+  return {
+    ...touch(contest, now),
+    details,
+    ...(clearsBreaks ? { scheduleOverrides: defaultScheduleOverrides() } : {}),
+  };
 }
 
 export function withSpeechwire(contest: Contest, patch: Partial<SpeechwireCredentials>, now?: string): Contest {
@@ -1120,6 +1129,27 @@ export function addBreak(
 export function removeBreak(contest: Contest, id: string, now?: string): Contest {
   const gaps = contest.scheduleOverrides.gaps.filter((g) => g.id !== id);
   if (gaps.length === contest.scheduleOverrides.gaps.length) return contest;
+  return { ...touch(contest, now), scheduleOverrides: { gaps } };
+}
+
+/**
+ * Patches one inserted gap by id — its `label` (rename), `minutes` (resize), or
+ * `anchor` (move it after a different row). Unknown id ⇒ no-op. The engine
+ * re-derives the timeline, so a moved/resized break ripples automatically.
+ */
+export function updateBreak(
+  contest: Contest,
+  id: string,
+  patch: Partial<Pick<InsertedGap, 'anchor' | 'minutes' | 'label'>>,
+  now?: string,
+): Contest {
+  let changed = false;
+  const gaps = contest.scheduleOverrides.gaps.map((g) => {
+    if (g.id !== id) return g;
+    changed = true;
+    return { ...g, ...patch };
+  });
+  if (!changed) return contest;
   return { ...touch(contest, now), scheduleOverrides: { gaps } };
 }
 
@@ -1403,7 +1433,9 @@ export function setNumSchools(contest: Contest, count: number, now?: string): Co
   if (n === contest.schools.length) return touch(contest, now);
   const schools = contest.schools.slice(0, n);
   while (schools.length < n) schools.push(blankSchool(schools.length + 1));
-  return { ...touch(contest, now), schools };
+  // Changing the school count restructures the timeline (rows appear/disappear),
+  // so manual schedule breaks are cleared to a clean slate (PRD #179).
+  return { ...touch(contest, now), schools, scheduleOverrides: defaultScheduleOverrides() };
 }
 
 export function setDocumentSelected(contest: Contest, id: DocumentId, selected: boolean, now?: string): Contest {
