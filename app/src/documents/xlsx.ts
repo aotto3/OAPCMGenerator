@@ -114,8 +114,14 @@ export function xlsxBuf(wb: XLSX.WorkBook): Uint8Array {
   return out instanceof Uint8Array ? out : new Uint8Array(out as ArrayBuffer);
 }
 
-/** A cell in a SheetBuilder row: a styled cell, a bare value, or blank (null/undefined). */
-export type SheetCell = StyledCell | string | number | null | undefined;
+/**
+ * A cell in a SheetBuilder row: a styled cell from `sc()`, a raw SheetJS cell
+ * object (for the handful of one-off styles the schedule sheets carry — title,
+ * section headers, footnotes — that `sc()` does not model), a bare value, or
+ * blank (null/undefined). Raw cell objects are passed through to `aoa_to_sheet`
+ * unchanged, exactly as `sc()`'s output is.
+ */
+export type SheetCell = StyledCell | XLSX.CellObject | string | number | null | undefined;
 
 /**
  * Fluent builder for a single-sheet workbook — the row / `!ref` / merge / column
@@ -141,6 +147,15 @@ export interface SheetBuilder {
   cols(widths: number[]): SheetBuilder;
   /** Add a merged-cell range. */
   merge(range: XLSX.Range): SheetBuilder;
+  /** Rows appended so far (also the 1-based index of the last row). */
+  rowCount(): number;
+  /**
+   * Override the auto-computed dimension. By default `worksheet()` lets
+   * `aoa_to_sheet` bound `!ref` tightly to the cells; a ported sheet whose v12
+   * `!ref` intentionally extended one or two rows past the last cell uses this to
+   * emit that exact dimension and stay byte-identical to its golden.
+   */
+  ref(range: string): SheetBuilder;
   /** The assembled worksheet (cells + `!ref` / `!cols` / `!merges`). For tests. */
   worksheet(): XLSX.WorkSheet;
   /** Finalize: package the worksheet under `name`, return .xlsx bytes. */
@@ -151,9 +166,11 @@ export function makeSheet(): SheetBuilder {
   const rows: SheetCell[][] = [];
   let colWidths: number[] | undefined;
   const merges: XLSX.Range[] = [];
+  let refOverride: string | undefined;
 
   const worksheet = (): XLSX.WorkSheet => {
     const ws = XLSX.utils.aoa_to_sheet(rows);
+    if (refOverride) ws['!ref'] = refOverride;
     if (colWidths) ws['!cols'] = colWidths.map((wch) => ({ wch }));
     if (merges.length) ws['!merges'] = merges;
     return ws;
@@ -178,6 +195,13 @@ export function makeSheet(): SheetBuilder {
     },
     merge(range) {
       merges.push(range);
+      return builder;
+    },
+    rowCount() {
+      return rows.length;
+    },
+    ref(range) {
+      refOverride = range;
       return builder;
     },
     worksheet,

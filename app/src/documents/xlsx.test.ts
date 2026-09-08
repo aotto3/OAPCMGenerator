@@ -64,6 +64,23 @@ describe('makeSheet — columns and merges', () => {
   });
 });
 
+describe('makeSheet — rowCount and dimension override', () => {
+  it('rowCount() counts appended rows, blanks included', () => {
+    const sheet = makeSheet().row(['a']).blank().row(['b']);
+    expect(sheet.rowCount()).toBe(3);
+  });
+
+  it('ref() pins the dimension past the last cell (the schedule sheets’ inclusive !ref)', () => {
+    const sheet = makeSheet().row(['title']).row(['a', 'b']);
+    // aoa would bound this tightly to A1:B2; the override extends it one row.
+    const ws = sheet.ref('A1:B' + (sheet.rowCount() + 1)).worksheet();
+    expect(ws['!ref']).toBe('A1:B3');
+    // The extra row carries no cell — only the declared dimension grew.
+    expect(ws['A3']).toBeUndefined();
+    expect(ws['B3']).toBeUndefined();
+  });
+});
+
 describe('makeSheet — styled cells (for the schedule sheets)', () => {
   it('carries a StyledCell through with its style and number format intact', () => {
     const header = sc('START', THEME.xlsx.black, true, false);
