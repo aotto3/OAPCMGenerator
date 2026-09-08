@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PDFDocument } from 'pdf-lib';
-import { setAllDocuments, setDocumentSelected, withIdentity } from '../model/contest';
+import { setAllDocuments, setDocumentSelected, setNumSchools, withDetails, withIdentity } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { docSchools } from './docVars';
 import { expectHashMatchesGolden } from './goldenFile';
@@ -70,8 +70,12 @@ describe('Adjudicator Packets — structure & determinism', () => {
   });
 
   it('is deterministic — same contest yields byte-identical output', async () => {
-    const a = await buildFixture();
-    const b = await buildAdjudicatorPacketsPdf(fixtureContest(), templates());
+    // Determinism is scale-independent, so prove it on a 2-school / 1-judge
+    // contest (a few pages) rather than paying for a second 113-page build. The
+    // full-scale bytes are locked by the golden-hash test above.
+    const small = withDetails(setNumSchools(fixtureContest(), 2), { numJudges: 1 });
+    const a = await buildAdjudicatorPacketsPdf(small, templates());
+    const b = await buildAdjudicatorPacketsPdf(small, templates());
     expect(sha256(a.bytes)).toBe(sha256(b.bytes));
   }, 30000);
 
@@ -222,7 +226,11 @@ describe('warning channel (generate pipeline)', () => {
   });
 
   it('threads the adjudicator PDF through the ZIP with no warnings for a clean contest', async () => {
-    let c = setAllDocuments(fixtureContest(), false);
+    // What's under test is that the PDF threads through the ZIP intact, not its
+    // scale — so shrink to 2 schools / 1 judge (a few pages, not 113). The exact
+    // page-count formula is asserted on the full fixture in the structural suite.
+    const small = withDetails(setNumSchools(fixtureContest(), 2), { numJudges: 1 });
+    let c = setAllDocuments(small, false);
     c = setDocumentSelected(c, 'adj_packets', true);
 
     const archive = await buildContestArchive(c);
@@ -234,6 +242,7 @@ describe('warning channel (generate pipeline)', () => {
     expect(pdf).not.toBeNull();
     const pdfBytes = new Uint8Array(await pdf!.async('uint8array'));
     expect(Buffer.from(pdfBytes.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
-    expect((await PDFDocument.load(pdfBytes)).getPageCount()).toBe(113);
+    // Loads as a complete, non-truncated PDF with real pages.
+    expect((await PDFDocument.load(pdfBytes)).getPageCount()).toBeGreaterThan(0);
   }, 30000);
 });

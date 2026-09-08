@@ -8,7 +8,9 @@ import {
   parseContest,
   setAllDocuments,
   setDocumentSelected,
+  setNumSchools,
   validateContest,
+  withDetails,
   withSpeechwire,
   type Contest,
 } from '../model/contest';
@@ -41,14 +43,19 @@ describe('DOCUMENT_REGISTRY', () => {
   });
 
   it('builds non-empty bytes for every document', async () => {
+    // This asserts a property of every builder (it runs and emits bytes), not a
+    // golden — so it uses the smallest contest that still exercises them all.
+    // The adjudicator PDF cost is ~(numJudges × schools) pages, so 1 judge / 1
+    // school keeps it a handful of pages instead of the fixture's 113. The full
+    // 113-page build is covered once, against the golden hash, in the slice-9 suite.
+    const small = withDetails(setNumSchools(contest(), 1), { numJudges: 1 });
     for (const doc of DOCUMENT_REGISTRY) {
       // build may be sync (placeholder) or async (real .docx/.xlsx/.pdf) and may
       // return bare bytes or {bytes, warnings}; normalizeResult handles all.
-      const { bytes } = normalizeResult(await doc.build(contest()));
+      const { bytes } = normalizeResult(await doc.build(small));
       expect(bytes).toBeInstanceOf(Uint8Array);
       expect(bytes.length).toBeGreaterThan(0);
     }
-    // The adjudicator PDF (~113 pages) makes this loop take several seconds.
   }, 30000);
 });
 
