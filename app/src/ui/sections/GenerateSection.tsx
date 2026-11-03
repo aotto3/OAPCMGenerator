@@ -88,7 +88,7 @@ export function GenerateSection({
       <Divider>Download</Divider>
       <p className="muted">
         Builds a ZIP of the selected documents plus a portable contest file (a backup you can
-        re-import on any machine). {selectedCount} document{selectedCount !== 1 ? 's' : ''} selected.
+        re-import on any machine, without judge preferences). {selectedCount} document{selectedCount !== 1 ? 's' : ''} selected.
       </p>
       <div className="generate-row">
         <button type="button" className="btn-primary" onClick={handleGenerate} disabled={busy}>

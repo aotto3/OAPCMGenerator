@@ -149,7 +149,7 @@ export function Dashboard({
     await onOpenSaved(duplicateContest(source));
   }
 
-  // Export the portable contest file (the same JSON bundled in a generated ZIP),
+  // Export the portable contest file (the ZIP's JSON, plus judge preferences),
   // then record a best-effort export event. The download drives the action; the
   // telemetry is fire-and-forget and never blocks it.
   async function handleExport(summary: ContestSummary) {
