@@ -79,7 +79,14 @@ function renderModule(
     case 'cm':
       return <CmInfoSection contest={contest} completion={progress.cm} onChange={onChange} />;
     case 'identity':
-      return <IdentitySection contest={contest} completion={progress.identity} onChange={onChange} />;
+      return (
+        <IdentitySection
+          contest={contest}
+          completion={progress.identity}
+          onChange={onChange}
+          onOpenSaved={onOpenSaved}
+        />
+      );
     case 'details':
       return <DetailsSection contest={contest} completion={progress.details} onChange={onChange} />;
     case 'adjudicators':
