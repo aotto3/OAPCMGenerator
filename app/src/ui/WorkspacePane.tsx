@@ -13,6 +13,7 @@ import { DrawSection } from './sections/DrawSection';
 import { GenerateSection } from './sections/GenerateSection';
 import { HistorySection } from './sections/HistorySection';
 import { IdentitySection } from './sections/IdentitySection';
+import { JudgePreferencesSection } from './sections/JudgePreferencesSection';
 import { PlaysSection } from './sections/PlaysSection';
 import { ResultsSection } from './sections/ResultsSection';
 import { SchoolsSection } from './sections/SchoolsSection';
@@ -83,6 +84,8 @@ function renderModule(
       return <DetailsSection contest={contest} completion={progress.details} onChange={onChange} />;
     case 'adjudicators':
       return <AdjudicatorsSection contest={contest} completion={progress.adjudicators} onChange={onChange} />;
+    case 'judgePreferences':
+      return <JudgePreferencesSection contest={contest} onChange={onChange} />;
     case 'schools':
       return <SchoolsSection contest={contest} completion={progress.schools} onChange={onChange} />;
     case 'plays':

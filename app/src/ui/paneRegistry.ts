@@ -17,13 +17,14 @@
  * Every workspace module, named by the anchor slug Workspace.tsx already renders
  * as `sec-<slug>`. One id, `email`, covers both EmailComposer and EmailListBox —
  * they render together and the PRD homes them as one Tools entry — accounting for
- * all 16 rendered components in 15 ids.
+ * all 17 rendered components in 16 ids.
  */
 export type ModuleId =
   | 'cm'
   | 'identity'
   | 'details'
   | 'adjudicators'
+  | 'judgePreferences'
   | 'schools'
   | 'plays'
   | 'companies'
@@ -87,6 +88,7 @@ export const MODULE_META: Record<ModuleId, ModuleMeta> = {
   identity: { label: 'Identity', emoji: '📋' },
   details: { label: 'Details', emoji: '📅' },
   adjudicators: { label: 'Judges', emoji: '⚖️' },
+  judgePreferences: { label: 'Judge Preferences', emoji: '🗳️' },
   schools: { label: 'Schools', emoji: '🏫' },
   plays: { label: 'Plays', emoji: '🎭' },
   companies: { label: 'Companies', emoji: '👥' },
@@ -129,6 +131,7 @@ export const CANONICAL_HOME: Record<ModuleId, PaneId> = {
   identity: 'setup',
   details: 'setup',
   adjudicators: 'judges',
+  judgePreferences: 'judges',
   schools: 'schools',
   plays: 'schools',
   companies: 'schools',
@@ -152,6 +155,7 @@ const MODULE_ORDER: readonly ModuleId[] = [
   'identity',
   'details',
   'adjudicators',
+  'judgePreferences',
   'schools',
   'plays',
   'companies',

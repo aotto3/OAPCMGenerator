@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
   DOCUMENT_TYPES,
+  addRankedJudge,
   contestDisplayName,
   contestFileName,
   createContest,
@@ -139,4 +140,20 @@ describe('buildContestArchive', () => {
     expect(onProgress.mock.calls.every(([p]) => p.total === 3)).toBe(true);
     expect(onProgress).toHaveBeenLastCalledWith({ label: 'Contest file', current: 3, total: 3 });
   });
+});
+
+describe('judge preferences stay out of documents (PRD #202)', () => {
+  it('leaves no preference name in any generated document', async () => {
+    const MARKER = 'Zzpreferencemarker';
+    const c = addRankedJudge(withDetails(setNumSchools(contest(), 1), { numJudges: 1 }), 0, `${MARKER} Judge`);
+    for (const doc of DOCUMENT_REGISTRY) {
+      const { bytes } = normalizeResult(await doc.build(c));
+      // .docx/.xlsx are ZIPs (signature "PK"); search each part. PDFs search as raw bytes.
+      const texts =
+        bytes[0] === 0x50 && bytes[1] === 0x4b
+          ? await Promise.all(Object.values((await unzip(bytes)).files).map((f) => f.async('string')))
+          : [Buffer.from(bytes).toString('latin1')];
+      for (const text of texts) expect(text).not.toContain(MARKER);
+    }
+  }, 30000);
 });
