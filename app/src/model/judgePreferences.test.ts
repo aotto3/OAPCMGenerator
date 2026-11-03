@@ -33,6 +33,7 @@ import {
   addAsJudge,
   callListText,
   combinePreferenceLists,
+  enteredJudgeNames,
   firstOpenJudgeSlot,
   judgeSlotNumber,
   preferenceProgress,
@@ -695,6 +696,30 @@ describe('mergeJudgeNames', () => {
     const back = parseContest(serializeContest(merged));
     expect(back.schools[0].judgePreferences.ranked).toEqual(['Jane Smith']);
     expect(back.judgePreferences.unavailable).toEqual(['jane smith']);
+  });
+});
+
+describe('enteredJudgeNames', () => {
+  it('gathers ranked and vetoed names from the active lists, then the active judge slots', () => {
+    let c = addRankedJudge(contest(), school(0), 'Ranked One');
+    c = addVetoedJudge(c, school(1), 'Vetoed One');
+    const custom = withCustom(c, 'Committee');
+    c = addRankedJudge(custom.contest, custom.ref, 'Custom One');
+    c = withAdjudicator(withDetails(c, { numJudges: 1 }), 0, { name: 'Hired One' });
+    expect(enteredJudgeNames(c)).toEqual(['Ranked One', 'Vetoed One', 'Custom One', 'Hired One']);
+  });
+
+  it('lists a name once, in its first spelling, and skips blank slots', () => {
+    let c = addRankedJudge(contest(), school(0), 'Jane Smith');
+    c = addVetoedJudge(c, school(1), 'jane  SMITH');
+    c = withAdjudicator(c, 0, { name: 'JANE SMITH' });
+    expect(enteredJudgeNames(c)).toEqual(['Jane Smith']);
+  });
+
+  it('skips lists inactive at this level and hidden judge slots', () => {
+    let c = addRankedJudge(contest(), FIRST, 'District Name');
+    c = withAdjudicator(withDetails(c, { numJudges: 3 }), 2, { name: 'Hidden Slot' });
+    expect(enteredJudgeNames(withDetails(c, { numJudges: 1 }))).toEqual([]);
   });
 });
 
