@@ -11,6 +11,9 @@
  * Vetoes: one veto on any list takes a judge off the call list and into the
  * Vetoed section. N is computed before vetoes apply, so a veto never changes
  * another judge's points.
+ *
+ * Unavailable: a mark flags the judge but changes nothing else, so they keep their
+ * computed position and any tie.
  */
 import { normalizeJudgeName, type Contest, type ContestLevel, type PreferenceListRef } from './contest';
 
@@ -38,6 +41,8 @@ export interface CallListEntry {
   bestRank: number;
   /** True when another judge matches on points, list count, and best rank. */
   tied: boolean;
+  /** The CM marked this judge Unavailable. */
+  unavailable: boolean;
 }
 
 export interface VetoedJudge {
@@ -143,7 +148,20 @@ export function preferenceProgress(lists: readonly PreferenceList[]): { entered:
   };
 }
 
-export function combinePreferenceLists(lists: readonly PreferenceList[]): CombinedPreferences {
+/** The names left to call, in order and one per line, for pasting elsewhere. */
+export function callListText(callList: readonly CallListEntry[]): string {
+  return callList
+    .filter((entry) => !entry.unavailable)
+    .map((entry) => entry.name)
+    .join('\n');
+}
+
+type Standing = Omit<CallListEntry, 'tied' | 'unavailable'>;
+
+export function combinePreferenceLists(
+  lists: readonly PreferenceList[],
+  unavailable: readonly string[] = [],
+): CombinedPreferences {
   const cleaned = lists.map((list) => ({
     list,
     ranked: cleanNames(list.ranked),
@@ -151,7 +169,7 @@ export function combinePreferenceLists(lists: readonly PreferenceList[]): Combin
   }));
   const longest = Math.max(0, ...cleaned.map(({ ranked }) => ranked.length));
 
-  const byJudge = new Map<string, Omit<CallListEntry, 'tied'>>();
+  const byJudge = new Map<string, Standing>();
   const byVeto = new Map<string, VetoedJudge>();
   const spellings = new Map<string, string>();
   const conflicts: PreferenceConflict[] = [];
@@ -186,7 +204,7 @@ export function combinePreferenceLists(lists: readonly PreferenceList[]): Combin
 
   const callable = [...byJudge.entries()].filter(([key]) => !byVeto.has(key));
 
-  const standing = (e: Omit<CallListEntry, 'tied'>) => `${e.points}|${e.listCount}|${e.bestRank}`;
+  const standing = (e: Standing) => `${e.points}|${e.listCount}|${e.bestRank}`;
   const standingCounts = new Map<string, number>();
   for (const [, entry] of callable) {
     standingCounts.set(standing(entry), (standingCounts.get(standing(entry)) ?? 0) + 1);
@@ -199,7 +217,11 @@ export function combinePreferenceLists(lists: readonly PreferenceList[]): Combin
       if (a.bestRank !== b.bestRank) return a.bestRank - b.bestRank;
       return compareKeys(keyA, keyB);
     })
-    .map(([, entry]) => ({ ...entry, tied: (standingCounts.get(standing(entry)) ?? 0) > 1 }));
+    .map(([key, entry]) => ({
+      ...entry,
+      tied: (standingCounts.get(standing(entry)) ?? 0) > 1,
+      unavailable: unavailable.includes(key),
+    }));
 
   const vetoed = [...byVeto.entries()]
     .sort(([keyA], [keyB]) => compareKeys(keyA, keyB))

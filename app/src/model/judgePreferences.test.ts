@@ -18,6 +18,7 @@ import {
   sectionCompletion,
   serializeContest,
   setAdvancing,
+  setJudgeUnavailable,
   setNumSchools,
   withIdentity,
   withSchool,
@@ -26,6 +27,7 @@ import {
 } from './contest';
 import {
   activePreferenceLists,
+  callListText,
   combinePreferenceLists,
   preferenceProgress,
   preferencesAvailable,
@@ -454,6 +456,92 @@ describe('list updaters work on any list', () => {
   });
 });
 
+describe('setJudgeUnavailable', () => {
+  it('stores the mark by normalized name and bumps updatedAt', () => {
+    const c = setJudgeUnavailable(contest(), '  Jane   SMITH ', true, LATER);
+    expect(c.judgePreferences.unavailable).toEqual(['jane smith']);
+    expect(c.updatedAt).toBe(LATER);
+  });
+
+  it('clears the mark whatever the spelling', () => {
+    const c = setJudgeUnavailable(contest(), 'Jane Smith', true);
+    expect(setJudgeUnavailable(c, 'jane  smith', false).judgePreferences.unavailable).toEqual([]);
+  });
+
+  it('is a no-op for a blank name or a mark already in that state', () => {
+    const c = setJudgeUnavailable(contest(), 'Jane Smith', true);
+    expect(setJudgeUnavailable(c, '   ', true)).toBe(c);
+    expect(setJudgeUnavailable(c, 'JANE SMITH', true)).toBe(c);
+    expect(setJudgeUnavailable(c, 'Nobody', false)).toBe(c);
+  });
+});
+
+describe('combinePreferenceLists: Unavailable', () => {
+  const ranked = [list('A', ['First', 'Second', 'Third'])];
+
+  it('flags a marked judge and keeps every position and point', () => {
+    const plain = combinePreferenceLists(ranked).callList;
+    const marked = combinePreferenceLists(ranked, ['second']).callList;
+    expect(marked.map((e) => [e.name, e.points, e.unavailable])).toEqual([
+      ['First', 3, false],
+      ['Second', 2, true],
+      ['Third', 1, false],
+    ]);
+    expect(names(marked)).toEqual(names(plain));
+  });
+
+  it('defaults to no marks', () => {
+    expect(combinePreferenceLists(ranked).callList.every((e) => !e.unavailable)).toBe(true);
+  });
+
+  it('keeps a marked judge in a tie', () => {
+    const { callList: rows } = combinePreferenceLists([list('A', ['Amy']), list('B', ['Zed'])], ['amy']);
+    expect(rows.map((e) => [e.name, e.tied])).toEqual([
+      ['Amy', true],
+      ['Zed', true],
+    ]);
+  });
+
+  it('keeps the mark with the judge when list edits change the order', () => {
+    let c = addRankedJudge(addRankedJudge(contest(), school(0), 'A'), school(0), 'B');
+    c = setJudgeUnavailable(c, 'B', true);
+    c = moveRankedJudge(c, school(0), 1, -1);
+    const rows = combinePreferenceLists(activePreferenceLists(c), c.judgePreferences.unavailable).callList;
+    expect(rows.map((e) => [e.name, e.unavailable])).toEqual([
+      ['B', true],
+      ['A', false],
+    ]);
+  });
+
+  it('keeps the mark when a judge leaves every list and comes back', () => {
+    let c = setJudgeUnavailable(addRankedJudge(contest(), school(0), 'Jane Smith'), 'Jane Smith', true);
+    c = removeRankedJudge(c, school(0), 0);
+    c = addRankedJudge(c, school(1), 'jane smith');
+    const rows = combinePreferenceLists(activePreferenceLists(c), c.judgePreferences.unavailable).callList;
+    expect(rows[0]).toMatchObject({ name: 'jane smith', unavailable: true });
+  });
+});
+
+describe('callListText', () => {
+  it('gives names in call order, one per line, with no points', () => {
+    const rows = combinePreferenceLists([list('A', ['First', 'Second'])]).callList;
+    expect(callListText(rows)).toBe('First\nSecond');
+  });
+
+  it('leaves out vetoed and Unavailable judges', () => {
+    const rows = combinePreferenceLists(
+      [list('A', ['Keep', 'Busy', 'Gone', 'Also Keep']), list('B', [], ['Gone'])],
+      ['busy'],
+    ).callList;
+    expect(callListText(rows)).toBe('Keep\nAlso Keep');
+  });
+
+  it('is empty when nobody is left to call', () => {
+    expect(callListText([])).toBe('');
+    expect(callListText(combinePreferenceLists([list('A', ['Busy'])], ['busy']).callList)).toBe('');
+  });
+});
+
 describe('preferenceProgress', () => {
   it('counts lists with at least one name out of all lists', () => {
     expect(preferenceProgress(lists(['A'], [], ['B'], ['  ']))).toEqual({ entered: 2, total: 4 });
@@ -566,6 +654,13 @@ describe('persistence and clearing', () => {
     expect(duplicateContest(c).judgePreferences).toEqual(defaultJudgePreferences());
     expect(advanceContest(setAdvancing(c, [0, 1]))!.judgePreferences).toEqual(defaultJudgePreferences());
     expect(c.judgePreferences.customLists[0].ranked).toEqual(['Custom Pick']);
+  });
+
+  it('round-trips Unavailable marks and clears them on roll-forward and advance', () => {
+    const c = setJudgeUnavailable(withPreferences(), 'Jane Smith', true);
+    expect(parseContest(serializeContest(c)).judgePreferences.unavailable).toEqual(['jane smith']);
+    expect(duplicateContest(c).judgePreferences.unavailable).toEqual([]);
+    expect(advanceContest(setAdvancing(c, [0, 1]))!.judgePreferences.unavailable).toEqual([]);
   });
 
   it('does not count toward section completion', () => {

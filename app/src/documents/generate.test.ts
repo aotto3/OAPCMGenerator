@@ -11,6 +11,7 @@ import {
   parseContest,
   setAllDocuments,
   setDocumentSelected,
+  setJudgeUnavailable,
   setNumSchools,
   validateContest,
   withDetails,
@@ -153,6 +154,7 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
     c = addRankedJudge(c, { kind: 'firstDistrict' }, `${MARKER} District`);
     c = addCustomPreferenceList(c, `${MARKER} List`);
     c = addVetoedJudge(c, { kind: 'custom', id: c.judgePreferences.customLists[0].id }, `${VETO_MARKER} Custom`);
+    c = setJudgeUnavailable(c, `${MARKER} Judge`, true);
     for (const doc of DOCUMENT_REGISTRY) {
       const { bytes } = normalizeResult(await doc.build(c));
       // .docx/.xlsx are ZIPs (signature "PK"); search each part. PDFs search as raw bytes.
@@ -162,6 +164,7 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
           : [Buffer.from(bytes).toString('latin1')];
       for (const text of texts) {
         expect(text).not.toContain(MARKER);
+        expect(text).not.toContain(MARKER.toLowerCase());
         expect(text).not.toContain(VETO_MARKER);
       }
     }
