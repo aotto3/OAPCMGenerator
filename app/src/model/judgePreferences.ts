@@ -12,7 +12,7 @@
  * Vetoed section. N is computed before vetoes apply, so a veto never changes
  * another judge's points.
  */
-import { normalizeJudgeName, type Contest, type ContestLevel } from './contest';
+import { normalizeJudgeName, type Contest, type ContestLevel, type PreferenceListRef } from './contest';
 
 /** One list as the calculator sees it, whichever school or group it came from. */
 export interface PreferenceList {
@@ -21,6 +21,11 @@ export interface PreferenceList {
   /** Judge names, best first. */
   ranked: string[];
   vetoes: string[];
+}
+
+/** A list that counts at this contest's level, with the ref its edits go through. */
+export interface ActivePreferenceList extends PreferenceList {
+  ref: PreferenceListRef;
 }
 
 export interface CallListEntry {
@@ -55,21 +60,64 @@ export interface CombinedPreferences {
 }
 
 /** Levels where preferences apply. Area and Region judges are picked by the state. */
-const LEVELS_WITH_PREFERENCES: readonly ContestLevel[] = ['Zone', 'District'];
+const LEVELS_WITH_PREFERENCES: readonly ContestLevel[] = ['Zone', 'District', 'BiDistrict'];
 
 export function preferencesAvailable(level: ContestLevel): boolean {
   return LEVELS_WITH_PREFERENCES.includes(level);
 }
 
-/** The lists that count for this contest's level, in display order. */
-export function activePreferenceLists(contest: Contest): PreferenceList[] {
-  if (!preferencesAvailable(contest.identity.contestLevel)) return [];
-  return contest.schools.map((school, i) => ({
-    id: `school-${i}`,
-    label: school.name.trim() || `School ${i + 1}`,
-    ranked: school.judgePreferences.ranked,
-    vetoes: school.judgePreferences.vetoes,
-  }));
+function districtLabel(number: string, fallback: string): string {
+  return number.trim() ? `District ${number.trim()}` : fallback;
+}
+
+/**
+ * The lists that count for this contest's level, in display order: one per school
+ * at Zone and District, one per district at BiDistrict, then any custom lists.
+ * Lists for other levels stay stored but inactive, so a level switch loses nothing.
+ */
+export function activePreferenceLists(contest: Contest): ActivePreferenceList[] {
+  const { contestLevel, district, districtSecond } = contest.identity;
+  if (!preferencesAvailable(contestLevel)) return [];
+  const { firstDistrict, secondDistrict, customLists } = contest.judgePreferences;
+
+  const levelLists: ActivePreferenceList[] =
+    contestLevel === 'BiDistrict'
+      ? [
+          {
+            id: 'district-first',
+            label: districtLabel(district, 'First district'),
+            ref: { kind: 'firstDistrict' },
+            ranked: firstDistrict.ranked,
+            vetoes: firstDistrict.vetoes,
+          },
+          {
+            id: 'district-second',
+            label: districtLabel(districtSecond, 'Second district'),
+            ref: { kind: 'secondDistrict' },
+            ranked: secondDistrict.ranked,
+            vetoes: secondDistrict.vetoes,
+          },
+        ]
+      : contest.schools.map((school, i) => ({
+          id: `school-${i}`,
+          label: school.name.trim() || `School ${i + 1}`,
+          ref: { kind: 'school', index: i },
+          ranked: school.judgePreferences.ranked,
+          vetoes: school.judgePreferences.vetoes,
+        }));
+
+  return [
+    ...levelLists,
+    ...customLists.map(
+      (list, i): ActivePreferenceList => ({
+        id: `custom-${list.id}`,
+        label: list.name.trim() || `Custom list ${i + 1}`,
+        ref: { kind: 'custom', id: list.id },
+        ranked: list.ranked,
+        vetoes: list.vetoes,
+      }),
+    ),
+  ];
 }
 
 /** Drops blanks and repeats, keeping each name's first (best) position. */

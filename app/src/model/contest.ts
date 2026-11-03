@@ -329,6 +329,13 @@ export interface CustomPreferenceList extends JudgePreferenceList {
   name: string;
 }
 
+/** Which stored list an edit applies to, whichever level it belongs to (PRD #202). */
+export type PreferenceListRef =
+  | { kind: 'school'; index: number }
+  | { kind: 'firstDistrict' }
+  | { kind: 'secondDistrict' }
+  | { kind: 'custom'; id: string };
+
 /**
  * Contest-level judge preference data (PRD #202); per-occurrence, so cleared on
  * duplicate and advance. Per-school lists live on School. Never read by a document
@@ -1336,8 +1343,9 @@ export function removeDirector(
 }
 
 /* ────────────────────────── judge preferences ──────────────────────────
- * PRD #202. Edits to a school's ranked judges and vetoes; the combined call list is derived
- * in judgePreferences.ts and never stored. A no-op returns the contest untouched,
+ * PRD #202. Edits to any preference list's ranked judges and vetoes, plus adding,
+ * renaming, and removing custom lists; the combined call list is derived in
+ * judgePreferences.ts and never stored. A no-op returns the contest untouched,
  * matching the roster helpers.
  */
 
@@ -1351,68 +1359,139 @@ export function normalizeJudgeName(name: string): string {
   return tidyJudgeName(name).toLowerCase();
 }
 
-function withSchoolPreferences(
+function readPreferenceList(contest: Contest, ref: PreferenceListRef): JudgePreferenceList | undefined {
+  switch (ref.kind) {
+    case 'school':
+      return contest.schools[ref.index]?.judgePreferences;
+    case 'firstDistrict':
+    case 'secondDistrict':
+      return contest.judgePreferences[ref.kind];
+    case 'custom':
+      return contest.judgePreferences.customLists.find((l) => l.id === ref.id);
+  }
+}
+
+function withPreferenceList(
   contest: Contest,
-  schoolIndex: number,
+  ref: PreferenceListRef,
   patch: Partial<JudgePreferenceList>,
   now?: string,
 ): Contest {
-  const schools = contest.schools.map((s, i) =>
-    i === schoolIndex ? { ...s, judgePreferences: { ...s.judgePreferences, ...patch } } : s,
-  );
-  return { ...touch(contest, now), schools };
+  const base = touch(contest, now);
+  const { judgePreferences } = contest;
+  switch (ref.kind) {
+    case 'school':
+      return {
+        ...base,
+        schools: contest.schools.map((s, i) =>
+          i === ref.index ? { ...s, judgePreferences: { ...s.judgePreferences, ...patch } } : s,
+        ),
+      };
+    case 'firstDistrict':
+    case 'secondDistrict':
+      return {
+        ...base,
+        judgePreferences: { ...judgePreferences, [ref.kind]: { ...judgePreferences[ref.kind], ...patch } },
+      };
+    case 'custom':
+      return {
+        ...base,
+        judgePreferences: {
+          ...judgePreferences,
+          customLists: judgePreferences.customLists.map((l) => (l.id === ref.id ? { ...l, ...patch } : l)),
+        },
+      };
+  }
 }
 
-/** Appends a judge to a school's list. Blank, already listed, or out-of-range ⇒ no-op. */
-export function addRankedJudge(contest: Contest, schoolIndex: number, name: string, now?: string): Contest {
-  const school = contest.schools[schoolIndex];
+/** Appends a judge to a list. Blank, already listed, or an unknown list ⇒ no-op. */
+export function addRankedJudge(contest: Contest, ref: PreferenceListRef, name: string, now?: string): Contest {
+  const list = readPreferenceList(contest, ref);
   const key = normalizeJudgeName(name);
-  if (!school || !key) return contest;
-  const { ranked } = school.judgePreferences;
-  if (ranked.some((n) => normalizeJudgeName(n) === key)) return contest;
-  return withSchoolPreferences(contest, schoolIndex, { ranked: [...ranked, tidyJudgeName(name)] }, now);
+  if (!list || !key) return contest;
+  if (list.ranked.some((n) => normalizeJudgeName(n) === key)) return contest;
+  return withPreferenceList(contest, ref, { ranked: [...list.ranked, tidyJudgeName(name)] }, now);
 }
 
 /** Moves a judge one place up (-1) or down (1). A move off either end ⇒ no-op. */
 export function moveRankedJudge(
   contest: Contest,
-  schoolIndex: number,
+  ref: PreferenceListRef,
   rankIndex: number,
   direction: -1 | 1,
   now?: string,
 ): Contest {
-  const ranked = contest.schools[schoolIndex]?.judgePreferences.ranked;
+  const ranked = readPreferenceList(contest, ref)?.ranked;
   const target = rankIndex + direction;
   if (!ranked || rankIndex < 0 || rankIndex >= ranked.length || target < 0 || target >= ranked.length) {
     return contest;
   }
   const next = [...ranked];
   [next[rankIndex], next[target]] = [next[target], next[rankIndex]];
-  return withSchoolPreferences(contest, schoolIndex, { ranked: next }, now);
+  return withPreferenceList(contest, ref, { ranked: next }, now);
 }
 
-/** Removes a judge from a school's list. Out-of-range ⇒ no-op. */
-export function removeRankedJudge(contest: Contest, schoolIndex: number, rankIndex: number, now?: string): Contest {
-  const ranked = contest.schools[schoolIndex]?.judgePreferences.ranked;
+/** Removes a judge from a list. Out-of-range ⇒ no-op. */
+export function removeRankedJudge(contest: Contest, ref: PreferenceListRef, rankIndex: number, now?: string): Contest {
+  const ranked = readPreferenceList(contest, ref)?.ranked;
   if (!ranked || rankIndex < 0 || rankIndex >= ranked.length) return contest;
-  return withSchoolPreferences(contest, schoolIndex, { ranked: ranked.filter((_, i) => i !== rankIndex) }, now);
+  return withPreferenceList(contest, ref, { ranked: ranked.filter((_, i) => i !== rankIndex) }, now);
 }
 
-/** Adds a veto to a school's list. Blank, already vetoed there, or out-of-range ⇒ no-op. */
-export function addVetoedJudge(contest: Contest, schoolIndex: number, name: string, now?: string): Contest {
-  const school = contest.schools[schoolIndex];
+/** Adds a veto to a list. Blank, already vetoed there, or an unknown list ⇒ no-op. */
+export function addVetoedJudge(contest: Contest, ref: PreferenceListRef, name: string, now?: string): Contest {
+  const list = readPreferenceList(contest, ref);
   const key = normalizeJudgeName(name);
-  if (!school || !key) return contest;
-  const { vetoes } = school.judgePreferences;
-  if (vetoes.some((n) => normalizeJudgeName(n) === key)) return contest;
-  return withSchoolPreferences(contest, schoolIndex, { vetoes: [...vetoes, tidyJudgeName(name)] }, now);
+  if (!list || !key) return contest;
+  if (list.vetoes.some((n) => normalizeJudgeName(n) === key)) return contest;
+  return withPreferenceList(contest, ref, { vetoes: [...list.vetoes, tidyJudgeName(name)] }, now);
 }
 
-/** Removes a veto from a school's list. Out-of-range ⇒ no-op. */
-export function removeVetoedJudge(contest: Contest, schoolIndex: number, vetoIndex: number, now?: string): Contest {
-  const vetoes = contest.schools[schoolIndex]?.judgePreferences.vetoes;
+/** Removes a veto from a list. Out-of-range ⇒ no-op. */
+export function removeVetoedJudge(contest: Contest, ref: PreferenceListRef, vetoIndex: number, now?: string): Contest {
+  const vetoes = readPreferenceList(contest, ref)?.vetoes;
   if (!vetoes || vetoIndex < 0 || vetoIndex >= vetoes.length) return contest;
-  return withSchoolPreferences(contest, schoolIndex, { vetoes: vetoes.filter((_, i) => i !== vetoIndex) }, now);
+  return withPreferenceList(contest, ref, { vetoes: vetoes.filter((_, i) => i !== vetoIndex) }, now);
+}
+
+/** Adds an empty custom list with a new stable id. A blank name ⇒ no-op. */
+export function addCustomPreferenceList(contest: Contest, name: string, now?: string): Contest {
+  const tidied = tidyJudgeName(name);
+  if (!tidied) return contest;
+  const list: CustomPreferenceList = { id: crypto.randomUUID(), name: tidied, ...blankPreferenceList() };
+  return {
+    ...touch(contest, now),
+    judgePreferences: {
+      ...contest.judgePreferences,
+      customLists: [...contest.judgePreferences.customLists, list],
+    },
+  };
+}
+
+/**
+ * Renames a custom list, keeping the text as typed because this backs a live input.
+ * A blank name is allowed mid-edit and labels by position. Unknown id or same name ⇒ no-op.
+ */
+export function renameCustomPreferenceList(contest: Contest, id: string, name: string, now?: string): Contest {
+  const list = contest.judgePreferences.customLists.find((l) => l.id === id);
+  if (!list || list.name === name) return contest;
+  return {
+    ...touch(contest, now),
+    judgePreferences: {
+      ...contest.judgePreferences,
+      customLists: contest.judgePreferences.customLists.map((l) => (l.id === id ? { ...l, name } : l)),
+    },
+  };
+}
+
+/** Removes a custom list and everything on it. Unknown id ⇒ no-op. */
+export function removeCustomPreferenceList(contest: Contest, id: string, now?: string): Contest {
+  const { customLists } = contest.judgePreferences;
+  if (!customLists.some((l) => l.id === id)) return contest;
+  return {
+    ...touch(contest, now),
+    judgePreferences: { ...contest.judgePreferences, customLists: customLists.filter((l) => l.id !== id) },
+  };
 }
 
 /* ────────────────────────── company roster ──────────────────────────

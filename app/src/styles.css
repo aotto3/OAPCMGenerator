@@ -392,6 +392,9 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .pref-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pref-add { display: flex; gap: var(--space-2); }
 .pref-add input { flex: 1; min-width: 0; }
+.pref-list-header { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.pref-list-header input { flex: 1; min-width: 0; font-weight: 700; }
+.pref-custom-add { margin-top: var(--space-3); }
 .pref-subheading {
   font-size: var(--fs-sm); font-weight: 600; color: var(--c-muted);
   margin: var(--space-3) 0 var(--space-2); padding-top: var(--space-2); border-top: 1px dashed var(--c-border);
