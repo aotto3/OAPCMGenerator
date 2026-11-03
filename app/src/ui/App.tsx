@@ -39,7 +39,15 @@ function ContestFlow() {
       onOpenSaved={openSaved}
     />
   ) : (
-    <Workspace contestId={open.id} draft={open.draft} onBack={() => setOpen(null)} onOpenSaved={openSaved} />
+    // Keyed so opening another contest remounts it: autosave flushes the old
+    // contest's pending edits, and pane state starts fresh for the new one.
+    <Workspace
+      key={open.id}
+      contestId={open.id}
+      draft={open.draft}
+      onBack={() => setOpen(null)}
+      onOpenSaved={openSaved}
+    />
   );
 }
 

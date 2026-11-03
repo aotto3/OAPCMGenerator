@@ -9,6 +9,7 @@ import {
   type LevelFieldKey,
   type SectionCompletion,
 } from '../../model/contest';
+import { CreateSiblingZoneControl } from './CreateSiblingZoneControl';
 import { Section } from './Section';
 import { CopyButton, SelectField, TextField } from './fields';
 
@@ -31,11 +32,14 @@ export function IdentitySection({
   contest,
   completion,
   onChange,
+  onOpenSaved,
   defaultOpen,
 }: {
   contest: Contest;
   completion: SectionCompletion;
   onChange: (next: Contest) => void;
+  /** Persist the created sibling zone as a new record and open it. */
+  onOpenSaved: (contest: Contest) => void | Promise<void>;
   defaultOpen?: boolean;
 }) {
   const { identity } = contest;
@@ -94,6 +98,7 @@ export function IdentitySection({
           onChange={(v) => edit({ hostAddress: v })}
         />
       </div>
+      <CreateSiblingZoneControl contest={contest} onOpenSaved={onOpenSaved} />
     </Section>
   );
 }
