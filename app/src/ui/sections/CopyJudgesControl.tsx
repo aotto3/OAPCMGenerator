@@ -14,19 +14,7 @@ import {
   saveContest,
   type ContestSummary,
 } from '../../storage/contestStore';
-
-/** A bare ISO date in words. Noon keeps it on the same day in every time zone. */
-function targetDate(iso: string): string {
-  if (!iso) return '';
-  const date = new Date(`${iso}T12:00:00`);
-  return isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { dateStyle: 'long' });
-}
-
-/** One line under a target's name: its date and host, each only when present. */
-function targetMeta({ contestDate, hostSchoolName }: ContestSummary): string {
-  const host = hostSchoolName.trim();
-  return [targetDate(contestDate), host ? `Host: ${host}` : ''].filter(Boolean).join(' · ');
-}
+import { contestSummaryMeta } from './contestSummaryMeta';
 
 /** "A", "A and B", "A, B, and C". */
 function nameList(names: string[]): string {
@@ -159,7 +147,7 @@ export function CopyJudgesControl({ contest }: { contest: Contest }) {
                 <li key={target.id}>
                   <button type="button" className="judge-copy-target" disabled={busy} onClick={() => pick(target)}>
                     <span className="contest-name">{target.name}</span>
-                    {targetMeta(target) && <span className="muted">{targetMeta(target)}</span>}
+                    {contestSummaryMeta(target) && <span className="muted">{contestSummaryMeta(target)}</span>}
                   </button>
                 </li>
               ))}

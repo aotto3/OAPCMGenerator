@@ -42,6 +42,9 @@ interface ContestRecord {
   contestLevel?: ContestLevel;
   classification?: Classification;
   contestYear?: string;
+  /** Denormalized for finding sibling zones (PRD #220); see `contestDate` for the optionality note. */
+  district?: string;
+  zone?: string;
   /** Versioned envelope from serializeContest(). */
   payload: string;
   /**
@@ -163,6 +166,9 @@ export interface ContestSummary {
   contestLevel: ContestLevel;
   classification: Classification;
   contestYear: string;
+  /** Denormalized for finding sibling zones (PRD #220). */
+  district: string;
+  zone: string;
 }
 
 /**
@@ -180,13 +186,17 @@ export function contestSummaryFromRecord(record: ContestRecord): ContestSummary 
   let contestLevel = record.contestLevel;
   let classification = record.classification;
   let contestYear = record.contestYear;
+  let district = record.district;
+  let zone = record.zone;
   if (
     contestDate === undefined ||
     hostSchoolName === undefined ||
     archived === undefined ||
     contestLevel === undefined ||
     classification === undefined ||
-    contestYear === undefined
+    contestYear === undefined ||
+    district === undefined ||
+    zone === undefined
   ) {
     const contest = parseContest(record.payload);
     contestDate ??= contest.details.contestDate;
@@ -195,6 +205,8 @@ export function contestSummaryFromRecord(record: ContestRecord): ContestSummary 
     contestLevel ??= contest.identity.contestLevel;
     classification ??= contest.identity.classification;
     contestYear ??= contest.identity.contestYear;
+    district ??= contest.identity.district;
+    zone ??= contest.identity.zone;
   }
   return {
     id: record.id,
@@ -206,6 +218,8 @@ export function contestSummaryFromRecord(record: ContestRecord): ContestSummary 
     contestLevel,
     classification,
     contestYear,
+    district,
+    zone,
   };
 }
 
@@ -237,6 +251,8 @@ export async function saveContest(contest: Contest): Promise<void> {
     contestLevel: contest.identity.contestLevel,
     classification: contest.identity.classification,
     contestYear: contest.identity.contestYear,
+    district: contest.identity.district,
+    zone: contest.identity.zone,
     payload: serializeContest(contest),
     deviceOnly: contest.speechwire,
   });
@@ -307,6 +323,8 @@ export async function putPulledContest(
     contestLevel: contest.identity.contestLevel,
     classification: contest.identity.classification,
     contestYear: contest.identity.contestYear,
+    district: contest.identity.district,
+    zone: contest.identity.zone,
     // Store the contest-only envelope locally; checkpoints live in their store.
     payload: serializeContest(contest),
     deviceOnly: existing?.deviceOnly ?? contest.speechwire,

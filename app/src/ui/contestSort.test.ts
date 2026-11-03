@@ -20,6 +20,8 @@ function s(partial: Partial<ContestSummary> & { id: string }): ContestSummary {
     contestLevel: 'District',
     classification: '5A',
     contestYear: '2026',
+    district: '',
+    zone: '',
     ...partial,
   };
 }

@@ -31,7 +31,7 @@ import {
   type ContestLevel,
 } from './contest';
 import { computeSchedule } from './schedule';
-import { createSiblingZone, siblingZoneNumber } from './siblingZone';
+import { createSiblingZone, findSiblingZones, siblingZoneNumber } from './siblingZone';
 
 const NOW = '2026-07-05T12:00:00.000Z';
 const LATER = '2026-07-06T00:00:00.000Z';
@@ -289,5 +289,91 @@ describe('createSiblingZone', () => {
     expect(sibling.scheduleOverrides.gaps.map((gap) => gap.anchor)).toContain('show:7');
     expect(breakRows(sibling)).toHaveLength(0);
     expect(computeSchedule(sibling).length).toBeGreaterThan(0);
+  });
+});
+
+describe('findSiblingZones', () => {
+  const open = {
+    id: 'open',
+    identity: fullZone('1').identity,
+  };
+  const match = {
+    id: 'match',
+    archived: false,
+    contestLevel: 'Zone',
+    contestYear: '2027',
+    classification: '4A',
+    district: '20',
+    zone: '2',
+  };
+  const ids = (found: { id: string }[]) => found.map((c) => c.id);
+
+  it('finds the other zone', () => {
+    expect(ids(findSiblingZones(open, [match]))).toEqual(['match']);
+  });
+
+  it('works from zone 2 back to zone 1', () => {
+    const fromTwo = { id: 'open', identity: fullZone('2').identity };
+    expect(ids(findSiblingZones(fromTwo, [{ ...match, zone: '1' }]))).toEqual(['match']);
+  });
+
+  it('returns the matching row itself, with its other fields', () => {
+    const row = { ...match, name: 'Zone 2' };
+    expect(findSiblingZones(open, [row])).toEqual([row]);
+  });
+
+  it.each([
+    ['level', { contestLevel: 'District' }],
+    ['year', { contestYear: '2028' }],
+    ['classification', { classification: '5A' }],
+    ['district', { district: '21' }],
+    ['zone number', { zone: '3' }],
+    ['same zone number', { zone: '1' }],
+  ])('rejects a different %s', (_label, patch) => {
+    expect(findSiblingZones(open, [{ ...match, ...patch }])).toEqual([]);
+  });
+
+  it('ignores archived contests', () => {
+    expect(findSiblingZones(open, [{ ...match, archived: true }])).toEqual([]);
+  });
+
+  it('compares trimmed values', () => {
+    const spaced = { ...match, contestYear: ' 2027 ', district: ' 20', zone: '2 ' };
+    expect(ids(findSiblingZones(open, [spaced]))).toEqual(['match']);
+    const openSpaced = {
+      id: 'open',
+      identity: { ...open.identity, contestYear: '2027 ', district: ' 20 ', zone: ' 1 ' },
+    };
+    expect(ids(findSiblingZones(openSpaced, [match]))).toEqual(['match']);
+  });
+
+  it('never matches on a blank district', () => {
+    const blank = { id: 'open', identity: { ...open.identity, district: '  ' } };
+    expect(findSiblingZones(blank, [{ ...match, district: '' }])).toEqual([]);
+  });
+
+  it('never matches when the open contest has no sibling number', () => {
+    const noZone = { id: 'open', identity: { ...open.identity, zone: '' } };
+    expect(findSiblingZones(noZone, [match])).toEqual([]);
+    const zoneThree = { id: 'open', identity: { ...open.identity, zone: '3' } };
+    expect(findSiblingZones(zoneThree, [match])).toEqual([]);
+  });
+
+  it('never matches a candidate with a blank zone', () => {
+    expect(findSiblingZones(open, [{ ...match, zone: ' ' }])).toEqual([]);
+  });
+
+  it('ignores region and area', () => {
+    const elsewhere = { id: 'open', identity: { ...open.identity, region: '9', area: '' } };
+    expect(ids(findSiblingZones(elsewhere, [match]))).toEqual(['match']);
+  });
+
+  it('returns every match', () => {
+    expect(ids(findSiblingZones(open, [match, { ...match, id: 'second' }]))).toEqual(['match', 'second']);
+  });
+
+  it("never matches the open contest's own stored row, which can lag a zone edit", () => {
+    const stale = { ...match, id: 'open', zone: '2' };
+    expect(findSiblingZones(open, [stale])).toEqual([]);
   });
 });

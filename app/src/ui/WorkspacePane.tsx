@@ -39,12 +39,14 @@ export function WorkspacePane({
   progress,
   onChange,
   onOpenSaved,
+  onOpenContest,
 }: {
   pane: PaneId;
   contest: Contest;
   progress: Record<SectionId, SectionCompletion>;
   onChange: (next: Contest) => void;
   onOpenSaved: (contest: Contest) => void | Promise<void>;
+  onOpenContest: (id: string) => void;
 }) {
   return (
     <>
@@ -54,7 +56,7 @@ export function WorkspacePane({
           id={mirror ? undefined : moduleAnchorId(module)}
           className="ws-section-anchor"
         >
-          {renderModule(module, contest, progress, onChange, onOpenSaved, readOnly)}
+          {renderModule(module, contest, progress, onChange, onOpenSaved, onOpenContest, readOnly)}
         </div>
       ))}
     </>
@@ -73,6 +75,7 @@ function renderModule(
   progress: Record<SectionId, SectionCompletion>,
   onChange: (next: Contest) => void,
   onOpenSaved: (contest: Contest) => void | Promise<void>,
+  onOpenContest: (id: string) => void,
   readOnly?: boolean,
 ): ReactNode {
   switch (module) {
@@ -85,6 +88,7 @@ function renderModule(
           completion={progress.identity}
           onChange={onChange}
           onOpenSaved={onOpenSaved}
+          onOpenContest={onOpenContest}
         />
       );
     case 'details':
