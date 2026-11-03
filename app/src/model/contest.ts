@@ -1336,7 +1336,7 @@ export function removeDirector(
 }
 
 /* ────────────────────────── judge preferences ──────────────────────────
- * PRD #202. Edits to a school's ranked judges; the combined call list is derived
+ * PRD #202. Edits to a school's ranked judges and vetoes; the combined call list is derived
  * in judgePreferences.ts and never stored. A no-op returns the contest untouched,
  * matching the roster helpers.
  */
@@ -1351,9 +1351,14 @@ export function normalizeJudgeName(name: string): string {
   return tidyJudgeName(name).toLowerCase();
 }
 
-function withSchoolRanked(contest: Contest, schoolIndex: number, ranked: string[], now?: string): Contest {
+function withSchoolPreferences(
+  contest: Contest,
+  schoolIndex: number,
+  patch: Partial<JudgePreferenceList>,
+  now?: string,
+): Contest {
   const schools = contest.schools.map((s, i) =>
-    i === schoolIndex ? { ...s, judgePreferences: { ...s.judgePreferences, ranked } } : s,
+    i === schoolIndex ? { ...s, judgePreferences: { ...s.judgePreferences, ...patch } } : s,
   );
   return { ...touch(contest, now), schools };
 }
@@ -1365,7 +1370,7 @@ export function addRankedJudge(contest: Contest, schoolIndex: number, name: stri
   if (!school || !key) return contest;
   const { ranked } = school.judgePreferences;
   if (ranked.some((n) => normalizeJudgeName(n) === key)) return contest;
-  return withSchoolRanked(contest, schoolIndex, [...ranked, tidyJudgeName(name)], now);
+  return withSchoolPreferences(contest, schoolIndex, { ranked: [...ranked, tidyJudgeName(name)] }, now);
 }
 
 /** Moves a judge one place up (-1) or down (1). A move off either end ⇒ no-op. */
@@ -1383,14 +1388,31 @@ export function moveRankedJudge(
   }
   const next = [...ranked];
   [next[rankIndex], next[target]] = [next[target], next[rankIndex]];
-  return withSchoolRanked(contest, schoolIndex, next, now);
+  return withSchoolPreferences(contest, schoolIndex, { ranked: next }, now);
 }
 
 /** Removes a judge from a school's list. Out-of-range ⇒ no-op. */
 export function removeRankedJudge(contest: Contest, schoolIndex: number, rankIndex: number, now?: string): Contest {
   const ranked = contest.schools[schoolIndex]?.judgePreferences.ranked;
   if (!ranked || rankIndex < 0 || rankIndex >= ranked.length) return contest;
-  return withSchoolRanked(contest, schoolIndex, ranked.filter((_, i) => i !== rankIndex), now);
+  return withSchoolPreferences(contest, schoolIndex, { ranked: ranked.filter((_, i) => i !== rankIndex) }, now);
+}
+
+/** Adds a veto to a school's list. Blank, already vetoed there, or out-of-range ⇒ no-op. */
+export function addVetoedJudge(contest: Contest, schoolIndex: number, name: string, now?: string): Contest {
+  const school = contest.schools[schoolIndex];
+  const key = normalizeJudgeName(name);
+  if (!school || !key) return contest;
+  const { vetoes } = school.judgePreferences;
+  if (vetoes.some((n) => normalizeJudgeName(n) === key)) return contest;
+  return withSchoolPreferences(contest, schoolIndex, { vetoes: [...vetoes, tidyJudgeName(name)] }, now);
+}
+
+/** Removes a veto from a school's list. Out-of-range ⇒ no-op. */
+export function removeVetoedJudge(contest: Contest, schoolIndex: number, vetoIndex: number, now?: string): Contest {
+  const vetoes = contest.schools[schoolIndex]?.judgePreferences.vetoes;
+  if (!vetoes || vetoIndex < 0 || vetoIndex >= vetoes.length) return contest;
+  return withSchoolPreferences(contest, schoolIndex, { vetoes: vetoes.filter((_, i) => i !== vetoIndex) }, now);
 }
 
 /* ────────────────────────── company roster ──────────────────────────

@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import {
   DOCUMENT_TYPES,
   addRankedJudge,
+  addVetoedJudge,
   contestDisplayName,
   contestFileName,
   createContest,
@@ -145,7 +146,9 @@ describe('buildContestArchive', () => {
 describe('judge preferences stay out of documents (PRD #202)', () => {
   it('leaves no preference name in any generated document', async () => {
     const MARKER = 'Zzpreferencemarker';
-    const c = addRankedJudge(withDetails(setNumSchools(contest(), 1), { numJudges: 1 }), 0, `${MARKER} Judge`);
+    const VETO_MARKER = 'Zzvetomarker';
+    const small = withDetails(setNumSchools(contest(), 1), { numJudges: 1 });
+    const c = addVetoedJudge(addRankedJudge(small, 0, `${MARKER} Judge`), 0, `${VETO_MARKER} Judge`);
     for (const doc of DOCUMENT_REGISTRY) {
       const { bytes } = normalizeResult(await doc.build(c));
       // .docx/.xlsx are ZIPs (signature "PK"); search each part. PDFs search as raw bytes.
@@ -153,7 +156,10 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
         bytes[0] === 0x50 && bytes[1] === 0x4b
           ? await Promise.all(Object.values((await unzip(bytes)).files).map((f) => f.async('string')))
           : [Buffer.from(bytes).toString('latin1')];
-      for (const text of texts) expect(text).not.toContain(MARKER);
+      for (const text of texts) {
+        expect(text).not.toContain(MARKER);
+        expect(text).not.toContain(VETO_MARKER);
+      }
     }
   }, 30000);
 });

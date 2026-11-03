@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CONTEST_SCHEMA_VERSION,
   addRankedJudge,
+  addVetoedJudge,
   advanceContest,
   createContest,
   defaultJudgePreferences,
@@ -10,6 +11,7 @@ import {
   normalizeJudgeName,
   parseContest,
   removeRankedJudge,
+  removeVetoedJudge,
   sectionCompletion,
   serializeContest,
   setAdvancing,
@@ -35,8 +37,15 @@ function contest(): Contest {
 }
 
 function lists(...ranked: string[][]): PreferenceList[] {
-  return ranked.map((r, i) => ({ id: `list-${i}`, label: `List ${i + 1}`, ranked: r }));
+  return ranked.map((r, i) => ({ id: `list-${i}`, label: `List ${i + 1}`, ranked: r, vetoes: [] }));
 }
+
+/** A list with both rankings and vetoes, labeled by its own name. */
+function list(label: string, ranked: string[], vetoes: string[] = []): PreferenceList {
+  return { id: label, label, ranked, vetoes };
+}
+
+const callList = (l: PreferenceList[]) => combinePreferenceLists(l).callList;
 
 const names = (entries: CallListEntry[]) => entries.map((e) => e.name);
 
@@ -48,12 +57,12 @@ describe('normalizeJudgeName', () => {
 
 describe('combinePreferenceLists: points', () => {
   it('returns an empty call list when there are no lists or only empty ones', () => {
-    expect(combinePreferenceLists([])).toEqual([]);
-    expect(combinePreferenceLists(lists([], []))).toEqual([]);
+    expect(callList([])).toEqual([]);
+    expect(callList(lists([], []))).toEqual([]);
   });
 
   it('gives rank r on a longest list of N a score of N + 1 - r', () => {
-    const result = combinePreferenceLists(lists(['A', 'B', 'C']));
+    const result = callList(lists(['A', 'B', 'C']));
     expect(result.map((e) => [e.name, e.points])).toEqual([
       ['A', 3],
       ['B', 2],
@@ -62,37 +71,37 @@ describe('combinePreferenceLists: points', () => {
   });
 
   it('uses the longest list for N, so a short list scores on the same scale', () => {
-    const result = combinePreferenceLists(lists(['A', 'B', 'C', 'D', 'E'], ['F']));
+    const result = callList(lists(['A', 'B', 'C', 'D', 'E'], ['F']));
     expect(result.find((e) => e.name === 'A')?.points).toBe(5);
     expect(result.find((e) => e.name === 'F')?.points).toBe(5);
     expect(result.find((e) => e.name === 'E')?.points).toBe(1);
   });
 
   it('adds points across lists, so broad support beats one first place', () => {
-    const result = combinePreferenceLists(lists(['Solo', 'Broad', 'X'], ['Y', 'Broad', 'Z'], ['W', 'Broad', 'V']));
+    const result = callList(lists(['Solo', 'Broad', 'X'], ['Y', 'Broad', 'Z'], ['W', 'Broad', 'V']));
     expect(result[0]).toMatchObject({ name: 'Broad', points: 6, listCount: 3, bestRank: 2 });
   });
 
   it('does not let empty lists change the scale', () => {
-    const withEmpty = combinePreferenceLists(lists(['A', 'B'], []));
+    const withEmpty = callList(lists(['A', 'B'], []));
     expect(withEmpty.map((e) => e.points)).toEqual([2, 1]);
   });
 });
 
 describe('combinePreferenceLists: name matching', () => {
   it('combines names differing only by case or spacing into one judge', () => {
-    const result = combinePreferenceLists(lists(['Jane Smith'], ['  jane   smith ']));
+    const result = callList(lists(['Jane Smith'], ['  jane   smith ']));
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ points: 2, listCount: 2 });
   });
 
   it('displays the first spelling encountered, in list order', () => {
-    expect(names(combinePreferenceLists(lists(['Jane Smith'], ['jane smith'])))).toEqual(['Jane Smith']);
-    expect(names(combinePreferenceLists(lists(['jane smith'], ['Jane Smith'])))).toEqual(['jane smith']);
+    expect(names(callList(lists(['Jane Smith'], ['jane smith'])))).toEqual(['Jane Smith']);
+    expect(names(callList(lists(['jane smith'], ['Jane Smith'])))).toEqual(['jane smith']);
   });
 
   it('ignores blank names, which also do not count toward N', () => {
-    const result = combinePreferenceLists(lists(['A', '  ', 'B']));
+    const result = callList(lists(['A', '  ', 'B']));
     expect(result.map((e) => [e.name, e.points])).toEqual([
       ['A', 2],
       ['B', 1],
@@ -100,7 +109,7 @@ describe('combinePreferenceLists: name matching', () => {
   });
 
   it('counts a judge named twice on one list once, at the better rank', () => {
-    const result = combinePreferenceLists(lists(['A', 'B', 'a']));
+    const result = callList(lists(['A', 'B', 'a']));
     expect(result.map((e) => [e.name, e.points, e.listCount, e.bestRank])).toEqual([
       ['A', 2, 1, 1],
       ['B', 1, 1, 2],
@@ -110,12 +119,12 @@ describe('combinePreferenceLists: name matching', () => {
 
 describe('combinePreferenceLists: ordering and ties', () => {
   it('sorts by points first', () => {
-    expect(names(combinePreferenceLists(lists(['A', 'B'], ['A', 'C'])))).toEqual(['A', 'B', 'C']);
+    expect(names(callList(lists(['A', 'B'], ['A', 'C'])))).toEqual(['A', 'B', 'C']);
   });
 
   it('breaks equal points by most lists naming the judge', () => {
     // N = 3. Both score 3: One is 1st on one list, Two is 3rd on three lists.
-    const result = combinePreferenceLists(
+    const result = callList(
       lists(['One', 'P', 'Two'], ['Q', 'R', 'Two'], ['S', 'T', 'Two']),
     );
     const one = result.findIndex((e) => e.name === 'One');
@@ -127,7 +136,7 @@ describe('combinePreferenceLists: ordering and ties', () => {
 
   it('breaks equal points and list counts by best single rank', () => {
     // N = 4. Both score 5 on two lists: Best earns 4 + 1, Even earns 3 + 2.
-    const result = combinePreferenceLists(
+    const result = callList(
       lists(['Best', 'Even', 'P', 'Q'], ['R', 'S', 'Even', 'Best']),
     );
     const best = result.find((e) => e.name === 'Best')!;
@@ -139,7 +148,7 @@ describe('combinePreferenceLists: ordering and ties', () => {
   });
 
   it('lists remaining ties alphabetically and flags them as tied', () => {
-    const result = combinePreferenceLists(lists(['Zed'], ['amy'], ['Moe', 'Other']));
+    const result = callList(lists(['Zed'], ['amy'], ['Moe', 'Other']));
     expect(names(result)).toEqual(['amy', 'Moe', 'Zed', 'Other']);
     expect(result.map((e) => e.tied)).toEqual([true, true, true, false]);
   });
@@ -148,7 +157,72 @@ describe('combinePreferenceLists: ordering and ties', () => {
     const a = ['A', 'B', 'C'];
     const b = ['C', 'D'];
     const c = ['E', 'A'];
-    expect(names(combinePreferenceLists(lists(a, b, c)))).toEqual(names(combinePreferenceLists(lists(c, b, a))));
+    expect(names(callList(lists(a, b, c)))).toEqual(names(callList(lists(c, b, a))));
+  });
+});
+
+describe('combinePreferenceLists: vetoes', () => {
+  it('removes a vetoed judge from the call list, even a top scorer', () => {
+    const result = combinePreferenceLists([
+      list('A', ['Top', 'Other']),
+      list('B', ['Top', 'Other']),
+      list('C', [], ['Top']),
+    ]);
+    expect(names(result.callList)).toEqual(['Other']);
+    expect(result.vetoed).toEqual([{ name: 'Top', vetoedBy: ['C'] }]);
+  });
+
+  it('lists every list that vetoed a judge, in list order', () => {
+    const { vetoed } = combinePreferenceLists([list('A', [], ['Jane Smith']), list('B', ['X']), list('C', [], ['jane  smith'])]);
+    expect(vetoed).toEqual([{ name: 'Jane Smith', vetoedBy: ['A', 'C'] }]);
+  });
+
+  it('sorts the Vetoed section alphabetically', () => {
+    const { vetoed } = combinePreferenceLists([list('A', [], ['Zed', 'amy', 'Moe'])]);
+    expect(vetoed.map((v) => v.name)).toEqual(['amy', 'Moe', 'Zed']);
+  });
+
+  it('includes a vetoed judge nobody ranked', () => {
+    const { callList: rows, vetoed } = combinePreferenceLists([list('A', [], ['Nobody Ranked'])]);
+    expect(rows).toEqual([]);
+    expect(vetoed).toEqual([{ name: 'Nobody Ranked', vetoedBy: ['A'] }]);
+  });
+
+  it('matches veto names with the same normalization as rankings', () => {
+    const { callList: rows } = combinePreferenceLists([list('A', ['Jane Smith', 'B']), list('C', [], ['  JANE   smith '])]);
+    expect(names(rows)).toEqual(['B']);
+  });
+
+  it('ignores blank vetoes and counts a repeated veto once', () => {
+    const { vetoed } = combinePreferenceLists([list('A', [], ['  ', 'Dup', 'dup'])]);
+    expect(vetoed).toEqual([{ name: 'Dup', vetoedBy: ['A'] }]);
+  });
+
+  it('computes N before vetoes, so a veto does not change other points', () => {
+    const ranked = ['Vetoed', 'Second', 'Third'];
+    const without = combinePreferenceLists([list('A', ranked)]).callList;
+    const withVeto = combinePreferenceLists([list('A', ranked), list('B', [], ['Vetoed'])]).callList;
+    expect(withVeto.map((e) => [e.name, e.points])).toEqual([
+      ['Second', 2],
+      ['Third', 1],
+    ]);
+    expect(without.find((e) => e.name === 'Second')?.points).toBe(2);
+  });
+
+  it('does not count a vetoed judge as a tie partner', () => {
+    const { callList: rows } = combinePreferenceLists([list('A', ['Kept']), list('B', ['Gone']), list('C', [], ['Gone'])]);
+    expect(rows).toEqual([expect.objectContaining({ name: 'Kept', tied: false })]);
+  });
+
+  it('flags a list that ranks and vetoes one judge, and the veto wins', () => {
+    const result = combinePreferenceLists([list('A', ['Both', 'Fine'], ['both']), list('B', ['Other'], ['Fine'])]);
+    expect(result.conflicts).toEqual([{ listId: 'A', listLabel: 'A', name: 'Both' }]);
+    expect(names(result.callList)).toEqual(['Other']);
+    expect(result.vetoed.map((v) => v.name)).toEqual(['Both', 'Fine']);
+  });
+
+  it('returns empty parts for no lists', () => {
+    expect(combinePreferenceLists([])).toEqual({ callList: [], vetoed: [], conflicts: [] });
   });
 });
 
@@ -191,9 +265,9 @@ describe('activePreferenceLists', () => {
     let c = setNumSchools(contest(), 4);
     c = addRankedJudge(c, 0, 'Stays');
     c = addRankedJudge(c, 3, 'Goes');
-    expect(names(combinePreferenceLists(activePreferenceLists(c)))).toContain('Goes');
+    expect(names(callList(activePreferenceLists(c)))).toContain('Goes');
     const fewer = setNumSchools(c, 3);
-    expect(names(combinePreferenceLists(activePreferenceLists(fewer)))).toEqual(['Stays']);
+    expect(names(callList(activePreferenceLists(fewer)))).toEqual(['Stays']);
   });
 });
 
@@ -201,6 +275,10 @@ describe('preferenceProgress', () => {
   it('counts lists with at least one name out of all lists', () => {
     expect(preferenceProgress(lists(['A'], [], ['B'], ['  ']))).toEqual({ entered: 2, total: 4 });
     expect(preferenceProgress([])).toEqual({ entered: 0, total: 0 });
+  });
+
+  it('counts a list with only vetoes as entered', () => {
+    expect(preferenceProgress([list('A', [], ['Vetoed']), list('B', [])])).toEqual({ entered: 1, total: 2 });
   });
 });
 
@@ -275,7 +353,7 @@ describe('persistence and clearing', () => {
     expect(migrated.schools.every((s) => s.judgePreferences.ranked.length === 0)).toBe(true);
     expect(migrated.schools[0].name).toBe('Westlake HS');
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
-    expect(combinePreferenceLists(activePreferenceLists(migrated))).toEqual([]);
+    expect(callList(activePreferenceLists(migrated))).toEqual([]);
   });
 
   it('clears on roll-forward, leaving the source untouched', () => {
@@ -296,5 +374,49 @@ describe('persistence and clearing', () => {
   it('does not count toward section completion', () => {
     const before = sectionCompletion(contest());
     expect(sectionCompletion(addRankedJudge(contest(), 0, 'Jane Smith'))).toEqual(before);
+  });
+});
+
+describe('veto updaters', () => {
+  it('adds a tidied veto without touching rankings, and bumps updatedAt', () => {
+    const c = addVetoedJudge(addRankedJudge(contest(), 0, 'Ranked'), 0, '  Jane   Smith ', LATER);
+    expect(c.schools[0].judgePreferences).toEqual({ ranked: ['Ranked'], vetoes: ['Jane Smith'] });
+    expect(c.updatedAt).toBe(LATER);
+  });
+
+  it('ignores blank names, duplicate vetoes on that list, and bad indexes', () => {
+    const c = addVetoedJudge(contest(), 0, 'Jane Smith');
+    expect(addVetoedJudge(c, 0, '   ')).toBe(c);
+    expect(addVetoedJudge(c, 0, 'jane  smith')).toBe(c);
+    expect(addVetoedJudge(c, 99, 'New')).toBe(c);
+  });
+
+  it('allows vetoing a judge the same list ranks, so the conflict can be flagged', () => {
+    const c = addVetoedJudge(addRankedJudge(contest(), 0, 'Jane Smith'), 0, 'Jane Smith');
+    expect(c.schools[0].judgePreferences).toEqual({ ranked: ['Jane Smith'], vetoes: ['Jane Smith'] });
+  });
+
+  it('removes a veto and ignores a bad index', () => {
+    let c = addVetoedJudge(contest(), 0, 'A');
+    c = addVetoedJudge(c, 0, 'B');
+    expect(removeVetoedJudge(c, 0, 0, LATER).schools[0].judgePreferences.vetoes).toEqual(['B']);
+    expect(removeVetoedJudge(c, 0, 5)).toBe(c);
+  });
+
+  it('feeds the school list through to the calculator', () => {
+    let c = addRankedJudge(contest(), 0, 'Jane Smith');
+    c = addVetoedJudge(c, 1, 'Jane Smith');
+    const result = combinePreferenceLists(activePreferenceLists(c));
+    expect(result.callList).toEqual([]);
+    expect(result.vetoed).toEqual([{ name: 'Jane Smith', vetoedBy: ['School 2'] }]);
+  });
+
+  it('round-trips vetoes and clears them on roll-forward and advance', () => {
+    let c = withSchool(contest(), 0, { name: 'Westlake HS' });
+    c = withSchool(c, 1, { name: 'Anderson HS' });
+    c = addVetoedJudge(c, 0, 'Jane Smith');
+    expect(parseContest(serializeContest(c)).schools[0].judgePreferences.vetoes).toEqual(['Jane Smith']);
+    expect(duplicateContest(c).schools[0].judgePreferences.vetoes).toEqual([]);
+    expect(advanceContest(setAdvancing(c, [0, 1]))!.schools[0].judgePreferences.vetoes).toEqual([]);
   });
 });
