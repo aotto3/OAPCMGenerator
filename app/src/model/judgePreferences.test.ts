@@ -36,6 +36,7 @@ import {
   enteredJudgeNames,
   firstOpenJudgeSlot,
   judgeSlotNumber,
+  parseJudgeList,
   preferenceProgress,
   preferencesAvailable,
   type CallListEntry,
@@ -744,6 +745,74 @@ describe('mergeJudgeNames', () => {
     const back = parseContest(serializeContest(merged));
     expect(back.schools[0].judgePreferences.ranked).toEqual(['Jane Smith']);
     expect(back.judgePreferences.unavailable).toEqual(['jane smith']);
+  });
+});
+
+describe('parseJudgeList', () => {
+  it('reads one name per line, in order', () => {
+    expect(parseJudgeList('Aaron Brown\nTravis Springfield\nPerry Crafton')).toEqual([
+      'Aaron Brown',
+      'Travis Springfield',
+      'Perry Crafton',
+    ]);
+  });
+
+  it('handles Windows line endings, blank lines, and stray spacing', () => {
+    expect(parseJudgeList('  Aaron   Brown \r\n\r\n\tPerry Crafton\r\n')).toEqual(['Aaron Brown', 'Perry Crafton']);
+  });
+
+  it('is empty for blank text', () => {
+    expect(parseJudgeList('')).toEqual([]);
+    expect(parseJudgeList(' \n\n ')).toEqual([]);
+  });
+
+  it.each([
+    ['1. Aaron Brown'],
+    ['1) Aaron Brown'],
+    ['(1) Aaron Brown'],
+    ['1 - Aaron Brown'],
+    ['1: Aaron Brown'],
+    ['1 Aaron Brown'],
+    ['#1 Aaron Brown'],
+    ['- Aaron Brown'],
+    ['* Aaron Brown'],
+    ['\u2022 Aaron Brown'],
+    ['\u2013 Aaron Brown'],
+  ])('removes the list marker from %s', (line) => {
+    expect(parseJudgeList(line)).toEqual(['Aaron Brown']);
+  });
+
+  it('skips heading lines and markers with no name', () => {
+    expect(parseJudgeList('Our preferences:\n1. Aaron Brown\n2.\nThanks:')).toEqual(['Aaron Brown']);
+  });
+
+  it('splits names on one line by comma or semicolon', () => {
+    expect(parseJudgeList('Aaron Brown, Perry Crafton, Scott Allen')).toEqual([
+      'Aaron Brown',
+      'Perry Crafton',
+      'Scott Allen',
+    ]);
+    expect(parseJudgeList('Aaron Brown; Perry Crafton')).toEqual(['Aaron Brown', 'Perry Crafton']);
+  });
+
+  it('turns Last, First into First Last', () => {
+    expect(parseJudgeList('Brown, Aaron\nAbeln Starnes, Cynthia')).toEqual(['Aaron Brown', 'Cynthia Abeln Starnes']);
+  });
+
+  it('keeps a suffix with its name', () => {
+    expect(parseJudgeList('John Smith, Jr.\nJane Doe, PhD')).toEqual(['John Smith, Jr.', 'Jane Doe, PhD']);
+  });
+
+  it('keeps a repeated name once, at its first position', () => {
+    expect(parseJudgeList('Aaron Brown\nPerry Crafton\naaron  BROWN')).toEqual(['Aaron Brown', 'Perry Crafton']);
+  });
+
+  it('keeps initials, hyphens, and parentheses within a name', () => {
+    expect(parseJudgeList('H. Russ Brown\nShari Bellizzi-Davis\nCharles (Gary) Cooper')).toEqual([
+      'H. Russ Brown',
+      'Shari Bellizzi-Davis',
+      'Charles (Gary) Cooper',
+    ]);
   });
 });
 

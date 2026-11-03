@@ -191,6 +191,31 @@ export function addAsJudge(contest: Contest, name: string, now?: string): Contes
   return withAdjudicator(contest, slot, { name }, now);
 }
 
+const LIST_MARKER = /^\s*(?:\(\d+\)\s*|#?\d+\s*[.):\-\u2013\u2014]\s*|#?\d+\s+|[-*\u2022\u00b7\u2013\u2014]\s*)/;
+const NAME_SUFFIX = /^(?:jr|sr|ii|iii|iv|ph\.?\s?d|ed\.?\s?d|m\.?f\.?a)\.?$/i;
+
+/** A comma means separate names ("Aaron Brown, Perry Crafton") or a reversed one ("Brown, Aaron"). */
+function namesFromLine(line: string): string[] {
+  const parts = line.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 2) return parts;
+  if (NAME_SUFFIX.test(parts[1])) return [line];
+  const isOneWord = (part: string) => !/\s/.test(part);
+  return isOneWord(parts[0]) || isOneWord(parts[1]) ? [`${parts[1]} ${parts[0]}`] : parts;
+}
+
+/**
+ * Reads a pasted list of judges, usually one name per line. Numbering and bullets are
+ * dropped, as are heading lines ending in a colon, and a repeated name keeps its first
+ * position. Order is kept as written.
+ */
+export function parseJudgeList(text: string): string[] {
+  const names = text.split(/[\r\n;]+/).flatMap((line) => {
+    const clean = line.replace(LIST_MARKER, '').trim();
+    return !clean || clean.endsWith(':') ? [] : namesFromLine(clean);
+  });
+  return cleanNames(names.map((name) => name.trim().replace(/\s+/g, ' ')));
+}
+
 /** Every name entered in this contest, once each: active lists first, then active judge slots. */
 export function enteredJudgeNames(contest: Contest): string[] {
   return cleanNames([

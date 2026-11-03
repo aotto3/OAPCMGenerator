@@ -403,6 +403,16 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .pref-suggest-list li:hover, .pref-suggest-active { background: var(--c-bg-blue); }
 .pref-suggest-detail { font-size: 0.72rem; color: var(--c-muted); }
+.pref-paste-open { margin-top: var(--space-2); }
+.pref-paste { margin-top: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
+.pref-paste textarea { width: 100%; min-width: 0; }
+.pref-paste-rows {
+  margin: 0; padding-left: 1.75em; display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--fs-sm);
+}
+.pref-paste-rows li > * { display: block; max-width: 100%; overflow-wrap: anywhere; }
+.pref-paste-rows select { width: 100%; min-width: 0; }
+.pref-paste-flag { margin-top: 2px; font-size: 0.72rem; color: var(--c-warn); }
+.pref-paste-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .pref-roster-note { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
 .pref-list-header { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .pref-list-header input { flex: 1; min-width: 0; font-weight: 700; }

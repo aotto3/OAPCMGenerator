@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TTAO_SNAPSHOT } from './ttaoRosterSnapshot';
-import { suggestJudges, type RosterJudge } from './ttaoRoster';
+import { matchPastedName, suggestJudges, type RosterJudge } from './ttaoRoster';
 
 const ROSTER: RosterJudge[] = [
   { name: 'Jane Smith', city: 'Austin', esc: 'Region 13: Austin' },
@@ -87,6 +87,81 @@ describe('suggestJudges', () => {
   it('works with an empty roster, using entered names alone', () => {
     expect(suggestJudges('jan', { roster: [] })).toEqual([]);
     expect(suggestJudges('jan', { roster: [], entered: ['Jan Doe'] }).map((s) => s.name)).toEqual(['Jan Doe']);
+  });
+});
+
+describe('matchPastedName', () => {
+  const roster: RosterJudge[] = [
+    { name: 'Aaron Brown', city: 'Seguin', esc: 'Region 12: Waco' },
+    { name: 'Joe Brown', city: 'Fort Worth', esc: '' },
+    { name: 'Robert Scott Allen', city: 'Highlands', esc: 'Region 4: Houston' },
+    { name: 'Charles (Gary) Cooper', city: 'New Braunfels', esc: '' },
+    { name: 'Michael Cooper', city: 'Texarkana', esc: '' },
+    { name: 'Jane Smith', city: 'Austin', esc: '' },
+    { name: 'Jane Smithers', city: 'Dallas', esc: '' },
+  ];
+
+  it('uses the roster spelling for an exact match, with nothing to choose', () => {
+    expect(matchPastedName('aaron  BROWN', { roster })).toEqual({
+      typed: 'aaron  BROWN',
+      suggested: 'Aaron Brown',
+      exact: roster[0],
+      candidates: [],
+    });
+  });
+
+  it('prefers an exact match over a longer name that also matches', () => {
+    const match = matchPastedName('Jane Smith', { roster });
+    expect(match.exact?.name).toBe('Jane Smith');
+    expect(match.candidates).toEqual([]);
+  });
+
+  it('suggests the only roster judge a partial name fits', () => {
+    expect(matchPastedName('Scott Allen', { roster })).toMatchObject({
+      suggested: 'Robert Scott Allen',
+      exact: null,
+    });
+    expect(matchPastedName('Gary Cooper', { roster }).suggested).toBe('Charles (Gary) Cooper');
+  });
+
+  it('still lists that one judge as a candidate, so the CM can decline it', () => {
+    expect(matchPastedName('Scott Allen', { roster }).candidates.map((c) => c.name)).toEqual(['Robert Scott Allen']);
+  });
+
+  it('keeps the name as typed when several judges fit, and lists them', () => {
+    const match = matchPastedName('Brown', { roster });
+    expect(match.suggested).toBe('Brown');
+    expect(match.candidates.map((c) => c.name)).toEqual(['Aaron Brown', 'Joe Brown']);
+  });
+
+  it('keeps the name as typed when nobody fits', () => {
+    expect(matchPastedName('Travis Springfield', { roster })).toEqual({
+      typed: 'Travis Springfield',
+      suggested: 'Travis Springfield',
+      exact: null,
+      candidates: [],
+    });
+  });
+
+  it('offers a close spelling but never picks it, since it could be a different person', () => {
+    const match = matchPastedName('Janae Smith', { roster });
+    expect(match.suggested).toBe('Janae Smith');
+    expect(match.exact).toBeNull();
+    expect(match.candidates.map((c) => c.name)).toEqual(['Jane Smith']);
+  });
+
+  it('does not offer a spelling more than two letters off', () => {
+    expect(matchPastedName('Janice Smyth', { roster }).candidates).toEqual([]);
+  });
+
+  it('matches a name already entered in this contest, in its entered spelling', () => {
+    const match = matchPastedName('travis springfield', { roster, entered: ['Travis Springfield'] });
+    expect(match.suggested).toBe('Travis Springfield');
+    expect(match.exact?.name).toBe('Travis Springfield');
+  });
+
+  it('works with an empty roster', () => {
+    expect(matchPastedName('Aaron Brown', { roster: [] }).suggested).toBe('Aaron Brown');
   });
 });
 
