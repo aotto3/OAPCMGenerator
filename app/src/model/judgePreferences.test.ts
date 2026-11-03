@@ -20,6 +20,8 @@ import {
   setAdvancing,
   setJudgeUnavailable,
   setNumSchools,
+  withAdjudicator,
+  withDetails,
   withIdentity,
   withSchool,
   type Contest,
@@ -27,8 +29,11 @@ import {
 } from './contest';
 import {
   activePreferenceLists,
+  addAsJudge,
   callListText,
   combinePreferenceLists,
+  firstOpenJudgeSlot,
+  judgeSlotNumber,
   preferenceProgress,
   preferencesAvailable,
   type CallListEntry,
@@ -539,6 +544,89 @@ describe('callListText', () => {
   it('is empty when nobody is left to call', () => {
     expect(callListText([])).toBe('');
     expect(callListText(combinePreferenceLists([list('A', ['Busy'])], ['busy']).callList)).toBe('');
+  });
+});
+
+describe('addAsJudge', () => {
+  const slots = (c: Contest) => c.adjudicators.map((j) => j.name);
+  const threeJudges = () => withDetails(contest(), { numJudges: 3 });
+
+  it('fills the first blank active slot with the name and bumps updatedAt', () => {
+    const c = addAsJudge(threeJudges(), 'Jane Smith', LATER);
+    expect(slots(c).slice(0, 3)).toEqual(['Jane Smith', '', '']);
+    expect(c.updatedAt).toBe(LATER);
+  });
+
+  it('skips filled slots and fills a gap left in the middle', () => {
+    let c = withAdjudicator(threeJudges(), 0, { name: 'One' });
+    c = withAdjudicator(c, 2, { name: 'Three' });
+    expect(slots(addAsJudge(c, 'Two')).slice(0, 3)).toEqual(['One', 'Two', 'Three']);
+  });
+
+  it('treats a spaces-only slot as blank', () => {
+    const c = withAdjudicator(threeJudges(), 0, { name: '   ' });
+    expect(firstOpenJudgeSlot(c)).toBe(0);
+    expect(slots(addAsJudge(c, 'Jane Smith'))[0]).toBe('Jane Smith');
+  });
+
+  it('never overwrites a hired judge when every active slot is full', () => {
+    let c = withDetails(contest(), { numJudges: 1 });
+    c = withAdjudicator(c, 0, { name: 'Hired' });
+    expect(firstOpenJudgeSlot(c)).toBeNull();
+    expect(addAsJudge(c, 'Jane Smith')).toBe(c);
+  });
+
+  it('does not fill a hidden slot beyond numJudges', () => {
+    let c = withDetails(contest(), { numJudges: 3 });
+    c = withAdjudicator(withAdjudicator(c, 0, { name: 'A' }), 1, { name: 'B' });
+    c = withDetails(c, { numJudges: 2 });
+    expect(firstOpenJudgeSlot(c)).toBeNull();
+    expect(addAsJudge(c, 'Jane Smith')).toBe(c);
+  });
+
+  it('is a no-op for a blank name or a judge already in a slot', () => {
+    const c = addAsJudge(threeJudges(), 'Jane Smith');
+    expect(addAsJudge(c, '   ')).toBe(c);
+    expect(addAsJudge(c, 'jane  SMITH')).toBe(c);
+  });
+
+  it('keeps the slot\'s other fields', () => {
+    const c = withAdjudicator(threeJudges(), 0, { mailingAddress: '1 Main St' });
+    expect(addAsJudge(c, 'Jane Smith').adjudicators[0]).toMatchObject({ name: 'Jane Smith', mailingAddress: '1 Main St' });
+  });
+});
+
+describe('judgeSlotNumber', () => {
+  const twoJudges = () => withDetails(contest(), { numJudges: 2 });
+
+  it('gives the 1-based slot, using normalized comparison', () => {
+    const c = withAdjudicator(twoJudges(), 1, { name: '  JANE   smith ' });
+    expect(judgeSlotNumber(c, 'Jane Smith')).toBe(2);
+  });
+
+  it('is null when the name is not in a slot, or the name is blank', () => {
+    expect(judgeSlotNumber(twoJudges(), 'Jane Smith')).toBeNull();
+    expect(judgeSlotNumber(twoJudges(), '  ')).toBeNull();
+  });
+
+  it('clears when the name is removed from the slot', () => {
+    const c = addAsJudge(twoJudges(), 'Jane Smith');
+    expect(judgeSlotNumber(c, 'Jane Smith')).toBe(1);
+    expect(judgeSlotNumber(withAdjudicator(c, 0, { name: '' }), 'Jane Smith')).toBeNull();
+  });
+
+  it('ignores a slot beyond numJudges', () => {
+    const c = withAdjudicator(withDetails(contest(), { numJudges: 3 }), 2, { name: 'Jane Smith' });
+    expect(judgeSlotNumber(c, 'Jane Smith')).toBe(3);
+    expect(judgeSlotNumber(withDetails(c, { numJudges: 2 }), 'Jane Smith')).toBeNull();
+  });
+
+  it('finds a vetoed judge in a slot, and the veto leaves the slot unchanged', () => {
+    let c = addAsJudge(twoJudges(), 'Jane Smith');
+    c = addVetoedJudge(c, school(0), 'jane smith');
+    const { vetoed } = combinePreferenceLists(activePreferenceLists(c));
+    expect(judgeSlotNumber(c, vetoed[0].name)).toBe(1);
+    expect(c.adjudicators[0].name).toBe('Jane Smith');
   });
 });
 

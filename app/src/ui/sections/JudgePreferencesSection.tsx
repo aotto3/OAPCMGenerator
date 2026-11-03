@@ -13,8 +13,11 @@ import {
 } from '../../model/contest';
 import {
   activePreferenceLists,
+  addAsJudge,
   callListText,
   combinePreferenceLists,
+  firstOpenJudgeSlot,
+  judgeSlotNumber,
   preferenceProgress,
   preferencesAvailable,
   type ActivePreferenceList,
@@ -44,6 +47,7 @@ export function JudgePreferencesSection({
   const progress = preferenceProgress(lists);
   const { callList, vetoed, conflicts } = combinePreferenceLists(lists, contest.judgePreferences.unavailable);
   const copyText = callListText(callList);
+  const slotsFull = firstOpenJudgeSlot(contest) === null;
   const submitter = contest.identity.contestLevel === 'BiDistrict' ? 'district' : 'school';
 
   return (
@@ -90,32 +94,51 @@ export function JudgePreferencesSection({
                 <th scope="col">Points</th>
                 <th scope="col">Lists</th>
                 <th scope="col">Unavailable</th>
+                <th scope="col">Hire</th>
               </tr>
             </thead>
             <tbody>
-              {callList.map((entry, i) => (
-                <tr key={entry.name} className={entry.unavailable ? 'pref-unavailable' : undefined}>
-                  <td>{i + 1}</td>
-                  <td>
-                    {entry.name}
-                    {entry.tied && (
-                      <span className="pref-tied" title="Tied after every tiebreaker. Call in any order.">
-                        Tied
-                      </span>
-                    )}
-                  </td>
-                  <td>{entry.points}</td>
-                  <td>{entry.listCount}</td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={entry.unavailable}
-                      aria-label={`${entry.name} is unavailable`}
-                      onChange={(e) => onChange(setJudgeUnavailable(contest, entry.name, e.target.checked))}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {callList.map((entry, i) => {
+                const slot = judgeSlotNumber(contest, entry.name);
+                return (
+                  <tr key={entry.name} className={entry.unavailable ? 'pref-unavailable' : undefined}>
+                    <td>{i + 1}</td>
+                    <td>
+                      {entry.name}
+                      {entry.tied && (
+                        <span className="pref-tied" title="Tied after every tiebreaker. Call in any order.">
+                          Tied
+                        </span>
+                      )}
+                      {slot !== null && <span className="pref-hired">Judge {slot}</span>}
+                    </td>
+                    <td>{entry.points}</td>
+                    <td>{entry.listCount}</td>
+                    <td className="pref-control">
+                      <input
+                        type="checkbox"
+                        checked={entry.unavailable}
+                        aria-label={`${entry.name} is unavailable`}
+                        onChange={(e) => onChange(setJudgeUnavailable(contest, entry.name, e.target.checked))}
+                      />
+                    </td>
+                    <td className="pref-control">
+                      {slot === null && (
+                        <button
+                          type="button"
+                          className="btn-util"
+                          disabled={slotsFull}
+                          title={slotsFull ? 'All judge slots are full' : undefined}
+                          aria-label={`Add ${entry.name} as judge`}
+                          onClick={() => onChange(addAsJudge(contest, entry.name))}
+                        >
+                          Add as judge
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -147,6 +170,16 @@ export function JudgePreferencesSection({
               </tbody>
             </table>
           </div>
+          {vetoed.map((entry) => {
+            const slot = judgeSlotNumber(contest, entry.name);
+            return (
+              slot !== null && (
+                <p key={entry.name} className="pref-warning" role="alert">
+                  {entry.name} is vetoed but is in the Judge {slot} slot. The slot is left as it is for you to review.
+                </p>
+              )
+            );
+          })}
         </>
       )}
     </Section>

@@ -14,8 +14,18 @@
  *
  * Unavailable: a mark flags the judge but changes nothing else, so they keep their
  * computed position and any tie.
+ *
+ * Judge slots: whether a judge is hired is read from the active slots on demand and
+ * never stored, so the call list and the Judges section can't disagree.
  */
-import { normalizeJudgeName, type Contest, type ContestLevel, type PreferenceListRef } from './contest';
+import {
+  normalizeJudgeName,
+  withAdjudicator,
+  type Adjudicator,
+  type Contest,
+  type ContestLevel,
+  type PreferenceListRef,
+} from './contest';
 
 /** One list as the calculator sees it, whichever school or group it came from. */
 export interface PreferenceList {
@@ -154,6 +164,31 @@ export function callListText(callList: readonly CallListEntry[]): string {
     .filter((entry) => !entry.unavailable)
     .map((entry) => entry.name)
     .join('\n');
+}
+
+function activeJudgeSlots(contest: Contest): Adjudicator[] {
+  return contest.adjudicators.slice(0, contest.details.numJudges);
+}
+
+/** The 1-based active slot holding this judge, or null if none does. */
+export function judgeSlotNumber(contest: Contest, name: string): number | null {
+  const key = normalizeJudgeName(name);
+  if (!key) return null;
+  const index = activeJudgeSlots(contest).findIndex((judge) => normalizeJudgeName(judge.name) === key);
+  return index < 0 ? null : index + 1;
+}
+
+/** The index of the first blank active slot, or null when every active slot is full. */
+export function firstOpenJudgeSlot(contest: Contest): number | null {
+  const index = activeJudgeSlots(contest).findIndex((judge) => !normalizeJudgeName(judge.name));
+  return index < 0 ? null : index;
+}
+
+/** Puts a judge in the first blank active slot. Blank, already in a slot, or no open slot ⇒ no-op. */
+export function addAsJudge(contest: Contest, name: string, now?: string): Contest {
+  const slot = firstOpenJudgeSlot(contest);
+  if (slot === null || !normalizeJudgeName(name) || judgeSlotNumber(contest, name) !== null) return contest;
+  return withAdjudicator(contest, slot, { name }, now);
 }
 
 type Standing = Omit<CallListEntry, 'tied' | 'unavailable'>;
