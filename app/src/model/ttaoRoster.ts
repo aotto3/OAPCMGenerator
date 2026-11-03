@@ -68,3 +68,52 @@ export function suggestJudges(query: string, sources: SuggestionSources): Roster
 
   return [...fromContest.sort(order), ...[...fromRoster].sort(order)].slice(0, limit);
 }
+
+export interface PastedNameMatch {
+  typed: string;
+  /** The name to use unless the CM picks another: a match they'd expect, otherwise as typed. */
+  suggested: string;
+  /** The judge this name already is, ignoring case and spacing. */
+  exact: RosterJudge | null;
+  /** Judges this might be, for the CM to choose from. Empty when exact or when nobody fits. */
+  candidates: RosterJudge[];
+}
+
+/** Letters to add, drop, or change to turn one string into the other. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+const CLOSE_SPELLING = 2;
+
+/**
+ * Finds who a pasted name refers to. Schools often write "Scott Allen" for "Robert Scott
+ * Allen", so one judge fitting every word is suggested outright. A close spelling, like
+ * "Janae" for "Jenae", is only offered: it could be a different person.
+ */
+export function matchPastedName(
+  typed: string,
+  { roster, entered = [] }: Pick<SuggestionSources, 'roster' | 'entered'>,
+): PastedNameMatch {
+  const key = normalizeJudgeName(typed);
+  const fits = suggestJudges(typed, { roster, entered });
+  const exact = fits.find((judge) => normalizeJudgeName(judge.name) === key) ?? null;
+  if (exact) return { typed, suggested: exact.name, exact, candidates: [] };
+  if (fits.length > 0) return { typed, suggested: fits.length === 1 ? fits[0].name : typed, exact: null, candidates: fits };
+
+  const everyone: RosterJudge[] = [...entered.map((name) => ({ name, city: '', esc: '' })), ...roster];
+  const close = everyone
+    .map((judge) => ({ judge, distance: editDistance(key, normalizeJudgeName(judge.name)) }))
+    .filter(({ distance }) => distance <= CLOSE_SPELLING)
+    .sort((a, b) => a.distance - b.distance)
+    .map(({ judge }) => judge);
+  return { typed, suggested: typed, exact: null, candidates: close };
+}

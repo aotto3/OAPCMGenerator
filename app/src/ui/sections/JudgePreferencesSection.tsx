@@ -8,6 +8,7 @@ import {
   removeCustomPreferenceList,
   removeRankedJudge,
   removeVetoedJudge,
+  normalizeJudgeName,
   renameCustomPreferenceList,
   setJudgeUnavailable,
   type Contest,
@@ -20,12 +21,13 @@ import {
   enteredJudgeNames,
   firstOpenJudgeSlot,
   judgeSlotNumber,
+  parseJudgeList,
   preferenceProgress,
   preferencesAvailable,
   type ActivePreferenceList,
   type PreferenceConflict,
 } from '../../model/judgePreferences';
-import { suggestJudges, type RosterJudge } from '../../model/ttaoRoster';
+import { matchPastedName, suggestJudges, type RosterJudge } from '../../model/ttaoRoster';
 import { TTAO_SNAPSHOT } from '../../model/ttaoRosterSnapshot';
 import { CopyButton } from './fields';
 import { Section } from './Section';
@@ -347,6 +349,13 @@ function PreferenceListCard({
         suggest={suggestFor(list.ranked)}
         onAdd={(name) => onChange(addRankedJudge(contest, ref, name))}
       />
+      <PasteNames
+        what="rankings"
+        listLabel={list.label}
+        current={list.ranked}
+        entered={entered}
+        onAdd={(names) => onChange(names.reduce((next, name) => addRankedJudge(next, ref, name), contest))}
+      />
 
       <div className="pref-subheading">Vetoes</div>
       {list.vetoes.length > 0 && (
@@ -376,12 +385,132 @@ function PreferenceListCard({
         suggest={suggestFor(list.vetoes)}
         onAdd={(name) => onChange(addVetoedJudge(contest, ref, name))}
       />
+      <PasteNames
+        what="vetoes"
+        listLabel={list.label}
+        current={list.vetoes}
+        entered={entered}
+        onAdd={(names) => onChange(names.reduce((next, name) => addVetoedJudge(next, ref, name), contest))}
+      />
 
       {conflicts.map((conflict) => (
         <p key={conflict.name} className="pref-warning" role="alert">
           {conflict.name} is both ranked and vetoed on this list. The veto wins until you remove one.
         </p>
       ))}
+    </div>
+  );
+}
+
+const judgeDetail = (judge: RosterJudge) => [judge.city, judge.esc].filter(Boolean).join(' · ');
+
+/**
+ * Pastes a whole list at once, adding to what's there. Every name shows in a preview
+ * first, so a match the CM disagrees with can be changed before anything is saved.
+ */
+function PasteNames({
+  what,
+  listLabel,
+  current,
+  entered,
+  onAdd,
+}: {
+  what: 'rankings' | 'vetoes';
+  listLabel: string;
+  current: string[];
+  entered: string[];
+  onAdd: (names: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [choices, setChoices] = useState<Record<string, string>>({});
+
+  function close() {
+    setOpen(false);
+    setText('');
+    setChoices({});
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn-util pref-paste-open" onClick={() => setOpen(true)}>
+        Paste {what}
+      </button>
+    );
+  }
+
+  const onList = new Set(current.map(normalizeJudgeName));
+  const rows = parseJudgeList(text).map((typed) => {
+    const match = matchPastedName(typed, { roster: TTAO_SNAPSHOT.judges, entered });
+    return { ...match, chosen: choices[typed] ?? match.suggested };
+  });
+  const toAdd = [...new Set(rows.map((row) => row.chosen))].filter((name) => !onList.has(normalizeJudgeName(name)));
+
+  return (
+    <div className="pref-paste">
+      <textarea
+        rows={6}
+        value={text}
+        placeholder="Paste the list here, one name per line, best first"
+        aria-label={`Paste ${what} for ${listLabel}`}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {rows.length > 0 && (
+        <ol className="pref-paste-rows">
+          {rows.map((row) => (
+            <li key={row.typed}>
+              {row.candidates.length > 0 ? (
+                <>
+                  <select
+                    value={row.chosen}
+                    aria-label={`Name to use for ${row.typed}`}
+                    onChange={(e) => setChoices({ ...choices, [row.typed]: e.target.value })}
+                  >
+                    <option value={row.typed}>{row.typed} (as written)</option>
+                    {row.candidates.map((judge) => (
+                      <option key={judge.name} value={judge.name}>
+                        {judge.name}
+                        {judgeDetail(judge) && ` (${judgeDetail(judge)})`}
+                      </option>
+                    ))}
+                  </select>
+                  {row.chosen === row.typed && (
+                    <span className="pref-paste-flag">
+                      Not on the TTAO list as written. Is it one of these?
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span>{row.chosen}</span>
+                  <span className="pref-suggest-detail">
+                    {row.exact ? judgeDetail(row.exact) : 'Not on the TTAO list'}
+                  </span>
+                </>
+              )}
+              {onList.has(normalizeJudgeName(row.chosen)) && (
+                <span className="pref-suggest-detail">Already on this list</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="pref-paste-actions">
+        <button
+          type="button"
+          className="btn-util"
+          disabled={toAdd.length === 0}
+          onClick={() => {
+            onAdd(toAdd);
+            close();
+          }}
+        >
+          Add {toAdd.length} name{toAdd.length === 1 ? '' : 's'}
+        </button>
+        <button type="button" className="btn-util" onClick={close}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
