@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import {
   addRankedJudge,
+  addVetoedJudge,
   moveRankedJudge,
   removeRankedJudge,
+  removeVetoedJudge,
   type Contest,
 } from '../../model/contest';
 import {
@@ -10,16 +12,17 @@ import {
   combinePreferenceLists,
   preferenceProgress,
   preferencesAvailable,
+  type PreferenceConflict,
   type PreferenceList,
 } from '../../model/judgePreferences';
 import { Section } from './Section';
 
 /**
- * Judge Preferences workspace section (PRD #202). One ranked list per school and
- * the live combined call list, whose order is always computed. Hidden where the
- * state picks judges. Reads/writes only through the pure model updaters, so
- * autosave/sync/export carry it with no plumbing of its own. UI is untested by
- * convention; the calculator and model seams are tested.
+ * Judge Preferences workspace section (PRD #202). One list per school, holding
+ * ranked judges and vetoes, and the live combined call list, whose order is always
+ * computed. Hidden where the state picks judges. Reads/writes only through the pure
+ * model updaters, so autosave/sync/export carry it with no plumbing of its own. UI
+ * is untested by convention; the calculator and model seams are tested.
  */
 export function JudgePreferencesSection({
   contest,
@@ -32,27 +35,35 @@ export function JudgePreferencesSection({
 
   const lists = activePreferenceLists(contest);
   const progress = preferenceProgress(lists);
-  const callList = combinePreferenceLists(lists);
+  const { callList, vetoed, conflicts } = combinePreferenceLists(lists);
 
   return (
     <Section title="🗳️ Judge Preferences" badge="Optional" defaultOpen={false}>
       <p className="note-box">
-        Enter the judges each school prefers, best first, and the call list below combines them. Rankings
-        stay out of generated documents and the Email tool, but they are saved in contest files, including
-        the one in the Generate Documents ZIP, so <strong>sharing a contest file shares its preferences</strong>.
+        Enter the judges each school prefers, best first, plus any vetoes, and the call list below combines
+        them. One veto takes a judge off the call list. Rankings and vetoes stay out of generated documents
+        and the Email tool, but they are saved in contest files, including the one in the Generate Documents
+        ZIP, so <strong>sharing a contest file shares its preferences</strong>.
       </p>
       <div className="pref-progress" role="status">
         {progress.entered} of {progress.total} entered
       </div>
       <div className="pref-lists">
         {lists.map((list, i) => (
-          <PreferenceListCard key={list.id} contest={contest} list={list} schoolIndex={i} onChange={onChange} />
+          <PreferenceListCard
+            key={list.id}
+            contest={contest}
+            list={list}
+            conflicts={conflicts.filter((c) => c.listId === list.id)}
+            schoolIndex={i}
+            onChange={onChange}
+          />
         ))}
       </div>
 
       <div className="section-divider">Call list</div>
       {callList.length === 0 ? (
-        <p className="muted">Judges appear here once a list has a name.</p>
+        <p className="muted">No judges to call yet.</p>
       ) : (
         <div className="pref-call-scroll">
           <table className="pref-call-list">
@@ -84,6 +95,30 @@ export function JudgePreferencesSection({
           </table>
         </div>
       )}
+
+      {vetoed.length > 0 && (
+        <>
+          <div className="section-divider">Vetoed</div>
+          <div className="pref-call-scroll">
+            <table className="pref-call-list">
+              <thead>
+                <tr>
+                  <th scope="col">Judge</th>
+                  <th scope="col">Vetoed by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vetoed.map((entry) => (
+                  <tr key={entry.name}>
+                    <td>{entry.name}</td>
+                    <td>{entry.vetoedBy.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -91,22 +126,16 @@ export function JudgePreferencesSection({
 function PreferenceListCard({
   contest,
   list,
+  conflicts,
   schoolIndex,
   onChange,
 }: {
   contest: Contest;
   list: PreferenceList;
+  conflicts: PreferenceConflict[];
   schoolIndex: number;
   onChange: (next: Contest) => void;
 }) {
-  const [draft, setDraft] = useState('');
-
-  function add() {
-    if (!draft.trim()) return;
-    onChange(addRankedJudge(contest, schoolIndex, draft));
-    setDraft('');
-  }
-
   return (
     <div className="pref-list">
       <div className="school-label">{list.label}</div>
@@ -151,24 +180,87 @@ function PreferenceListCard({
           ))}
         </ol>
       )}
-      <div className="pref-add">
-        <input
-          type="text"
-          value={draft}
-          placeholder="Judge name"
-          aria-label={`Add a judge to ${list.label}`}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              add();
-            }
-          }}
-        />
-        <button type="button" className="btn-util" disabled={!draft.trim()} onClick={add}>
-          + Add
-        </button>
-      </div>
+      <NameAdder
+        placeholder="Judge name"
+        ariaLabel={`Add a judge to ${list.label}`}
+        onAdd={(name) => onChange(addRankedJudge(contest, schoolIndex, name))}
+      />
+
+      <div className="pref-subheading">Vetoes</div>
+      {list.vetoes.length > 0 && (
+        <ul className="pref-ranked">
+          {list.vetoes.map((name, i) => (
+            <li key={name} className="pref-ranked-row">
+              <span className="pref-name">{name}</span>
+              <div className="roster-row-controls">
+                <button
+                  type="button"
+                  className="roster-btn roster-btn-remove"
+                  title="Remove veto"
+                  aria-label={`Remove veto of ${name}`}
+                  onClick={() => onChange(removeVetoedJudge(contest, schoolIndex, i))}
+                >
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <NameAdder
+        placeholder="Name to veto"
+        buttonLabel="+ Veto"
+        ariaLabel={`Add a veto to ${list.label}`}
+        onAdd={(name) => onChange(addVetoedJudge(contest, schoolIndex, name))}
+      />
+
+      {conflicts.map((conflict) => (
+        <p key={conflict.name} className="pref-warning" role="alert">
+          {conflict.name} is both ranked and vetoed on this list. The veto wins until you remove one.
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** A name input with its add button; Enter also adds, and the input clears after. */
+function NameAdder({
+  placeholder,
+  buttonLabel = '+ Add',
+  ariaLabel,
+  onAdd,
+}: {
+  placeholder: string;
+  buttonLabel?: string;
+  ariaLabel: string;
+  onAdd: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState('');
+
+  function add() {
+    if (!draft.trim()) return;
+    onAdd(draft);
+    setDraft('');
+  }
+
+  return (
+    <div className="pref-add">
+      <input
+        type="text"
+        value={draft}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            add();
+          }
+        }}
+      />
+      <button type="button" className="btn-util" disabled={!draft.trim()} onClick={add}>
+        {buttonLabel}
+      </button>
     </div>
   );
 }
