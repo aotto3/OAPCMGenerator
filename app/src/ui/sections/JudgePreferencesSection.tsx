@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import {
+  addCustomPreferenceList,
   addRankedJudge,
   addVetoedJudge,
   moveRankedJudge,
+  removeCustomPreferenceList,
   removeRankedJudge,
   removeVetoedJudge,
+  renameCustomPreferenceList,
   type Contest,
 } from '../../model/contest';
 import {
@@ -12,15 +15,16 @@ import {
   combinePreferenceLists,
   preferenceProgress,
   preferencesAvailable,
+  type ActivePreferenceList,
   type PreferenceConflict,
-  type PreferenceList,
 } from '../../model/judgePreferences';
 import { Section } from './Section';
 
 /**
- * Judge Preferences workspace section (PRD #202). One list per school, holding
- * ranked judges and vetoes, and the live combined call list, whose order is always
- * computed. Hidden where the state picks judges. Reads/writes only through the pure
+ * Judge Preferences workspace section (PRD #202). One list per school (per district
+ * at BiDistrict) plus any custom lists, each holding ranked judges and vetoes, and the
+ * live combined call list, whose order is always computed. Hidden where the state
+ * picks judges. Reads/writes only through the pure
  * model updaters, so autosave/sync/export carry it with no plumbing of its own. UI
  * is untested by convention; the calculator and model seams are tested.
  */
@@ -36,11 +40,12 @@ export function JudgePreferencesSection({
   const lists = activePreferenceLists(contest);
   const progress = preferenceProgress(lists);
   const { callList, vetoed, conflicts } = combinePreferenceLists(lists);
+  const submitter = contest.identity.contestLevel === 'BiDistrict' ? 'district' : 'school';
 
   return (
     <Section title="🗳️ Judge Preferences" badge="Optional" defaultOpen={false}>
       <p className="note-box">
-        Enter the judges each school prefers, best first, plus any vetoes, and the call list below combines
+        Enter the judges each {submitter} prefers, best first, plus any vetoes, and the call list below combines
         them. One veto takes a judge off the call list. Rankings and vetoes stay out of generated documents
         and the Email tool, but they are saved in contest files, including the one in the Generate Documents
         ZIP, so <strong>sharing a contest file shares its preferences</strong>.
@@ -49,16 +54,23 @@ export function JudgePreferencesSection({
         {progress.entered} of {progress.total} entered
       </div>
       <div className="pref-lists">
-        {lists.map((list, i) => (
+        {lists.map((list) => (
           <PreferenceListCard
             key={list.id}
             contest={contest}
             list={list}
             conflicts={conflicts.filter((c) => c.listId === list.id)}
-            schoolIndex={i}
             onChange={onChange}
           />
         ))}
+      </div>
+      <div className="pref-custom-add">
+        <NameAdder
+          placeholder="Custom list name, e.g. District committee"
+          buttonLabel="+ Add list"
+          ariaLabel="Add a custom list"
+          onAdd={(name) => onChange(addCustomPreferenceList(contest, name))}
+        />
       </div>
 
       <div className="section-divider">Call list</div>
@@ -127,18 +139,21 @@ function PreferenceListCard({
   contest,
   list,
   conflicts,
-  schoolIndex,
   onChange,
 }: {
   contest: Contest;
-  list: PreferenceList;
+  list: ActivePreferenceList;
   conflicts: PreferenceConflict[];
-  schoolIndex: number;
   onChange: (next: Contest) => void;
 }) {
+  const { ref } = list;
   return (
     <div className="pref-list">
-      <div className="school-label">{list.label}</div>
+      {ref.kind === 'custom' ? (
+        <CustomListHeader contest={contest} list={list} id={ref.id} onChange={onChange} />
+      ) : (
+        <div className="school-label">{list.label}</div>
+      )}
       {list.ranked.length > 0 && (
         <ol className="pref-ranked">
           {list.ranked.map((name, i) => (
@@ -152,7 +167,7 @@ function PreferenceListCard({
                   title="Move up"
                   aria-label={`Move ${name} up`}
                   disabled={i === 0}
-                  onClick={() => onChange(moveRankedJudge(contest, schoolIndex, i, -1))}
+                  onClick={() => onChange(moveRankedJudge(contest, ref, i, -1))}
                 >
                   ↑
                 </button>
@@ -162,7 +177,7 @@ function PreferenceListCard({
                   title="Move down"
                   aria-label={`Move ${name} down`}
                   disabled={i === list.ranked.length - 1}
-                  onClick={() => onChange(moveRankedJudge(contest, schoolIndex, i, 1))}
+                  onClick={() => onChange(moveRankedJudge(contest, ref, i, 1))}
                 >
                   ↓
                 </button>
@@ -171,7 +186,7 @@ function PreferenceListCard({
                   className="roster-btn roster-btn-remove"
                   title="Remove"
                   aria-label={`Remove ${name}`}
-                  onClick={() => onChange(removeRankedJudge(contest, schoolIndex, i))}
+                  onClick={() => onChange(removeRankedJudge(contest, ref, i))}
                 >
                   ✕
                 </button>
@@ -183,7 +198,7 @@ function PreferenceListCard({
       <NameAdder
         placeholder="Judge name"
         ariaLabel={`Add a judge to ${list.label}`}
-        onAdd={(name) => onChange(addRankedJudge(contest, schoolIndex, name))}
+        onAdd={(name) => onChange(addRankedJudge(contest, ref, name))}
       />
 
       <div className="pref-subheading">Vetoes</div>
@@ -198,7 +213,7 @@ function PreferenceListCard({
                   className="roster-btn roster-btn-remove"
                   title="Remove veto"
                   aria-label={`Remove veto of ${name}`}
-                  onClick={() => onChange(removeVetoedJudge(contest, schoolIndex, i))}
+                  onClick={() => onChange(removeVetoedJudge(contest, ref, i))}
                 >
                   ✕
                 </button>
@@ -211,7 +226,7 @@ function PreferenceListCard({
         placeholder="Name to veto"
         buttonLabel="+ Veto"
         ariaLabel={`Add a veto to ${list.label}`}
-        onAdd={(name) => onChange(addVetoedJudge(contest, schoolIndex, name))}
+        onAdd={(name) => onChange(addVetoedJudge(contest, ref, name))}
       />
 
       {conflicts.map((conflict) => (
@@ -219,6 +234,48 @@ function PreferenceListCard({
           {conflict.name} is both ranked and vetoed on this list. The veto wins until you remove one.
         </p>
       ))}
+    </div>
+  );
+}
+
+/** A custom list's editable name and remove button. Removing a list with names asks first. */
+function CustomListHeader({
+  contest,
+  list,
+  id,
+  onChange,
+}: {
+  contest: Contest;
+  list: ActivePreferenceList;
+  id: string;
+  onChange: (next: Contest) => void;
+}) {
+  const name = contest.judgePreferences.customLists.find((l) => l.id === id)?.name ?? '';
+
+  function remove() {
+    const hasNames = list.ranked.length > 0 || list.vetoes.length > 0;
+    if (hasNames && !window.confirm(`Remove "${list.label}" and the names on it?`)) return;
+    onChange(removeCustomPreferenceList(contest, id));
+  }
+
+  return (
+    <div className="pref-list-header">
+      <input
+        type="text"
+        value={name}
+        placeholder={list.label}
+        aria-label={`Rename ${list.label}`}
+        onChange={(e) => onChange(renameCustomPreferenceList(contest, id, e.target.value))}
+      />
+      <button
+        type="button"
+        className="roster-btn roster-btn-remove"
+        title="Remove list"
+        aria-label={`Remove list ${list.label}`}
+        onClick={remove}
+      >
+        ✕
+      </button>
     </div>
   );
 }

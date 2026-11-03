@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
   DOCUMENT_TYPES,
+  addCustomPreferenceList,
   addRankedJudge,
   addVetoedJudge,
   contestDisplayName,
@@ -148,7 +149,10 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
     const MARKER = 'Zzpreferencemarker';
     const VETO_MARKER = 'Zzvetomarker';
     const small = withDetails(setNumSchools(contest(), 1), { numJudges: 1 });
-    const c = addVetoedJudge(addRankedJudge(small, 0, `${MARKER} Judge`), 0, `${VETO_MARKER} Judge`);
+    let c = addVetoedJudge(addRankedJudge(small, { kind: 'school', index: 0 }, `${MARKER} Judge`), { kind: 'school', index: 0 }, `${VETO_MARKER} Judge`);
+    c = addRankedJudge(c, { kind: 'firstDistrict' }, `${MARKER} District`);
+    c = addCustomPreferenceList(c, `${MARKER} List`);
+    c = addVetoedJudge(c, { kind: 'custom', id: c.judgePreferences.customLists[0].id }, `${VETO_MARKER} Custom`);
     for (const doc of DOCUMENT_REGISTRY) {
       const { bytes } = normalizeResult(await doc.build(c));
       // .docx/.xlsx are ZIPs (signature "PK"); search each part. PDFs search as raw bytes.
