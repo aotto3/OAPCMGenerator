@@ -8,16 +8,19 @@ import {
   removeRankedJudge,
   removeVetoedJudge,
   renameCustomPreferenceList,
+  setJudgeUnavailable,
   type Contest,
 } from '../../model/contest';
 import {
   activePreferenceLists,
+  callListText,
   combinePreferenceLists,
   preferenceProgress,
   preferencesAvailable,
   type ActivePreferenceList,
   type PreferenceConflict,
 } from '../../model/judgePreferences';
+import { CopyButton } from './fields';
 import { Section } from './Section';
 
 /**
@@ -39,7 +42,8 @@ export function JudgePreferencesSection({
 
   const lists = activePreferenceLists(contest);
   const progress = preferenceProgress(lists);
-  const { callList, vetoed, conflicts } = combinePreferenceLists(lists);
+  const { callList, vetoed, conflicts } = combinePreferenceLists(lists, contest.judgePreferences.unavailable);
+  const copyText = callListText(callList);
   const submitter = contest.identity.contestLevel === 'BiDistrict' ? 'district' : 'school';
 
   return (
@@ -85,11 +89,12 @@ export function JudgePreferencesSection({
                 <th scope="col">Judge</th>
                 <th scope="col">Points</th>
                 <th scope="col">Lists</th>
+                <th scope="col">Unavailable</th>
               </tr>
             </thead>
             <tbody>
               {callList.map((entry, i) => (
-                <tr key={entry.name}>
+                <tr key={entry.name} className={entry.unavailable ? 'pref-unavailable' : undefined}>
                   <td>{i + 1}</td>
                   <td>
                     {entry.name}
@@ -101,10 +106,23 @@ export function JudgePreferencesSection({
                   </td>
                   <td>{entry.points}</td>
                   <td>{entry.listCount}</td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={entry.unavailable}
+                      aria-label={`${entry.name} is unavailable`}
+                      onChange={(e) => onChange(setJudgeUnavailable(contest, entry.name, e.target.checked))}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {copyText && (
+        <div className="pref-copy">
+          <CopyButton label="Copy list" getText={() => copyText} />
         </div>
       )}
 

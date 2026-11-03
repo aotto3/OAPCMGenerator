@@ -1454,6 +1454,23 @@ export function removeVetoedJudge(contest: Contest, ref: PreferenceListRef, veto
   return withPreferenceList(contest, ref, { vetoes: vetoes.filter((_, i) => i !== vetoIndex) }, now);
 }
 
+/**
+ * Marks or clears a judge as Unavailable, keyed by normalized name so the mark
+ * follows the judge however the lists change. Blank or already in that state ⇒ no-op.
+ */
+export function setJudgeUnavailable(contest: Contest, name: string, unavailable: boolean, now?: string): Contest {
+  const key = normalizeJudgeName(name);
+  const marks = contest.judgePreferences.unavailable;
+  if (!key || marks.includes(key) === unavailable) return contest;
+  return {
+    ...touch(contest, now),
+    judgePreferences: {
+      ...contest.judgePreferences,
+      unavailable: unavailable ? [...marks, key] : marks.filter((k) => k !== key),
+    },
+  };
+}
+
 /** Adds an empty custom list with a new stable id. A blank name ⇒ no-op. */
 export function addCustomPreferenceList(contest: Contest, name: string, now?: string): Contest {
   const tidied = tidyJudgeName(name);
