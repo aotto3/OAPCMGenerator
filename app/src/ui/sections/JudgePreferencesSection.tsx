@@ -216,6 +216,7 @@ function MergeJudges({
   const sorted = [...names].sort((a, b) => a.localeCompare(b));
   const keep = names.includes(keepChoice) ? keepChoice : '';
   const merge = names.includes(mergeChoice) && mergeChoice !== keep ? mergeChoice : '';
+  const keepSlot = keep ? judgeSlotNumber(contest, keep) : null;
   const mergeSlot = merge ? judgeSlotNumber(contest, merge) : null;
 
   function submit() {
@@ -261,10 +262,11 @@ function MergeJudges({
           Merge names
         </button>
       </div>
-      {mergeSlot !== null && (
+      {keep && mergeSlot !== null && (
         <p className="pref-warning" role="alert">
-          {merge} is in the Judge {mergeSlot} slot. Merging won't change the slot, so update it in the Judges section
-          if you want the kept spelling there.
+          {merge} is in the Judge {mergeSlot} slot. Merging changes that slot to {keep}, so generated documents will
+          use that spelling.
+          {keepSlot !== null && ` ${keep} is also in the Judge ${keepSlot} slot, so you'll need to clear one of them.`}
         </p>
       )}
     </>

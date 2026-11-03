@@ -673,11 +673,59 @@ describe('mergeJudgeNames', () => {
     expect(after[0]).toMatchObject({ name: 'Jane Smith', listCount: 2 });
   });
 
-  it('does not change a judge slot', () => {
-    let c = withAdjudicator(contest(), 0, { name: 'J. Smith' });
-    c = addRankedJudge(c, school(0), 'J. Smith');
-    c = addRankedJudge(c, school(1), 'Jane Smith');
-    expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0].name).toBe('J. Smith');
+  describe('judge slots', () => {
+    function twoSpellings(): Contest {
+      const c = addRankedJudge(contest(), school(0), 'J. Smith');
+      return addRankedJudge(c, school(1), 'Jane Smith');
+    }
+
+    it('gives a slot holding the merged name the kept spelling, so the badge still matches', () => {
+      const c = withAdjudicator(twoSpellings(), 0, { name: 'J. Smith' });
+      const merged = mergeJudgeNames(c, 'Jane Smith', 'j.  smith');
+      expect(merged.adjudicators[0].name).toBe('Jane Smith');
+      expect(judgeSlotNumber(merged, 'Jane Smith')).toBe(1);
+      expect(addAsJudge(merged, 'Jane Smith')).toBe(merged);
+    });
+
+    it('keeps the rest of the slot', () => {
+      const c = withAdjudicator(twoSpellings(), 0, { name: 'J. Smith', mailingAddress: '1 Main St' });
+      expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0]).toMatchObject({
+        name: 'Jane Smith',
+        mailingAddress: '1 Main St',
+      });
+    });
+
+    it('gives a case or spacing variant of the kept name the kept spelling', () => {
+      const c = withAdjudicator(twoSpellings(), 0, { name: 'JANE  smith' });
+      expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0].name).toBe('Jane Smith');
+    });
+
+    it('leaves other judges in slots alone', () => {
+      const c = withAdjudicator(twoSpellings(), 0, { name: 'Other Judge' });
+      expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0].name).toBe('Other Judge');
+    });
+
+    it('updates a slot hidden beyond numJudges, like an inactive list', () => {
+      let c = withAdjudicator(withDetails(twoSpellings(), { numJudges: 3 }), 2, { name: 'J. Smith' });
+      c = withDetails(c, { numJudges: 1 });
+      expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[2].name).toBe('Jane Smith');
+    });
+
+    it('keeps both slots when each spelling is in one, for the CM to sort out', () => {
+      let c = withDetails(twoSpellings(), { numJudges: 2 });
+      c = withAdjudicator(c, 0, { name: 'J. Smith', mailingAddress: '1 Main St' });
+      c = withAdjudicator(c, 1, { name: 'Jane Smith', mailingAddress: '2 Oak Ave' });
+      const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
+      expect(merged.adjudicators.slice(0, 2).map((j) => [j.name, j.mailingAddress])).toEqual([
+        ['Jane Smith', '1 Main St'],
+        ['Jane Smith', '2 Oak Ave'],
+      ]);
+    });
+
+    it('leaves a slot alone when the merge is a no-op', () => {
+      const c = withAdjudicator(twoSpellings(), 0, { name: 'Nobody' });
+      expect(mergeJudgeNames(c, 'Jane Smith', 'Nobody')).toBe(c);
+    });
   });
 
   it('is a no-op for a blank name, the same judge twice, or a name on no list', () => {
