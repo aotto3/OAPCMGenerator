@@ -191,6 +191,14 @@ export function addAsJudge(contest: Contest, name: string, now?: string): Contes
   return withAdjudicator(contest, slot, { name }, now);
 }
 
+/** Every name entered in this contest, once each: active lists first, then active judge slots. */
+export function enteredJudgeNames(contest: Contest): string[] {
+  return cleanNames([
+    ...activePreferenceLists(contest).flatMap((list) => [...list.ranked, ...list.vetoes]),
+    ...activeJudgeSlots(contest).map((judge) => judge.name),
+  ]);
+}
+
 type Standing = Omit<CallListEntry, 'tied' | 'unavailable'>;
 
 export function combinePreferenceLists(

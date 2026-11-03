@@ -391,7 +391,19 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .pref-rank { color: var(--c-muted); min-width: 1.5em; }
 .pref-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pref-add { display: flex; gap: var(--space-2); }
-.pref-add input { flex: 1; min-width: 0; }
+.pref-suggest { flex: 1; min-width: 0; position: relative; }
+.pref-suggest input { width: 100%; }
+.pref-suggest-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 10; margin: 2px 0 0; padding: 0; list-style: none;
+  max-height: 260px; overflow-y: auto; font-size: var(--fs-sm);
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-md);
+}
+.pref-suggest-list li {
+  display: flex; flex-direction: column; padding: var(--space-1) var(--space-2); cursor: pointer; overflow-wrap: anywhere;
+}
+.pref-suggest-list li:hover, .pref-suggest-active { background: var(--c-bg-blue); }
+.pref-suggest-detail { font-size: 0.72rem; color: var(--c-muted); }
+.pref-roster-note { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
 .pref-list-header { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .pref-list-header input { flex: 1; min-width: 0; font-weight: 700; }
 .pref-custom-add { margin-top: var(--space-3); }
