@@ -65,6 +65,7 @@ describe('per-pane module order (PRD mapping table)', () => {
     // Judges lists Critique after Judges as an editable mirror.
     expect(paneModules('judges')).toEqual([
       { module: 'adjudicators', mirror: false },
+      { module: 'judgePreferences', mirror: false },
       { module: 'critique', mirror: true },
     ]);
     expect(paneModules('schools')).toEqual([

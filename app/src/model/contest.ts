@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 13;
+export const CONTEST_SCHEMA_VERSION = 14;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -313,6 +313,34 @@ export interface School {
   runtime: string;
   /** Music / other credits note printed on the program page. */
   musicCredits: string;
+  /** This school's judge preferences (PRD #202). Stored here so renames and removals follow it. */
+  judgePreferences: JudgePreferenceList;
+}
+
+/** One submitted preference list (PRD #202): judge names, best first, plus vetoes. */
+export interface JudgePreferenceList {
+  ranked: string[];
+  vetoes: string[];
+}
+
+/** A CM-named preference list that isn't tied to a school or district (PRD #202). */
+export interface CustomPreferenceList extends JudgePreferenceList {
+  id: string;
+  name: string;
+}
+
+/**
+ * Contest-level judge preference data (PRD #202); per-occurrence, so cleared on
+ * duplicate and advance. Per-school lists live on School. Never read by a document
+ * builder or the Email tool, because rankings and vetoes are sensitive.
+ */
+export interface JudgePreferences {
+  /** The BiDistrict lists, one per district. Inactive at other levels. */
+  firstDistrict: JudgePreferenceList;
+  secondDistrict: JudgePreferenceList;
+  customLists: CustomPreferenceList[];
+  /** Judges marked Unavailable, by normalizeJudgeName key. */
+  unavailable: string[];
 }
 
 /**
@@ -583,6 +611,8 @@ export interface Contest {
    * on duplicate and advance). Blank-safe: `{ gaps: [] }` is inert.
    */
   scheduleOverrides: ScheduleOverrides;
+  /** Contest-level judge preference data (PRD #202); always present, blank by default. */
+  judgePreferences: JudgePreferences;
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -661,6 +691,7 @@ function blankSchool(position: number): School {
     setting: '',
     runtime: '',
     musicCredits: '',
+    judgePreferences: blankPreferenceList(),
   };
 }
 
@@ -700,6 +731,21 @@ export function defaultSpeechwire(): SpeechwireCredentials {
 /** A blank schedule-overrides block — no inserted gaps (PRD #179). */
 export function defaultScheduleOverrides(): ScheduleOverrides {
   return { gaps: [] };
+}
+
+/** An empty preference list. New arrays each call, so callers never share them (PRD #202). */
+export function blankPreferenceList(): JudgePreferenceList {
+  return { ranked: [], vetoes: [] };
+}
+
+/** A blank contest-level judge preferences block (PRD #202). */
+export function defaultJudgePreferences(): JudgePreferences {
+  return {
+    firstDistrict: blankPreferenceList(),
+    secondDistrict: blankPreferenceList(),
+    customLists: [],
+    unavailable: [],
+  };
 }
 
 /** A blank next-level info block — all-empty strings (PRD #66). */
@@ -767,6 +813,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     readinessChecks: {},
     customReadinessItems: [],
     scheduleOverrides: defaultScheduleOverrides(),
+    judgePreferences: defaultJudgePreferences(),
     speechwire: defaultSpeechwire(),
   };
 }
@@ -857,6 +904,8 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
       performanceOrder: i + 1,
       compliance: {},
       ...blankCompanyFields(),
+      // Judge preferences belong to one occurrence (PRD #202).
+      judgePreferences: blankPreferenceList(),
     })),
     // Judges and the draw both change every contest — drop last year's assignment
     // and blind-draw record (performanceOrder is reset to form order above).
@@ -873,6 +922,7 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     customReadinessItems: contest.customReadinessItems.map((it) => ({ ...it })),
     // Manual schedule breaks belong to one contest occurrence — start clean.
     scheduleOverrides: defaultScheduleOverrides(),
+    judgePreferences: defaultJudgePreferences(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -1012,6 +1062,8 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
       roster: s.roster.map((m) => ({ ...m })),
       performanceOrder: i + 1,
       compliance: {},
+      // Judge preferences stay with the old level (PRD #202).
+      judgePreferences: blankPreferenceList(),
     })),
     critique: null,
     draw: null,
@@ -1025,6 +1077,7 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     customReadinessItems: contest.customReadinessItems.map((it) => ({ ...it })),
     // Manual schedule breaks belong to one contest occurrence — start clean.
     scheduleOverrides: defaultScheduleOverrides(),
+    judgePreferences: defaultJudgePreferences(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -1280,6 +1333,64 @@ export function removeDirector(
     i === schoolIndex ? { ...s, directors: s.directors.filter((_, di) => di !== directorIndex) } : s,
   );
   return { ...touch(contest, now), schools };
+}
+
+/* ────────────────────────── judge preferences ──────────────────────────
+ * PRD #202. Edits to a school's ranked judges; the combined call list is derived
+ * in judgePreferences.ts and never stored. A no-op returns the contest untouched,
+ * matching the roster helpers.
+ */
+
+/** Tidies a typed judge name: trims it and collapses repeated spaces. */
+function tidyJudgeName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
+/** The comparison key for a judge name: ignores case and extra spacing. */
+export function normalizeJudgeName(name: string): string {
+  return tidyJudgeName(name).toLowerCase();
+}
+
+function withSchoolRanked(contest: Contest, schoolIndex: number, ranked: string[], now?: string): Contest {
+  const schools = contest.schools.map((s, i) =>
+    i === schoolIndex ? { ...s, judgePreferences: { ...s.judgePreferences, ranked } } : s,
+  );
+  return { ...touch(contest, now), schools };
+}
+
+/** Appends a judge to a school's list. Blank, already listed, or out-of-range ⇒ no-op. */
+export function addRankedJudge(contest: Contest, schoolIndex: number, name: string, now?: string): Contest {
+  const school = contest.schools[schoolIndex];
+  const key = normalizeJudgeName(name);
+  if (!school || !key) return contest;
+  const { ranked } = school.judgePreferences;
+  if (ranked.some((n) => normalizeJudgeName(n) === key)) return contest;
+  return withSchoolRanked(contest, schoolIndex, [...ranked, tidyJudgeName(name)], now);
+}
+
+/** Moves a judge one place up (-1) or down (1). A move off either end ⇒ no-op. */
+export function moveRankedJudge(
+  contest: Contest,
+  schoolIndex: number,
+  rankIndex: number,
+  direction: -1 | 1,
+  now?: string,
+): Contest {
+  const ranked = contest.schools[schoolIndex]?.judgePreferences.ranked;
+  const target = rankIndex + direction;
+  if (!ranked || rankIndex < 0 || rankIndex >= ranked.length || target < 0 || target >= ranked.length) {
+    return contest;
+  }
+  const next = [...ranked];
+  [next[rankIndex], next[target]] = [next[target], next[rankIndex]];
+  return withSchoolRanked(contest, schoolIndex, next, now);
+}
+
+/** Removes a judge from a school's list. Out-of-range ⇒ no-op. */
+export function removeRankedJudge(contest: Contest, schoolIndex: number, rankIndex: number, now?: string): Contest {
+  const ranked = contest.schools[schoolIndex]?.judgePreferences.ranked;
+  if (!ranked || rankIndex < 0 || rankIndex >= ranked.length) return contest;
+  return withSchoolRanked(contest, schoolIndex, ranked.filter((_, i) => i !== rankIndex), now);
 }
 
 /* ────────────────────────── company roster ──────────────────────────
@@ -2292,6 +2403,15 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // v12 predates manual schedule overrides (PRD #179): every existing contest
   // loads with no inserted breaks. Additive/blank-safe.
   12: (raw) => ({ ...raw, scheduleOverrides: { gaps: [] } }),
+  // v13 predates judge preferences (PRD #202): every school and the contest gain
+  // empty preference data. Additive/blank-safe.
+  13: (raw) => ({
+    ...raw,
+    judgePreferences: defaultJudgePreferences(),
+    schools: Array.isArray(raw.schools)
+      ? (raw.schools as Record<string, unknown>[]).map((s) => ({ ...s, judgePreferences: blankPreferenceList() }))
+      : raw.schools,
+  }),
 };
 
 export function parseContest(json: string): Contest {
