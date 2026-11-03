@@ -59,9 +59,9 @@ export function JudgePreferencesSection({
     <Section title="🗳️ Judge Preferences" badge="Optional" defaultOpen={false}>
       <p className="note-box">
         Enter the judges each {submitter} prefers, best first, plus any vetoes, and the call list below combines
-        them. One veto takes a judge off the call list. Rankings and vetoes stay out of generated documents
-        and the Email tool, but they are saved in contest files, including the one in the Generate Documents
-        ZIP, so <strong>sharing a contest file shares its preferences</strong>.
+        them. One veto takes a judge off the call list. Rankings and vetoes stay out of generated documents,
+        the Email tool, and the Generate Documents ZIP. A contest file exported from the dashboard does
+        include them, so <strong>sharing an exported contest file shares its preferences</strong>.
       </p>
       <div className="pref-progress" role="status">
         {progress.entered} of {progress.total} entered

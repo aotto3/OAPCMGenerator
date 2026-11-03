@@ -1553,6 +1553,18 @@ export function removeCustomPreferenceList(contest: Contest, id: string, now?: s
   };
 }
 
+/**
+ * A copy with every preference list and Unavailable mark emptied, for a contest file
+ * meant to travel with documents. It isn't an edit, so updatedAt stays as it is.
+ */
+export function withoutJudgePreferences(contest: Contest): Contest {
+  return {
+    ...contest,
+    schools: contest.schools.map((s) => ({ ...s, judgePreferences: blankPreferenceList() })),
+    judgePreferences: defaultJudgePreferences(),
+  };
+}
+
 /* ────────────────────────── company roster ──────────────────────────
  * PRD #68. Per-school roster edits + the paste-import applier + the informational
  * 20+4 counter. Every updater is immutable and bumps updatedAt; an out-of-range

@@ -10,7 +10,9 @@
  * The ZIP layout mirrors v12: a single top-level folder named per the PRD
  * convention ("2026 — 5A District 20 OAP"), containing the documents and the
  * contest file. serializeContest() strips device-only Speechwire credentials by
- * construction, so no generated ZIP can ever leak them.
+ * construction, so no generated ZIP can ever leak them. The ZIP's contest file also
+ * drops judge preferences, because a ZIP gets passed around with its documents; the
+ * dashboard's export keeps them (PRD #202).
  */
 
 import JSZip from 'jszip';
@@ -18,6 +20,7 @@ import {
   contestDisplayName,
   contestFileName,
   serializeContest,
+  withoutJudgePreferences,
   type Contest,
 } from '../model/contest';
 import { DOCUMENT_REGISTRY, type DocumentResult } from './registry';
@@ -104,7 +107,7 @@ export async function buildContestArchive(
 
   current++;
   onProgress?.({ label: 'Contest file', current, total });
-  folder.file(contestFileName(contest.identity), serializeContest(contest));
+  folder.file(contestFileName(contest.identity), serializeContest(withoutJudgePreferences(contest)));
 
   const bytes = await zip.generateAsync({ type: 'uint8array' });
   return { bytes, folderName, documentCount: selected.length, warnings };
@@ -120,10 +123,11 @@ export function triggerZipDownload(archive: ContestArchive): void {
 }
 
 /**
- * Exports just the portable contest file — the same versioned serializeContest()
- * JSON bundled in every ZIP, downloaded on its own (a backup / handoff that
- * re-imports on any machine). serializeContest() strips device-only Speechwire
- * credentials by construction, so an exported file can never leak them.
+ * Exports just the portable contest file — the versioned serializeContest() JSON,
+ * downloaded on its own (a backup / handoff that re-imports on any machine). Unlike
+ * the ZIP's copy it keeps judge preferences, so this is the complete backup.
+ * serializeContest() strips device-only Speechwire credentials by construction, so
+ * an exported file can never leak them.
  */
 export function triggerContestFileDownload(contest: Contest): void {
   const blob = new Blob([serializeContest(contest)], { type: 'application/json' });

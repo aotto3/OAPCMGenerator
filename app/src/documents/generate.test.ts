@@ -8,13 +8,17 @@ import {
   contestDisplayName,
   contestFileName,
   createContest,
+  defaultJudgePreferences,
   parseContest,
+  serializeContest,
   setAllDocuments,
   setDocumentSelected,
   setJudgeUnavailable,
   setNumSchools,
   validateContest,
+  withAdjudicator,
   withDetails,
+  withSchool,
   withSpeechwire,
   type Contest,
 } from '../model/contest';
@@ -169,4 +173,51 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
       }
     }
   }, 30000);
+
+  describe('the contest file in the ZIP', () => {
+    const SCHOOL = { kind: 'school', index: 0 } as const;
+    const MARKER = 'Zzpreferencemarker';
+
+    function withPreferences(): Contest {
+      let c = setAllDocuments(contest(), false);
+      c = addVetoedJudge(addRankedJudge(c, SCHOOL, `${MARKER} Ranked`), SCHOOL, `${MARKER} Vetoed`);
+      c = addRankedJudge(c, { kind: 'firstDistrict' }, `${MARKER} First`);
+      c = addVetoedJudge(c, { kind: 'secondDistrict' }, `${MARKER} Second`);
+      c = addCustomPreferenceList(c, `${MARKER} List`);
+      c = addRankedJudge(c, { kind: 'custom', id: c.judgePreferences.customLists[0].id }, `${MARKER} Custom`);
+      return setJudgeUnavailable(c, `${MARKER} Ranked`, true);
+    }
+
+    async function zippedFile(c: Contest): Promise<string> {
+      const { bytes, folderName } = await buildContestArchive(c);
+      const file = (await unzip(bytes)).file(`${folderName}/${contestFileName(c.identity)}`);
+      return file!.async('string');
+    }
+
+    it('holds no rankings, vetoes, custom lists, or Unavailable marks', async () => {
+      const text = await zippedFile(withPreferences());
+      expect(text.toLowerCase()).not.toContain(MARKER.toLowerCase());
+      const parsed = parseContest(text);
+      expect(parsed.judgePreferences).toEqual(defaultJudgePreferences());
+      expect(parsed.schools.every((s) => s.judgePreferences.ranked.length === 0)).toBe(true);
+      expect(parsed.schools.every((s) => s.judgePreferences.vetoes.length === 0)).toBe(true);
+    });
+
+    it('keeps everything else, including the hired judges', async () => {
+      let c = withSchool(withPreferences(), 0, { name: 'Keeper High' });
+      c = withAdjudicator(c, 0, { name: 'Hired Judge' });
+      const parsed = parseContest(await zippedFile(c));
+      expect(parsed.schools[0].name).toBe('Keeper High');
+      expect(parsed.adjudicators[0].name).toBe('Hired Judge');
+      expect(parsed.identity).toEqual(c.identity);
+      expect(parsed.updatedAt).toBe(c.updatedAt);
+    });
+
+    it('leaves the contest being worked on, and a plain serialized file, with their preferences', async () => {
+      const c = withPreferences();
+      await buildContestArchive(c);
+      expect(c.schools[0].judgePreferences.ranked).toEqual([`${MARKER} Ranked`]);
+      expect(serializeContest(c)).toContain(MARKER);
+    });
+  });
 });
