@@ -8,6 +8,7 @@ import {
   createContest,
   defaultJudgePreferences,
   duplicateContest,
+  mergeJudgeNames,
   moveRankedJudge,
   normalizeJudgeName,
   parseContest,
@@ -544,6 +545,156 @@ describe('callListText', () => {
   it('is empty when nobody is left to call', () => {
     expect(callListText([])).toBe('');
     expect(callListText(combinePreferenceLists([list('A', ['Busy'])], ['busy']).callList)).toBe('');
+  });
+});
+
+describe('mergeJudgeNames', () => {
+  const ranked = (c: Contest, i: number) => c.schools[i].judgePreferences.ranked;
+  const vetoes = (c: Contest, i: number) => c.schools[i].judgePreferences.vetoes;
+  const combined = (c: Contest) => combinePreferenceLists(activePreferenceLists(c), c.judgePreferences.unavailable);
+
+  it('replaces the merged name with the kept spelling in rankings and vetoes on every list', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    c = addVetoedJudge(c, school(1), 'J. Smith');
+    const custom = withCustom(c, 'Committee');
+    c = addRankedJudge(custom.contest, custom.ref, 'J. Smith');
+    c = addVetoedJudge(c, custom.ref, 'j. smith');
+
+    const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith', LATER);
+
+    expect(ranked(merged, 0)).toEqual(['Jane Smith']);
+    expect(ranked(merged, 1)).toEqual(['Jane Smith']);
+    expect(vetoes(merged, 1)).toEqual(['Jane Smith']);
+    expect(merged.judgePreferences.customLists[0].ranked).toEqual(['Jane Smith']);
+    expect(merged.judgePreferences.customLists[0].vetoes).toEqual(['Jane Smith']);
+    expect(merged.updatedAt).toBe(LATER);
+  });
+
+  it('recombines points for the merged judge', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, school(0), 'Other');
+    c = addRankedJudge(c, school(1), 'Other');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    expect(names(combined(c).callList)).toEqual(['Other', 'J. Smith', 'Jane Smith']);
+
+    const { callList: after } = combined(mergeJudgeNames(c, 'Jane Smith', 'J. Smith'));
+
+    expect(after.map((e) => [e.name, e.points, e.listCount])).toEqual([
+      ['Jane Smith', 3, 2],
+      ['Other', 3, 2],
+    ]);
+  });
+
+  it('keeps one entry at the better rank when a list names both spellings', () => {
+    let c = addRankedJudge(contest(), school(0), 'First');
+    c = addRankedJudge(c, school(0), 'J. Smith');
+    c = addRankedJudge(c, school(0), 'Third');
+    c = addRankedJudge(c, school(0), 'Jane Smith');
+    expect(ranked(mergeJudgeNames(c, 'Jane Smith', 'J. Smith'), 0)).toEqual(['First', 'Jane Smith', 'Third']);
+    expect(ranked(mergeJudgeNames(c, 'J. Smith', 'Jane Smith'), 0)).toEqual(['First', 'J. Smith', 'Third']);
+  });
+
+  it('keeps one veto when a list vetoes both spellings', () => {
+    let c = addVetoedJudge(contest(), school(0), 'J. Smith');
+    c = addVetoedJudge(c, school(0), 'Jane Smith');
+    expect(vetoes(mergeJudgeNames(c, 'Jane Smith', 'J. Smith'), 0)).toEqual(['Jane Smith']);
+  });
+
+  it('moves an Unavailable mark from the merged name to the kept name', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    c = setJudgeUnavailable(c, 'J. Smith', true);
+    const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
+    expect(merged.judgePreferences.unavailable).toEqual(['jane smith']);
+    expect(combined(merged).callList[0]).toMatchObject({ name: 'Jane Smith', unavailable: true });
+  });
+
+  it('keeps an Unavailable mark already on the kept name, and leaves one mark when both had it', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    const keptMarked = setJudgeUnavailable(c, 'Jane Smith', true);
+    expect(mergeJudgeNames(keptMarked, 'Jane Smith', 'J. Smith').judgePreferences.unavailable).toEqual(['jane smith']);
+    const bothMarked = setJudgeUnavailable(keptMarked, 'J. Smith', true);
+    expect(mergeJudgeNames(bothMarked, 'Jane Smith', 'J. Smith').judgePreferences.unavailable).toEqual(['jane smith']);
+  });
+
+  it('leaves other judges and their Unavailable marks alone', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, school(0), 'Other');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    c = setJudgeUnavailable(c, 'Other', true);
+    const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
+    expect(ranked(merged, 0)).toEqual(['Jane Smith', 'Other']);
+    expect(merged.judgePreferences.unavailable).toEqual(['other']);
+  });
+
+  it('uses the kept spelling for case and spacing variants of the kept name too', () => {
+    let c = addRankedJudge(contest(), school(0), 'jane  SMITH');
+    c = addRankedJudge(c, school(1), 'J. Smith');
+    c = addRankedJudge(c, school(2), 'Jane Smith');
+    const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
+    expect([ranked(merged, 0), ranked(merged, 1), ranked(merged, 2)]).toEqual([
+      ['Jane Smith'],
+      ['Jane Smith'],
+      ['Jane Smith'],
+    ]);
+  });
+
+  it('matches the merged name ignoring case and spacing', () => {
+    const c = addRankedJudge(contest(), school(0), 'J.  Smith');
+    expect(ranked(mergeJudgeNames(c, 'Jane Smith', 'j. smith'), 0)).toEqual(['Jane Smith']);
+  });
+
+  it('a rank on one spelling and a veto on the other leaves the veto winning, with a warning', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addVetoedJudge(c, school(0), 'Jane Smith');
+    const { callList: after, vetoed, conflicts } = combined(mergeJudgeNames(c, 'Jane Smith', 'J. Smith'));
+    expect(after).toEqual([]);
+    expect(vetoed.map((v) => v.name)).toEqual(['Jane Smith']);
+    expect(conflicts.map((x) => x.name)).toEqual(['Jane Smith']);
+  });
+
+  it('also rewrites lists inactive at this level, so switching back finds the same judge', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, FIRST, 'J. Smith');
+    c = addVetoedJudge(c, SECOND, 'J. Smith');
+    const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
+    expect(merged.judgePreferences.firstDistrict.ranked).toEqual(['Jane Smith']);
+    expect(merged.judgePreferences.secondDistrict.vetoes).toEqual(['Jane Smith']);
+  });
+
+  it('merges across the district lists at BiDistrict', () => {
+    let c = addRankedJudge(biDistrict(), FIRST, 'J. Smith');
+    c = addRankedJudge(c, SECOND, 'Jane Smith');
+    const { callList: after } = combined(mergeJudgeNames(c, 'Jane Smith', 'J. Smith'));
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ name: 'Jane Smith', listCount: 2 });
+  });
+
+  it('does not change a judge slot', () => {
+    let c = withAdjudicator(contest(), 0, { name: 'J. Smith' });
+    c = addRankedJudge(c, school(0), 'J. Smith');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0].name).toBe('J. Smith');
+  });
+
+  it('is a no-op for a blank name, the same judge twice, or a name on no list', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = addRankedJudge(c, school(1), 'Jane Smith');
+    expect(mergeJudgeNames(c, '  ', 'J. Smith')).toBe(c);
+    expect(mergeJudgeNames(c, 'Jane Smith', '  ')).toBe(c);
+    expect(mergeJudgeNames(c, 'Jane Smith', 'jane  SMITH')).toBe(c);
+    expect(mergeJudgeNames(c, 'Jane Smith', 'Nobody')).toBe(c);
+  });
+
+  it('survives a serialize and parse round trip', () => {
+    let c = addRankedJudge(contest(), school(0), 'J. Smith');
+    c = setJudgeUnavailable(c, 'J. Smith', true);
+    const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
+    const back = parseContest(serializeContest(merged));
+    expect(back.schools[0].judgePreferences.ranked).toEqual(['Jane Smith']);
+    expect(back.judgePreferences.unavailable).toEqual(['jane smith']);
   });
 });
 

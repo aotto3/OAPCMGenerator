@@ -415,6 +415,8 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   color: var(--c-blue); background: var(--c-bg-blue); border: 1px solid var(--c-blue-border); white-space: nowrap;
 }
 .pref-copy { margin-top: var(--space-2); }
+.pref-merge { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.pref-merge .field { flex: 1 1 200px; min-width: 0; }
 .pref-tied {
   margin-left: var(--space-2); padding: 0 6px; font-size: 0.72rem; font-weight: 600; border-radius: var(--radius-md);
   color: var(--c-warn); background: var(--c-warn-bg); border: 1px solid var(--c-warn-border);

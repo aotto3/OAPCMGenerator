@@ -3,6 +3,7 @@ import {
   addCustomPreferenceList,
   addRankedJudge,
   addVetoedJudge,
+  mergeJudgeNames,
   moveRankedJudge,
   removeCustomPreferenceList,
   removeRankedJudge,
@@ -182,7 +183,81 @@ export function JudgePreferencesSection({
           })}
         </>
       )}
+
+      <MergeJudges contest={contest} names={[...callList, ...vetoed].map((e) => e.name)} onChange={onChange} />
     </Section>
+  );
+}
+
+/** Merges two spellings of one judge, from the names on the call list or the Vetoed section. */
+function MergeJudges({
+  contest,
+  names,
+  onChange,
+}: {
+  contest: Contest;
+  names: string[];
+  onChange: (next: Contest) => void;
+}) {
+  const [keepChoice, setKeep] = useState('');
+  const [mergeChoice, setMerge] = useState('');
+  if (names.length < 2) return null;
+
+  const sorted = [...names].sort((a, b) => a.localeCompare(b));
+  const keep = names.includes(keepChoice) ? keepChoice : '';
+  const merge = names.includes(mergeChoice) && mergeChoice !== keep ? mergeChoice : '';
+  const mergeSlot = merge ? judgeSlotNumber(contest, merge) : null;
+
+  function submit() {
+    onChange(mergeJudgeNames(contest, keep, merge));
+    setKeep('');
+    setMerge('');
+  }
+
+  return (
+    <>
+      <div className="section-divider">Merge duplicate names</div>
+      <p className="muted">
+        If two names are the same person, merge them to combine their points. The kept spelling replaces the
+        other on every list, and any Unavailable mark moves to it. A merge can only be undone by editing the
+        lists by hand.
+      </p>
+      <div className="pref-merge">
+        <label className="field">
+          Keep this spelling
+          <select value={keep} onChange={(e) => setKeep(e.target.value)}>
+            <option value="">Choose a name</option>
+            {sorted.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Merge this name into it
+          <select value={merge} onChange={(e) => setMerge(e.target.value)}>
+            <option value="">Choose a name</option>
+            {sorted
+              .filter((name) => name !== keep)
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <button type="button" className="btn-util" disabled={!keep || !merge} onClick={submit}>
+          Merge names
+        </button>
+      </div>
+      {mergeSlot !== null && (
+        <p className="pref-warning" role="alert">
+          {merge} is in the Judge {mergeSlot} slot. Merging won't change the slot, so update it in the Judges section
+          if you want the kept spelling there.
+        </p>
+      )}
+    </>
   );
 }
 

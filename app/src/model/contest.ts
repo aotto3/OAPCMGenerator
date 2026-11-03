@@ -1471,6 +1471,48 @@ export function setJudgeUnavailable(contest: Contest, name: string, unavailable:
   };
 }
 
+/**
+ * Merges two spellings of one judge: `keep` replaces `merge` in the rankings and vetoes
+ * of every stored list, inactive ones included, and any Unavailable mark moves to the kept
+ * name. A list naming both keeps one entry at the better rank. There is no alias table, so
+ * this can only be undone by editing the lists. Judge slots are left alone. A blank name,
+ * the same judge twice, or a merged name on no list ⇒ no-op.
+ */
+export function mergeJudgeNames(contest: Contest, keep: string, merge: string, now?: string): Contest {
+  const kept = tidyJudgeName(keep);
+  const keepKey = normalizeJudgeName(keep);
+  const mergeKey = normalizeJudgeName(merge);
+  if (!keepKey || !mergeKey || keepKey === mergeKey) return contest;
+
+  const { firstDistrict, secondDistrict, customLists, unavailable } = contest.judgePreferences;
+  const stored = [...contest.schools.map((s) => s.judgePreferences), firstDistrict, secondDistrict, ...customLists];
+  if (!stored.some((l) => [...l.ranked, ...l.vetoes].some((n) => normalizeJudgeName(n) === mergeKey))) return contest;
+
+  const rewrite = (names: string[]): string[] => {
+    const out = names.map((n) => ([keepKey, mergeKey].includes(normalizeJudgeName(n)) ? kept : n));
+    return out.filter((n, i) => n !== kept || out.indexOf(kept) === i);
+  };
+  const rewriteList = <L extends JudgePreferenceList>(list: L): L => ({
+    ...list,
+    ranked: rewrite(list.ranked),
+    vetoes: rewrite(list.vetoes),
+  });
+
+  return {
+    ...touch(contest, now),
+    schools: contest.schools.map((s) => ({ ...s, judgePreferences: rewriteList(s.judgePreferences) })),
+    judgePreferences: {
+      ...contest.judgePreferences,
+      firstDistrict: rewriteList(firstDistrict),
+      secondDistrict: rewriteList(secondDistrict),
+      customLists: customLists.map(rewriteList),
+      unavailable: unavailable.includes(mergeKey)
+        ? [...unavailable.filter((k) => k !== mergeKey && k !== keepKey), keepKey]
+        : unavailable,
+    },
+  };
+}
+
 /** Adds an empty custom list with a new stable id. A blank name ⇒ no-op. */
 export function addCustomPreferenceList(contest: Contest, name: string, now?: string): Contest {
   const tidied = tidyJudgeName(name);
