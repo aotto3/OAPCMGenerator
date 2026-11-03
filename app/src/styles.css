@@ -409,7 +409,11 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   text-align: left; padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--c-border);
 }
 .pref-call-list th { color: var(--c-muted); font-weight: 600; }
-.pref-unavailable td:not(:last-child) { opacity: 0.5; }
+.pref-unavailable td:not(.pref-control) { opacity: 0.5; }
+.pref-hired {
+  margin-left: var(--space-2); padding: 0 6px; font-size: 0.72rem; font-weight: 600; border-radius: var(--radius-md);
+  color: var(--c-blue); background: var(--c-bg-blue); border: 1px solid var(--c-blue-border); white-space: nowrap;
+}
 .pref-copy { margin-top: var(--space-2); }
 .pref-tied {
   margin-left: var(--space-2); padding: 0 6px; font-size: 0.72rem; font-weight: 600; border-radius: var(--radius-md);
