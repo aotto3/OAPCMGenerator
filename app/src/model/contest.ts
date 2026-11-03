@@ -1473,10 +1473,12 @@ export function setJudgeUnavailable(contest: Contest, name: string, unavailable:
 
 /**
  * Merges two spellings of one judge: `keep` replaces `merge` in the rankings and vetoes
- * of every stored list, inactive ones included, and any Unavailable mark moves to the kept
- * name. A list naming both keeps one entry at the better rank. There is no alias table, so
- * this can only be undone by editing the lists. Judge slots are left alone. A blank name,
- * the same judge twice, or a merged name on no list ⇒ no-op.
+ * of every stored list, inactive ones included, and in any judge slot holding either
+ * spelling, so a hired judge keeps their badge. Any Unavailable mark moves to the kept
+ * name. A list naming both keeps one entry at the better rank. If each spelling is in a
+ * slot, both slots stay, since each may hold its own details. There is no alias table, so
+ * this can only be undone by editing the lists. A blank name, the same judge twice, or a
+ * merged name on no list ⇒ no-op.
  */
 export function mergeJudgeNames(contest: Contest, keep: string, merge: string, now?: string): Contest {
   const kept = tidyJudgeName(keep);
@@ -1488,8 +1490,9 @@ export function mergeJudgeNames(contest: Contest, keep: string, merge: string, n
   const stored = [...contest.schools.map((s) => s.judgePreferences), firstDistrict, secondDistrict, ...customLists];
   if (!stored.some((l) => [...l.ranked, ...l.vetoes].some((n) => normalizeJudgeName(n) === mergeKey))) return contest;
 
+  const respell = (name: string) => ([keepKey, mergeKey].includes(normalizeJudgeName(name)) ? kept : name);
   const rewrite = (names: string[]): string[] => {
-    const out = names.map((n) => ([keepKey, mergeKey].includes(normalizeJudgeName(n)) ? kept : n));
+    const out = names.map(respell);
     return out.filter((n, i) => n !== kept || out.indexOf(kept) === i);
   };
   const rewriteList = <L extends JudgePreferenceList>(list: L): L => ({
@@ -1501,6 +1504,7 @@ export function mergeJudgeNames(contest: Contest, keep: string, merge: string, n
   return {
     ...touch(contest, now),
     schools: contest.schools.map((s) => ({ ...s, judgePreferences: rewriteList(s.judgePreferences) })),
+    adjudicators: contest.adjudicators.map((j) => ({ ...j, name: respell(j.name) })),
     judgePreferences: {
       ...contest.judgePreferences,
       firstDistrict: rewriteList(firstDistrict),
