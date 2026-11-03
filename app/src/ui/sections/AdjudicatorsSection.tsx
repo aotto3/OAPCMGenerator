@@ -8,6 +8,7 @@ import {
   type Contest,
   type SectionCompletion,
 } from '../../model/contest';
+import { CopyJudgesControl } from './CopyJudgesControl';
 import { Section } from './Section';
 import { SelectField, TextAreaField, TextField } from './fields';
 
@@ -44,6 +45,7 @@ export function AdjudicatorsSection({
           }
         />
       ))}
+      {contest.identity.contestLevel === 'Zone' && <CopyJudgesControl contest={contest} />}
     </Section>
   );
 }
