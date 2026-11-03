@@ -27,6 +27,8 @@ function record(contest: Contest) {
     contestLevel: contest.identity.contestLevel,
     classification: contest.identity.classification,
     contestYear: contest.identity.contestYear,
+    district: contest.identity.district,
+    zone: contest.identity.zone,
     payload: serializeContest(contest),
   };
 }
@@ -121,5 +123,20 @@ describe('contestSummaryFromRecord', () => {
     expect(summary.contestLevel).toBe('Region');
     expect(summary.classification).toBe('1A');
     expect(summary.contestYear).toBe('2025');
+  });
+
+  it('carries the denormalized district and zone from a current record', () => {
+    const c = withIdentity(createContest(), { contestLevel: 'Zone', district: '20', zone: '2' });
+    const summary = contestSummaryFromRecord({ ...record(c), payload: 'not parsed for a current record' });
+    expect(summary.district).toBe('20');
+    expect(summary.zone).toBe('2');
+  });
+
+  it('falls back to the payload for district and zone on records saved before those fields existed', () => {
+    const c = withIdentity(createContest(), { contestLevel: 'Zone', district: '20', zone: '2' });
+    const { district: _district, zone: _zone, ...legacy } = record(c);
+    const summary = contestSummaryFromRecord(legacy);
+    expect(summary.district).toBe('20');
+    expect(summary.zone).toBe('2');
   });
 });

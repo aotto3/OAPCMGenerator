@@ -47,6 +47,7 @@ function ContestFlow() {
       draft={open.draft}
       onBack={() => setOpen(null)}
       onOpenSaved={openSaved}
+      onOpenContest={(id) => setOpen({ id })}
     />
   );
 }

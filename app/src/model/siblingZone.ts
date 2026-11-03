@@ -1,7 +1,6 @@
 /**
- * Creating the other zone of a Zone 1 / Zone 2 pair (PRD #220). Pure: contest in,
- * new contest out. The UI (ui/sections/CreateSiblingZoneControl.tsx) persists and
- * opens the result.
+ * Creating and finding the other zone of a Zone 1 / Zone 2 pair (PRD #220). Pure:
+ * the UI (ui/sections/CreateSiblingZoneControl.tsx) persists and opens the results.
  */
 import {
   createContest,
@@ -60,4 +59,42 @@ export function createSiblingZone(contest: Contest, options: NewFromExistingOpti
       gaps: contest.scheduleOverrides.gaps.map((gap) => ({ ...gap })),
     },
   };
+}
+
+/** The fields a contest needs for sibling matching; the dashboard summary has them. */
+export interface SiblingCandidate {
+  id: string;
+  archived: boolean;
+  contestLevel: string;
+  contestYear: string;
+  classification: string;
+  district: string;
+  zone: string;
+}
+
+/**
+ * Other contests that are this contest's sibling zone: Zone level, not archived,
+ * with the same year, classification, and district, and the other zone number.
+ * Region and area don't count, because they are often blank on one side. A blank
+ * district never matches. The open contest's own row is excluded by id, because it
+ * can lag a zone number edit still waiting on autosave.
+ */
+export function findSiblingZones<T extends SiblingCandidate>(
+  contest: Pick<Contest, 'id' | 'identity'>,
+  candidates: readonly T[],
+): T[] {
+  const { identity } = contest;
+  const zone = siblingZoneNumber(identity);
+  const district = identity.district.trim();
+  if (zone === null || district === '') return [];
+  return candidates.filter(
+    (c) =>
+      c.id !== contest.id &&
+      !c.archived &&
+      c.contestLevel === 'Zone' &&
+      c.contestYear.trim() === identity.contestYear.trim() &&
+      c.classification === identity.classification &&
+      c.district.trim() === district &&
+      c.zone.trim() === zone,
+  );
 }

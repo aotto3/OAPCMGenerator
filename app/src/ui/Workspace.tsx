@@ -37,6 +37,7 @@ export function Workspace({
   draft,
   onBack,
   onOpenSaved,
+  onOpenContest,
 }: {
   contestId: string;
   /** Fresh unsaved contest from "+ New Contest" — not in storage yet. */
@@ -44,6 +45,8 @@ export function Workspace({
   onBack: () => void;
   /** Persist a brand-new contest (e.g. the advance-clone) and open it. */
   onOpenSaved: (contest: Contest) => void | Promise<void>;
+  /** Open another saved contest (e.g. the other zone). */
+  onOpenContest: (id: string) => void;
 }) {
   const [contest, setContest] = useState<Contest>();
   const [missing, setMissing] = useState(false);
@@ -182,6 +185,7 @@ export function Workspace({
                   progress={progress}
                   onChange={setContest}
                   onOpenSaved={onOpenSaved}
+                  onOpenContest={onOpenContest}
                 />
               </>
             )}
