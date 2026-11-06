@@ -181,6 +181,7 @@ describe('createContest', () => {
     expect(c.adjudicators[0]).toEqual({
       name: '',
       mailingAddress: '',
+      email: '',
       needsPower: false,
       needsHotel: false,
       hotelNights: 1,
@@ -325,11 +326,11 @@ describe('adjudicator contracting milestones (PRD #67)', () => {
     expect(adjudicatorMilestoneStatus(c.adjudicators[0])[0].done).toBe(true);
   });
 
-  it('milestones are excluded from sectionCompletion (name+address only)', () => {
+  it('milestones are excluded from sectionCompletion (name+address+email only)', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St' });
+    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St', email: 'solo@x.org' });
     c = setAdjudicatorMilestone(c, 0, 'ttaoContractDate', true, NOW);
-    expect(sectionCompletion(c).adjudicators).toEqual({ done: 2, total: 2 });
+    expect(sectionCompletion(c).adjudicators).toEqual({ done: 3, total: 3 });
   });
 });
 
@@ -735,7 +736,7 @@ describe('sectionCompletion', () => {
     expect(progress.cm).toEqual({ done: 4, total: 5 }); // v12 prefills all but tech contact
     expect(progress.identity).toEqual({ done: 1, total: 4 }); // year prefilled
     expect(progress.details).toEqual({ done: 0, total: 6 });
-    expect(progress.adjudicators).toEqual({ done: 0, total: 6 }); // 3 judges × name+address
+    expect(progress.adjudicators).toEqual({ done: 0, total: 9 }); // 3 judges × name+address+email
     expect(progress.schools).toEqual({ done: 0, total: 18 }); // 6 × (name + 1 director × 2)
     expect(progress.plays).toEqual({ done: 0, total: 6 });
   });
@@ -747,8 +748,17 @@ describe('sectionCompletion', () => {
 
   it('only active judges count', () => {
     let c = withDetails(contest(), { numJudges: 1 });
+    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St', email: 'solo@x.org' });
+    c = withAdjudicator(c, 1, { name: 'Hidden Judge' });
+    expect(sectionCompletion(c).adjudicators).toEqual({ done: 3, total: 3 });
+  });
+
+  it('a judge without an email leaves the Judges section incomplete (PRD #227)', () => {
+    let c = withDetails(contest(), { numJudges: 1 });
     c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St' });
-    expect(sectionCompletion(c).adjudicators).toEqual({ done: 2, total: 2 });
+    expect(sectionCompletion(c).adjudicators).toEqual({ done: 2, total: 3 });
+    c = withAdjudicator(c, 0, { email: 'solo@x.org' });
+    expect(sectionCompletion(c).adjudicators).toEqual({ done: 3, total: 3 });
   });
 
   it('extra director rows raise the schools total', () => {
@@ -902,6 +912,31 @@ describe('performance-order draw lifecycle (PRD #65)', () => {
     const c = runDraw(drawContest(), drawOrder(4, seededDraw(7)), NOW);
     expect([...(c.draw?.order ?? [])].sort()).toEqual([1, 2, 3, 4]);
     expect(c.schools.map((s) => s.performanceOrder).sort()).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('judge email (PRD #227)', () => {
+  it('a fresh contest has a blank email on every judge slot', () => {
+    expect(contest().adjudicators.map((j) => j.email)).toEqual(['', '', '']);
+  });
+
+  it('round-trips a judge email through serialize and parse', () => {
+    const c = withAdjudicator(contest(), 0, { email: 'jane@x.org' });
+    expect(parseContest(serializeContest(c)).adjudicators[0].email).toBe('jane@x.org');
+  });
+
+  it('migrates a v14 contest: every judge slot, hidden ones too, gains a blank email', () => {
+    let c = withDetails(contest(), { numJudges: 1 });
+    c = withAdjudicator(c, 0, { name: 'Jane Judge', mailingAddress: '1 Main St' });
+    c = withAdjudicator(c, 2, { name: 'Hidden Judge' });
+    const { speechwire: _dev, ...rest } = c;
+    const v14Contest = { ...rest, adjudicators: rest.adjudicators.map(({ email: _e, ...j }) => j) };
+    const migrated = parseContest(JSON.stringify({ schemaVersion: 14, contest: v14Contest }));
+    expect(migrated.adjudicators.map((j) => j.email)).toEqual(['', '', '']);
+    expect(migrated.adjudicators.map((j) => j.name)).toEqual(['Jane Judge', '', 'Hidden Judge']);
+    expect(migrated.adjudicators[0].mailingAddress).toBe('1 Main St');
+    expect(migrated.details.numJudges).toBe(1);
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
 });
 
