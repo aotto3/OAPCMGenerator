@@ -26,6 +26,7 @@ function zone(id: string, zoneNumber: string): Contest {
 const FULL_JUDGE: Adjudicator = {
   name: 'Jane Doe',
   mailingAddress: '1 Main St, Austin TX 78701',
+  email: 'jane@example.org',
   needsPower: true,
   needsHotel: true,
   hotelNights: 2,
@@ -173,6 +174,17 @@ describe('judgeCopyImpact', () => {
   });
 });
 
+describe('judge email in Copy Judges (PRD #227)', () => {
+  it('asks for confirmation before replacing a target judge that has only an email', () => {
+    const target = withAdjudicator(zone('target', '2'), 0, { email: 'keep@x.org' }, NOW);
+    expect(judgeCopyImpact(sourceZone(), target).needsConfirmation).toBe(true);
+  });
+
+  it('copies the judge email to the target', () => {
+    expect(copyJudges(sourceZone(), zone('target', '2'), LATER).adjudicators[0].email).toBe('jane@example.org');
+  });
+});
+
 describe('canCopyJudges', () => {
   it('is false when the active judges are blank', () => {
     expect(canCopyJudges(zone('source', '1'))).toBe(false);
@@ -180,6 +192,10 @@ describe('canCopyJudges', () => {
 
   it('is true when any active judge has data', () => {
     expect(canCopyJudges(withAdjudicator(zone('source', '1'), 0, { dietary: 'vegan' }, NOW))).toBe(true);
+  });
+
+  it('counts a judge with only an email as having data (PRD #227)', () => {
+    expect(canCopyJudges(withAdjudicator(zone('source', '1'), 0, { email: 'only@x.org' }, NOW))).toBe(true);
   });
 
   it('ignores data in slots hidden by the judge count', () => {

@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 14;
+export const CONTEST_SCHEMA_VERSION = 15;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -116,6 +116,11 @@ export interface Adjudicator {
   name: string;
   /** Shared with directors for script submission. */
   mailingAddress: string;
+  /**
+   * CM-only (PRD #227): feeds the All-Judges Email List and the Judge Reminder
+   * To: line. No document builder reads it, so it never reaches directors.
+   */
+  email: string;
   needsPower: boolean;
   needsHotel: boolean;
   /** 1–3; only meaningful when needsHotel. */
@@ -669,6 +674,7 @@ function blankAdjudicator(): Adjudicator {
   return {
     name: '',
     mailingAddress: '',
+    email: '',
     needsPower: false,
     needsHotel: false,
     hotelNights: 1,
@@ -2395,7 +2401,7 @@ export function sectionCompletion(contest: Contest): Record<SectionId, SectionCo
     cm: filled([cmInfo.name, cmInfo.email, cmInfo.phone, cmInfo.mailingAddress, cmInfo.techContact]),
     identity: filled([identity.contestYear, identity.hostSchoolName, identity.hostVenueName, identity.hostAddress]),
     details: filled(detailFields),
-    adjudicators: filled(activeJudges.flatMap((j) => [j.name, j.mailingAddress])),
+    adjudicators: filled(activeJudges.flatMap((j) => [j.name, j.mailingAddress, j.email])),
     schools: filled(schoolFields),
     plays: filled(contest.schools.map((s) => s.playTitle)),
   };
@@ -2587,6 +2593,14 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
     schools: Array.isArray(raw.schools)
       ? (raw.schools as Record<string, unknown>[]).map((s) => ({ ...s, judgePreferences: blankPreferenceList() }))
       : raw.schools,
+  }),
+  // v14 predates judge emails (PRD #227): every stored judge slot, hidden ones
+  // included, gains a blank email. Additive/blank-safe.
+  14: (raw) => ({
+    ...raw,
+    adjudicators: Array.isArray(raw.adjudicators)
+      ? (raw.adjudicators as Record<string, unknown>[]).map((j) => ({ ...j, email: '' }))
+      : raw.adjudicators,
   }),
 };
 

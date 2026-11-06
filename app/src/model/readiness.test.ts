@@ -61,7 +61,7 @@ function readyContest(): Contest {
   });
   // Contracting: 3 active judges, each fully entered + all milestones done.
   for (let j = 0; j < 3; j++) {
-    c = withAdjudicator(c, j, { name: `Judge ${j + 1}`, mailingAddress: `${j + 1} Judge Rd` });
+    c = withAdjudicator(c, j, { name: `Judge ${j + 1}`, mailingAddress: `${j + 1} Judge Rd`, email: `judge${j + 1}@x.org` });
     c = setAdjudicatorMilestone(c, j, 'ttaoContractDate', true, NOW);
     c = setAdjudicatorMilestone(c, j, 'paymentPaperworkSentDate', true, NOW);
     c = setAdjudicatorMilestone(c, j, 'paymentPaperworkReturnedDate', true, NOW);
