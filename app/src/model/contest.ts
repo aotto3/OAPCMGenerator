@@ -2352,6 +2352,17 @@ export function allDirectorEmails(contest: Contest): string[] {
 }
 
 /**
+ * All judge emails (PRD #227): active slots only (the first numJudges), in slot
+ * order, trimmed, blanks skipped. Join with ', ' for the copyable box.
+ */
+export function allJudgeEmails(contest: Contest): string[] {
+  return contest.adjudicators
+    .slice(0, contest.details.numJudges)
+    .map((j) => j.email.trim())
+    .filter(Boolean);
+}
+
+/**
  * Schools sorted by performance order (stable, so ties keep form order) —
  * what the schedule and documents consume. v12: _readSchools() sort.
  */

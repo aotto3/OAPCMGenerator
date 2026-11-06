@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { type Contest, type SectionCompletion, type SectionId } from '../model/contest';
 import { EmailComposer } from './EmailComposer';
-import { EmailListBox } from './EmailListBox';
+import { EmailListBox, JudgeEmailListBox } from './EmailListBox';
 import { SchedulePreview } from './SchedulePreview';
 import { AdjudicatorsSection } from './sections/AdjudicatorsSection';
 import { CmInfoSection } from './sections/CmInfoSection';
@@ -123,6 +123,7 @@ function renderModule(
         <>
           <EmailComposer contest={contest} />
           <EmailListBox contest={contest} />
+          <JudgeEmailListBox contest={contest} />
         </>
       );
     default: {
