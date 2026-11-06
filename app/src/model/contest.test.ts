@@ -47,6 +47,7 @@ import {
   setOnApprovedList,
   admissionFeeDisplay,
   allDirectorEmails,
+  allJudgeEmails,
   autoDeadlineFor,
   contestDisplayName,
   contestFileName,
@@ -714,6 +715,25 @@ describe('all-director email list (v12 updateEmailList)', () => {
     c = withDirector(c, 0, 1, { email: 'b@x.org' });
     c = withDirector(c, 2, 0, { email: 'c@x.org' });
     expect(allDirectorEmails(c)).toEqual(['a@x.org', 'b@x.org', 'c@x.org']);
+  });
+});
+
+describe('all-judges email list (PRD #227)', () => {
+  it('lists judge emails in slot order, trimmed, skipping blanks', () => {
+    let c = withAdjudicator(contest(), 0, { email: ' a@x.org ' });
+    c = withAdjudicator(c, 2, { email: 'c@x.org' });
+    expect(allJudgeEmails(c)).toEqual(['a@x.org', 'c@x.org']);
+  });
+
+  it('leaves out judges hidden by a lower judge count', () => {
+    let c = withAdjudicator(contest(), 0, { email: 'a@x.org' });
+    c = withAdjudicator(c, 1, { email: 'b@x.org' });
+    c = withAdjudicator(c, 2, { email: 'c@x.org' });
+    expect(allJudgeEmails(withDetails(c, { numJudges: 1 }))).toEqual(['a@x.org']);
+  });
+
+  it('is empty when no judge has an email', () => {
+    expect(allJudgeEmails(contest())).toEqual([]);
   });
 });
 
