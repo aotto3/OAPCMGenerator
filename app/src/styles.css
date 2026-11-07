@@ -342,6 +342,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .device-only-note { font-size: 0.82rem; color: var(--c-muted); margin: 0 0 var(--space-3); }
 
 .hint { font-size: var(--fs-xs); font-weight: 400; color: var(--c-muted); }
+.email-hint { color: var(--c-warn); }
 
 .input-with-button { display: flex; gap: 6px; align-items: center; }
 .input-with-button input { flex: 1; min-width: 0; }
