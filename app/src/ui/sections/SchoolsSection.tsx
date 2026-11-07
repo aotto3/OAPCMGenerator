@@ -7,7 +7,7 @@ import {
   type SectionCompletion,
 } from '../../model/contest';
 import { Section } from './Section';
-import { TextField } from './fields';
+import { EmailHint, TextField } from './fields';
 
 export function SchoolsSection({
   contest,
@@ -66,6 +66,7 @@ export function SchoolsSection({
                     </button>
                   )}
                 </span>
+                <EmailHint value={director.email} />
               </label>
             </div>
           ))}

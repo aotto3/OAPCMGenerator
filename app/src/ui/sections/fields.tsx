@@ -77,7 +77,28 @@ export function TextField({
         onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       />
       {hint && <span className="hint">{hint}</span>}
+      {type === 'email' && <EmailHint value={value} />}
     </label>
+  );
+}
+
+/**
+ * The one "looks like an email" rule (PRD #227): a non-empty value with no @
+ * gets a hint. Empty never does. Display only; values are never changed or
+ * filtered out of an email list because of it.
+ */
+export function emailLooksWrong(value: string): boolean {
+  const v = value.trim();
+  return v !== '' && !v.includes('@');
+}
+
+/** Soft warning shown under every email field when emailLooksWrong. */
+export function EmailHint({ value }: { value: string }) {
+  if (!emailLooksWrong(value)) return null;
+  return (
+    <span className="hint email-hint" role="status">
+      This doesn't look like an email address (no @).
+    </span>
   );
 }
 
