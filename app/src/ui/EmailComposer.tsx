@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Contest } from '../model/contest';
+import { allJudgeEmails, type Contest } from '../model/contest';
 import {
   advancingEmail,
   EMAIL_TEMPLATES,
@@ -12,8 +12,9 @@ import { Section } from './sections/Section';
  * Email Draft Composer (v12 sec-email-composer). Four one-click templates and a
  * toggled advancing-schools picker fill an editable subject/body from the pure
  * emailTemplates module; the CM tweaks the text and copies it into their mail
- * client. Separate from EmailListBox (which is just the all-director address
- * list) — this composes the message itself.
+ * client. Separate from the address-list boxes (EmailListBox) — this composes
+ * the message itself. Judge Reminder and Advancing Schools also show a To: line;
+ * the other templates (including Judge Needs, which goes to the host) do not.
  *
  * All wording lives in the pure templates; this component only holds the
  * currently-shown draft, the picker's checked set, and the resolved "To:" list.
@@ -37,14 +38,23 @@ export function EmailComposer({ contest }: { contest: Contest }) {
   const [showPicker, setShowPicker] = useState(false);
   /** Form-order indices of the schools checked in the advancing picker. */
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  /** Resolved recipient list after generating the advancing email; null until then. */
+  /** Resolved recipient list for the shown draft; null when the draft has no To: line. */
   const [toList, setToList] = useState<string[] | null>(null);
+  /** Shown in the To: line when the resolved list is empty. */
+  const [toEmptyText, setToEmptyText] = useState('');
 
   function loadTemplate(id: EmailTemplateId) {
     const draft = EMAIL_TEMPLATES[id](contest);
     setSubject(draft.subject);
     setBody(draft.body);
-    setToList(null);
+    // Judge Reminder goes to the active judges (PRD #227); no other one-click
+    // template has a fixed recipient list.
+    if (id === 'judges') {
+      setToList(allJudgeEmails(contest));
+      setToEmptyText('No judge emails found. Add them in the Judges section.');
+    } else {
+      setToList(null);
+    }
   }
 
   function toggleAdvancing() {
@@ -78,6 +88,7 @@ export function EmailComposer({ contest }: { contest: Contest }) {
     setSubject(draft.subject);
     setBody(draft.body);
     setToList(draft.to);
+    setToEmptyText('No director emails found for the selected schools.');
     setShowPicker(false);
   }
 
@@ -143,7 +154,7 @@ export function EmailComposer({ contest }: { contest: Contest }) {
           {toList.length ? (
             toList.join(', ')
           ) : (
-            <em>No director emails found for the selected schools.</em>
+            <em>{toEmptyText}</em>
           )}
         </p>
       )}
