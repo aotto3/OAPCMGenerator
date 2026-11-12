@@ -86,7 +86,6 @@ import {
   setDocumentSelected,
   setNumSchools,
   validateContest,
-  withAdjudicator,
   adjudicatorMilestoneStatus,
   setAdjudicatorMilestone,
   withArchived,
@@ -107,6 +106,7 @@ import {
   type ParsedCompany,
   withScheduleOverrides,
 } from './contest';
+import { setJudge } from './judgePanel';
 import { drawOrder, type Rng } from './draw';
 
 /** Test fixture: stores one inserted gap directly (schedule edits live in scheduleEdit.ts). */
@@ -261,8 +261,8 @@ describe('update helpers', () => {
     expect(c.speechwire).toEqual({ username: 'district20-5a', password: 'hunter2' });
   });
 
-  it('withAdjudicator patches one judge and leaves the others alone', () => {
-    const c = withAdjudicator(
+  it('setJudge patches one judge and leaves the others alone', () => {
+    const c = setJudge(
       contest(),
       1,
       { name: 'Jane Judge', needsHotel: true, hotelNights: { before: true, after: false } },
@@ -333,9 +333,9 @@ describe('adjudicator contracting milestones (PRD #67)', () => {
     expect(c.updatedAt).toBe(LATER);
   });
 
-  it('editing a stamped milestone date goes through withAdjudicator and is preserved', () => {
+  it('editing a stamped milestone date goes through setJudge and is preserved', () => {
     let c = setAdjudicatorMilestone(contest(), 0, 'ttaoContractDate', true, NOW);
-    c = withAdjudicator(c, 0, { ttaoContractDate: '2026-03-15', name: 'Jane Judge' }, LATER);
+    c = setJudge(c, 0, { ttaoContractDate: '2026-03-15', name: 'Jane Judge' }, LATER);
     expect(c.adjudicators[0].ttaoContractDate).toBe('2026-03-15'); // hand-edited date kept
     expect(c.adjudicators[0].name).toBe('Jane Judge'); // and unrelated edits coexist
     expect(adjudicatorMilestoneStatus(c.adjudicators[0])[0].done).toBe(true);
@@ -343,7 +343,7 @@ describe('adjudicator contracting milestones (PRD #67)', () => {
 
   it('milestones are excluded from sectionCompletion (name+address+email only)', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St', email: 'solo@x.org' });
+    c = setJudge(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St', email: 'solo@x.org' });
     c = setAdjudicatorMilestone(c, 0, 'ttaoContractDate', true, NOW);
     expect(sectionCompletion(c).adjudicators).toEqual({ done: 3, total: 3 });
   });
@@ -734,15 +734,15 @@ describe('all-director email list (v12 updateEmailList)', () => {
 
 describe('all-judges email list (PRD #227)', () => {
   it('lists judge emails in slot order, trimmed, skipping blanks', () => {
-    let c = withAdjudicator(contest(), 0, { email: ' a@x.org ' });
-    c = withAdjudicator(c, 2, { email: 'c@x.org' });
+    let c = setJudge(contest(), 0, { email: ' a@x.org ' });
+    c = setJudge(c, 2, { email: 'c@x.org' });
     expect(allJudgeEmails(c)).toEqual(['a@x.org', 'c@x.org']);
   });
 
   it('leaves out judges hidden by a lower judge count', () => {
-    let c = withAdjudicator(contest(), 0, { email: 'a@x.org' });
-    c = withAdjudicator(c, 1, { email: 'b@x.org' });
-    c = withAdjudicator(c, 2, { email: 'c@x.org' });
+    let c = setJudge(contest(), 0, { email: 'a@x.org' });
+    c = setJudge(c, 1, { email: 'b@x.org' });
+    c = setJudge(c, 2, { email: 'c@x.org' });
     expect(allJudgeEmails(withDetails(c, { numJudges: 1 }))).toEqual(['a@x.org']);
   });
 
@@ -782,16 +782,16 @@ describe('sectionCompletion', () => {
 
   it('only active judges count', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St', email: 'solo@x.org' });
-    c = withAdjudicator(c, 1, { name: 'Hidden Judge' });
+    c = setJudge(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St', email: 'solo@x.org' });
+    c = setJudge(c, 1, { name: 'Hidden Judge' });
     expect(sectionCompletion(c).adjudicators).toEqual({ done: 3, total: 3 });
   });
 
   it('a judge without an email leaves the Judges section incomplete (PRD #227)', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St' });
+    c = setJudge(c, 0, { name: 'Solo Judge', mailingAddress: '1 Main St' });
     expect(sectionCompletion(c).adjudicators).toEqual({ done: 2, total: 3 });
-    c = withAdjudicator(c, 0, { email: 'solo@x.org' });
+    c = setJudge(c, 0, { email: 'solo@x.org' });
     expect(sectionCompletion(c).adjudicators).toEqual({ done: 3, total: 3 });
   });
 
@@ -955,14 +955,14 @@ describe('judge email (PRD #227)', () => {
   });
 
   it('round-trips a judge email through serialize and parse', () => {
-    const c = withAdjudicator(contest(), 0, { email: 'jane@x.org' });
+    const c = setJudge(contest(), 0, { email: 'jane@x.org' });
     expect(parseContest(serializeContest(c)).adjudicators[0].email).toBe('jane@x.org');
   });
 
   it('migrates a v14 contest: every judge slot, hidden ones too, gains a blank email', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Jane Judge', mailingAddress: '1 Main St' });
-    c = withAdjudicator(c, 2, { name: 'Hidden Judge' });
+    c = setJudge(c, 0, { name: 'Jane Judge', mailingAddress: '1 Main St' });
+    c = setJudge(c, 2, { name: 'Hidden Judge' });
     const { speechwire: _dev, ...rest } = c;
     const v14Contest = { ...rest, adjudicators: rest.adjudicators.map(({ email: _e, ...j }) => j) };
     const migrated = parseContest(JSON.stringify({ schemaVersion: 14, contest: v14Contest }));
@@ -974,14 +974,14 @@ describe('judge email (PRD #227)', () => {
   });
 
   it('round-trips a judge cell number', () => {
-    const c = withAdjudicator(contest(), 0, { cellPhone: '512-555-0100' });
+    const c = setJudge(contest(), 0, { cellPhone: '512-555-0100' });
     expect(parseContest(serializeContest(c)).adjudicators[0].cellPhone).toBe('512-555-0100');
   });
 
   it('migrates a v16 contest: every judge slot, hidden ones too, gains a blank cell number', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Jane Judge', email: 'jane@x.org' });
-    c = withAdjudicator(c, 2, { name: 'Hidden Judge' });
+    c = setJudge(c, 0, { name: 'Jane Judge', email: 'jane@x.org' });
+    c = setJudge(c, 2, { name: 'Hidden Judge' });
     const { speechwire: _dev, ...rest } = c;
     const v16Contest = { ...rest, adjudicators: rest.adjudicators.map(({ cellPhone: _p, ...j }) => j) };
     const migrated = parseContest(JSON.stringify({ schemaVersion: 16, contest: v16Contest }));
@@ -992,7 +992,7 @@ describe('judge email (PRD #227)', () => {
   });
 
   it('round-trips hotel nights, the fly request, and judge notes', () => {
-    const c = withAdjudicator(contest(), 0, {
+    const c = setJudge(contest(), 0, {
       needsHotel: true,
       hotelNights: { before: false, after: true },
       requestingFlight: true,
@@ -1006,9 +1006,9 @@ describe('judge email (PRD #227)', () => {
 
   it('migrates a v17 contest: hotel night counts become specific nights, new fields start blank', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'One Night', needsHotel: true });
-    c = withAdjudicator(c, 1, { name: 'Two Nights', needsHotel: true });
-    c = withAdjudicator(c, 2, { name: 'No Hotel', needsHotel: false });
+    c = setJudge(c, 0, { name: 'One Night', needsHotel: true });
+    c = setJudge(c, 1, { name: 'Two Nights', needsHotel: true });
+    c = setJudge(c, 2, { name: 'No Hotel', needsHotel: false });
     const { speechwire: _dev, ...rest } = c;
     const counts = [1, 2, 3];
     const v17Contest = {
@@ -1034,7 +1034,7 @@ describe('judge email (PRD #227)', () => {
   });
 
   it('migrates a v17 three-night count to both nights', () => {
-    const c = withAdjudicator(contest(), 0, { needsHotel: true });
+    const c = setJudge(contest(), 0, { needsHotel: true });
     const { speechwire: _dev, ...rest } = c;
     const v17Contest = {
       ...rest,
@@ -1083,7 +1083,7 @@ describe('serialize / parse', () => {
   it('round-trips a fully filled contest exactly (minus device-only fields)', () => {
     let c = contest({ district: '20', hostSchoolName: 'Friendswood High School' });
     c = withDetails(c, { contestDate: '2026-04-10', entryFee: '50' });
-    c = withAdjudicator(c, 0, { name: 'Jane Judge', needsHotel: true, hotelNights: { before: true, after: true } });
+    c = setJudge(c, 0, { name: 'Jane Judge', needsHotel: true, hotelNights: { before: true, after: true } });
     c = withSchool(c, 0, { name: 'Westlake HS', playTitle: 'Our Town' });
     c = addDirector(c, 0);
     c = setDocumentSelected(c, 'timer', true);
@@ -1174,7 +1174,7 @@ describe('serialize / parse', () => {
 
   it('MIGRATION: a v6 (Group C) payload gains three blank milestone dates on every adjudicator', () => {
     // A v6 contest: strip the Group-D milestone fields the migration will add back.
-    const full = withAdjudicator(contest({ district: '20' }), 0, { name: 'Jane Judge' });
+    const full = setJudge(contest({ district: '20' }), 0, { name: 'Jane Judge' });
     const { speechwire: _dev, ...syncable } = full;
     const adjudicators = syncable.adjudicators.map((j) => {
       const { ttaoContractDate, paymentPaperworkSentDate, paymentPaperworkReturnedDate, ...rest } = j;
@@ -1275,7 +1275,7 @@ function filledContest(): Contest {
     admissionFee: '10',
     bidcContestDate: '2026-04-20',
   });
-  c = withAdjudicator(c, 0, { name: 'Jane Judge', mailingAddress: '1 Main St', needsHotel: true });
+  c = setJudge(c, 0, { name: 'Jane Judge', mailingAddress: '1 Main St', needsHotel: true });
   c = withSchool(c, 0, { name: 'Westlake HS', playTitle: 'Our Town', performanceOrder: 3 });
   c = withSchool(c, 1, { name: 'Anderson HS', playTitle: 'Proof', performanceOrder: 1 });
   c = addDirector(c, 0);
@@ -2563,8 +2563,8 @@ describe('importCompany', () => {
 });
 
 describe('bios on adjudicators + CM', () => {
-  it('withAdjudicator and withCmInfo set the optional bio', () => {
-    let c = withAdjudicator(filledContest(), 0, { bio: 'Longtime UIL judge.' }, LATER);
+  it('setJudge and withCmInfo set the optional bio', () => {
+    let c = setJudge(filledContest(), 0, { bio: 'Longtime UIL judge.' }, LATER);
     c = withCmInfo(c, { bio: 'Contest manager since 2010.' }, LATER);
     expect(c.adjudicators[0].bio).toBe('Longtime UIL judge.');
     expect(c.cmInfo.bio).toBe('Contest manager since 2010.');
@@ -2619,7 +2619,7 @@ describe('advanceContest carries roster + production metadata', () => {
 describe('roster/metadata/bio serialization round-trip', () => {
   it('preserves roster, production metadata, and bios through serialize → parse', () => {
     let c = withRoster();
-    c = withAdjudicator(c, 0, { bio: 'Judge bio.' });
+    c = setJudge(c, 0, { bio: 'Judge bio.' });
     c = withCmInfo(c, { bio: 'CM bio.' });
 
     const restored = parseContest(serializeContest(c));

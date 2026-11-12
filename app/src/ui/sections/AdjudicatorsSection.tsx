@@ -1,12 +1,12 @@
 import {
   adjudicatorMilestoneStatus,
   setAdjudicatorMilestone,
-  withAdjudicator,
   type Adjudicator,
   type AdjudicatorMilestoneKey,
   type Contest,
   type SectionCompletion,
 } from '../../model/contest';
+import { activeJudgeSlots, setJudge } from '../../model/judgePanel';
 import { fmtDateShort } from '../../documents/format';
 import { localToday } from '../../questionnaire/rosterPublisher';
 import { CopyJudgesControl } from './CopyJudgesControl';
@@ -26,7 +26,7 @@ export function AdjudicatorsSection({
   defaultOpen?: boolean;
 }) {
   // Like v12, judges beyond numJudges keep their data but are hidden.
-  const active = contest.adjudicators.slice(0, contest.details.numJudges);
+  const active = activeJudgeSlots(contest);
 
   return (
     <Section title="⚖️ Judges" badge="After Contracting" completion={completion} defaultOpen={defaultOpen}>
@@ -36,12 +36,12 @@ export function AdjudicatorsSection({
         document for directors. The contracting checklist tracks paperwork and never counts toward section completion.
       </p>
       <QuestionnaireLinkControl />
-      {active.map((judge, i) => (
+      {active.map(({ index: i, judge }) => (
         <JudgeFields
           key={i}
           index={i}
           judge={judge}
-          edit={(patch) => onChange(withAdjudicator(contest, i, patch))}
+          edit={(patch) => onChange(setJudge(contest, i, patch))}
           // Checking stamps today's date (UI supplies `now`); unchecking clears it.
           setMilestone={(key, done) =>
             onChange(setAdjudicatorMilestone(contest, i, key, done, new Date().toISOString()))

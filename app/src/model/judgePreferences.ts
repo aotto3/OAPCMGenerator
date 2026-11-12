@@ -19,13 +19,13 @@
  * never stored, so the call list and the Judges section can't disagree.
  */
 import {
+  activeJudges,
   normalizeJudgeName,
-  withAdjudicator,
-  type Adjudicator,
   type Contest,
   type ContestLevel,
   type PreferenceListRef,
 } from './contest';
+import { setJudge } from './judgePanel';
 
 /** One list as the calculator sees it, whichever school or group it came from. */
 export interface PreferenceList {
@@ -166,21 +166,17 @@ export function callListText(callList: readonly CallListEntry[]): string {
     .join('\n');
 }
 
-function activeJudgeSlots(contest: Contest): Adjudicator[] {
-  return contest.adjudicators.slice(0, contest.details.numJudges);
-}
-
 /** The 1-based active slot holding this judge, or null if none does. */
 export function judgeSlotNumber(contest: Contest, name: string): number | null {
   const key = normalizeJudgeName(name);
   if (!key) return null;
-  const index = activeJudgeSlots(contest).findIndex((judge) => normalizeJudgeName(judge.name) === key);
+  const index = activeJudges(contest).findIndex((judge) => normalizeJudgeName(judge.name) === key);
   return index < 0 ? null : index + 1;
 }
 
 /** The index of the first blank active slot, or null when every active slot is full. */
 export function firstOpenJudgeSlot(contest: Contest): number | null {
-  const index = activeJudgeSlots(contest).findIndex((judge) => !normalizeJudgeName(judge.name));
+  const index = activeJudges(contest).findIndex((judge) => !normalizeJudgeName(judge.name));
   return index < 0 ? null : index;
 }
 
@@ -188,7 +184,7 @@ export function firstOpenJudgeSlot(contest: Contest): number | null {
 export function addAsJudge(contest: Contest, name: string, now?: string): Contest {
   const slot = firstOpenJudgeSlot(contest);
   if (slot === null || !normalizeJudgeName(name) || judgeSlotNumber(contest, name) !== null) return contest;
-  return withAdjudicator(contest, slot, { name }, now);
+  return setJudge(contest, slot, { name }, now);
 }
 
 const LIST_MARKER = /^\s*(?:\(\d+\)\s*|#?\d+\s*[.):\-\u2013\u2014]\s*|#?\d+\s+|[-*\u2022\u00b7\u2013\u2014]\s*)/;
@@ -220,7 +216,7 @@ export function parseJudgeList(text: string): string[] {
 export function enteredJudgeNames(contest: Contest): string[] {
   return cleanNames([
     ...activePreferenceLists(contest).flatMap((list) => [...list.ranked, ...list.vetoes]),
-    ...activeJudgeSlots(contest).map((judge) => judge.name),
+    ...activeJudges(contest).map((judge) => judge.name),
   ]);
 }
 

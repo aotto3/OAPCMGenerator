@@ -21,13 +21,13 @@ import {
   setAdvancing,
   setJudgeUnavailable,
   setNumSchools,
-  withAdjudicator,
   withDetails,
   withIdentity,
   withSchool,
   type Contest,
   type PreferenceListRef,
 } from './contest';
+import { setJudge } from './judgePanel';
 import {
   activePreferenceLists,
   addAsJudge,
@@ -681,7 +681,7 @@ describe('mergeJudgeNames', () => {
     }
 
     it('gives a slot holding the merged name the kept spelling, so the badge still matches', () => {
-      const c = withAdjudicator(twoSpellings(), 0, { name: 'J. Smith' });
+      const c = setJudge(twoSpellings(), 0, { name: 'J. Smith' });
       const merged = mergeJudgeNames(c, 'Jane Smith', 'j.  smith');
       expect(merged.adjudicators[0].name).toBe('Jane Smith');
       expect(judgeSlotNumber(merged, 'Jane Smith')).toBe(1);
@@ -689,7 +689,7 @@ describe('mergeJudgeNames', () => {
     });
 
     it('keeps the rest of the slot', () => {
-      const c = withAdjudicator(twoSpellings(), 0, { name: 'J. Smith', mailingAddress: '1 Main St' });
+      const c = setJudge(twoSpellings(), 0, { name: 'J. Smith', mailingAddress: '1 Main St' });
       expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0]).toMatchObject({
         name: 'Jane Smith',
         mailingAddress: '1 Main St',
@@ -697,25 +697,25 @@ describe('mergeJudgeNames', () => {
     });
 
     it('gives a case or spacing variant of the kept name the kept spelling', () => {
-      const c = withAdjudicator(twoSpellings(), 0, { name: 'JANE  smith' });
+      const c = setJudge(twoSpellings(), 0, { name: 'JANE  smith' });
       expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0].name).toBe('Jane Smith');
     });
 
     it('leaves other judges in slots alone', () => {
-      const c = withAdjudicator(twoSpellings(), 0, { name: 'Other Judge' });
+      const c = setJudge(twoSpellings(), 0, { name: 'Other Judge' });
       expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[0].name).toBe('Other Judge');
     });
 
     it('updates a slot hidden beyond numJudges, like an inactive list', () => {
-      let c = withAdjudicator(withDetails(twoSpellings(), { numJudges: 3 }), 2, { name: 'J. Smith' });
+      let c = setJudge(withDetails(twoSpellings(), { numJudges: 3 }), 2, { name: 'J. Smith' });
       c = withDetails(c, { numJudges: 1 });
       expect(mergeJudgeNames(c, 'Jane Smith', 'J. Smith').adjudicators[2].name).toBe('Jane Smith');
     });
 
     it('keeps both slots when each spelling is in one, for the CM to sort out', () => {
       let c = withDetails(twoSpellings(), { numJudges: 2 });
-      c = withAdjudicator(c, 0, { name: 'J. Smith', mailingAddress: '1 Main St' });
-      c = withAdjudicator(c, 1, { name: 'Jane Smith', mailingAddress: '2 Oak Ave' });
+      c = setJudge(c, 0, { name: 'J. Smith', mailingAddress: '1 Main St' });
+      c = setJudge(c, 1, { name: 'Jane Smith', mailingAddress: '2 Oak Ave' });
       const merged = mergeJudgeNames(c, 'Jane Smith', 'J. Smith');
       expect(merged.adjudicators.slice(0, 2).map((j) => [j.name, j.mailingAddress])).toEqual([
         ['Jane Smith', '1 Main St'],
@@ -724,7 +724,7 @@ describe('mergeJudgeNames', () => {
     });
 
     it('leaves a slot alone when the merge is a no-op', () => {
-      const c = withAdjudicator(twoSpellings(), 0, { name: 'Nobody' });
+      const c = setJudge(twoSpellings(), 0, { name: 'Nobody' });
       expect(mergeJudgeNames(c, 'Jane Smith', 'Nobody')).toBe(c);
     });
   });
@@ -822,20 +822,20 @@ describe('enteredJudgeNames', () => {
     c = addVetoedJudge(c, school(1), 'Vetoed One');
     const custom = withCustom(c, 'Committee');
     c = addRankedJudge(custom.contest, custom.ref, 'Custom One');
-    c = withAdjudicator(withDetails(c, { numJudges: 1 }), 0, { name: 'Hired One' });
+    c = setJudge(withDetails(c, { numJudges: 1 }), 0, { name: 'Hired One' });
     expect(enteredJudgeNames(c)).toEqual(['Ranked One', 'Vetoed One', 'Custom One', 'Hired One']);
   });
 
   it('lists a name once, in its first spelling, and skips blank slots', () => {
     let c = addRankedJudge(contest(), school(0), 'Jane Smith');
     c = addVetoedJudge(c, school(1), 'jane  SMITH');
-    c = withAdjudicator(c, 0, { name: 'JANE SMITH' });
+    c = setJudge(c, 0, { name: 'JANE SMITH' });
     expect(enteredJudgeNames(c)).toEqual(['Jane Smith']);
   });
 
   it('skips lists inactive at this level and hidden judge slots', () => {
     let c = addRankedJudge(contest(), FIRST, 'District Name');
-    c = withAdjudicator(withDetails(c, { numJudges: 3 }), 2, { name: 'Hidden Slot' });
+    c = setJudge(withDetails(c, { numJudges: 3 }), 2, { name: 'Hidden Slot' });
     expect(enteredJudgeNames(withDetails(c, { numJudges: 1 }))).toEqual([]);
   });
 });
@@ -851,27 +851,27 @@ describe('addAsJudge', () => {
   });
 
   it('skips filled slots and fills a gap left in the middle', () => {
-    let c = withAdjudicator(threeJudges(), 0, { name: 'One' });
-    c = withAdjudicator(c, 2, { name: 'Three' });
+    let c = setJudge(threeJudges(), 0, { name: 'One' });
+    c = setJudge(c, 2, { name: 'Three' });
     expect(slots(addAsJudge(c, 'Two')).slice(0, 3)).toEqual(['One', 'Two', 'Three']);
   });
 
   it('treats a spaces-only slot as blank', () => {
-    const c = withAdjudicator(threeJudges(), 0, { name: '   ' });
+    const c = setJudge(threeJudges(), 0, { name: '   ' });
     expect(firstOpenJudgeSlot(c)).toBe(0);
     expect(slots(addAsJudge(c, 'Jane Smith'))[0]).toBe('Jane Smith');
   });
 
   it('never overwrites a hired judge when every active slot is full', () => {
     let c = withDetails(contest(), { numJudges: 1 });
-    c = withAdjudicator(c, 0, { name: 'Hired' });
+    c = setJudge(c, 0, { name: 'Hired' });
     expect(firstOpenJudgeSlot(c)).toBeNull();
     expect(addAsJudge(c, 'Jane Smith')).toBe(c);
   });
 
   it('does not fill a hidden slot beyond numJudges', () => {
     let c = withDetails(contest(), { numJudges: 3 });
-    c = withAdjudicator(withAdjudicator(c, 0, { name: 'A' }), 1, { name: 'B' });
+    c = setJudge(setJudge(c, 0, { name: 'A' }), 1, { name: 'B' });
     c = withDetails(c, { numJudges: 2 });
     expect(firstOpenJudgeSlot(c)).toBeNull();
     expect(addAsJudge(c, 'Jane Smith')).toBe(c);
@@ -884,7 +884,7 @@ describe('addAsJudge', () => {
   });
 
   it('keeps the slot\'s other fields', () => {
-    const c = withAdjudicator(threeJudges(), 0, { mailingAddress: '1 Main St' });
+    const c = setJudge(threeJudges(), 0, { mailingAddress: '1 Main St' });
     expect(addAsJudge(c, 'Jane Smith').adjudicators[0]).toMatchObject({ name: 'Jane Smith', mailingAddress: '1 Main St' });
   });
 });
@@ -893,7 +893,7 @@ describe('judgeSlotNumber', () => {
   const twoJudges = () => withDetails(contest(), { numJudges: 2 });
 
   it('gives the 1-based slot, using normalized comparison', () => {
-    const c = withAdjudicator(twoJudges(), 1, { name: '  JANE   smith ' });
+    const c = setJudge(twoJudges(), 1, { name: '  JANE   smith ' });
     expect(judgeSlotNumber(c, 'Jane Smith')).toBe(2);
   });
 
@@ -905,11 +905,11 @@ describe('judgeSlotNumber', () => {
   it('clears when the name is removed from the slot', () => {
     const c = addAsJudge(twoJudges(), 'Jane Smith');
     expect(judgeSlotNumber(c, 'Jane Smith')).toBe(1);
-    expect(judgeSlotNumber(withAdjudicator(c, 0, { name: '' }), 'Jane Smith')).toBeNull();
+    expect(judgeSlotNumber(setJudge(c, 0, { name: '' }), 'Jane Smith')).toBeNull();
   });
 
   it('ignores a slot beyond numJudges', () => {
-    const c = withAdjudicator(withDetails(contest(), { numJudges: 3 }), 2, { name: 'Jane Smith' });
+    const c = setJudge(withDetails(contest(), { numJudges: 3 }), 2, { name: 'Jane Smith' });
     expect(judgeSlotNumber(c, 'Jane Smith')).toBe(3);
     expect(judgeSlotNumber(withDetails(c, { numJudges: 2 }), 'Jane Smith')).toBeNull();
   });

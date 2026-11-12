@@ -17,7 +17,6 @@ import {
   setDocumentSelected,
   setNumSchools,
   setReadinessStatus,
-  withAdjudicator,
   withArchived,
   withCmInfo,
   withDetails,
@@ -29,6 +28,7 @@ import {
   type ContestLevel,
   withScheduleOverrides,
 } from './contest';
+import { setJudge } from './judgePanel';
 import { computeSchedule } from './schedule';
 import { createSiblingZone, findSiblingZones, siblingZoneNumber } from './siblingZone';
 
@@ -84,9 +84,9 @@ function fullZone(zoneNumber: string): Contest {
     NOW,
   );
   c = setDocumentSelected(c, 'checklist', false, NOW);
-  c = withAdjudicator(c, 0, { name: 'Jane Doe', mailingAddress: '1 Main St', dietary: 'Vegan', bio: 'Bio' }, NOW);
+  c = setJudge(c, 0, { name: 'Jane Doe', mailingAddress: '1 Main St', dietary: 'Vegan', bio: 'Bio' }, NOW);
   c = setAdjudicatorMilestone(c, 0, 'ttaoContractDate', true, NOW);
-  c = withAdjudicator(c, 1, { name: 'Sam Lee', needsHotel: true, hotelNights: { before: true, after: true }, needsPower: true }, NOW);
+  c = setJudge(c, 1, { name: 'Sam Lee', needsHotel: true, hotelNights: { before: true, after: true }, needsPower: true }, NOW);
   c = setNumSchools(c, 8, NOW);
   c = withSchool(c, 0, { name: 'Clear Lake', playTitle: 'Our Town' }, NOW);
   c = addComplianceItem(c, { id: 'custom-c', label: 'Bus form' }, NOW);

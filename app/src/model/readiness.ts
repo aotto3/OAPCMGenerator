@@ -27,6 +27,7 @@ import {
   companyCounts,
   complianceItems,
   complianceProgress,
+  activeJudges,
   generationWarnings,
   resolveReadinessStatus,
   sectionCompletion,
@@ -149,8 +150,7 @@ function derivedItems(contest: Contest): { phase: ReadinessPhase; item: Readines
   const sectionCount = (key: keyof typeof sc): ReadinessCount => ({ done: sc[key].done, total: sc[key].total });
 
   // Judge contracting milestones (D): sum done/total across the ACTIVE judges.
-  const activeJudges = contest.adjudicators.slice(0, contest.details.numJudges);
-  const milestoneRows = activeJudges.flatMap((j) => adjudicatorMilestoneStatus(j));
+  const milestoneRows = activeJudges(contest).flatMap((j) => adjudicatorMilestoneStatus(j));
   const milestonesDone = milestoneRows.filter((m) => m.done).length;
 
   // Compliance (A): a school is resolved when its tracker is green.

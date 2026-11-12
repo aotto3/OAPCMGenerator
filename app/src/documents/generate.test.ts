@@ -16,12 +16,12 @@ import {
   setJudgeUnavailable,
   setNumSchools,
   validateContest,
-  withAdjudicator,
   withDetails,
   withSchool,
   withSpeechwire,
   type Contest,
 } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import { DOCUMENT_GROUPS, DOCUMENT_REGISTRY, isDocumentAvailable } from './registry';
 import { buildContestArchive, buildSingleDocument, normalizeResult } from './generate';
 
@@ -236,7 +236,7 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
 
     it('keeps everything else, including the hired judges', async () => {
       let c = withSchool(withPreferences(), 0, { name: 'Keeper High' });
-      c = withAdjudicator(c, 0, { name: 'Hired Judge' });
+      c = setJudge(c, 0, { name: 'Hired Judge' });
       const parsed = parseContest(await zippedFile(c));
       expect(parsed.schools[0].name).toBe('Keeper High');
       expect(parsed.adjudicators[0].name).toBe('Hired Judge');

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   createContest,
-  withAdjudicator,
   withArchived,
   withCmInfo,
   withDetails,
   type Contest,
 } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import { buildJudgeRoster } from './roster';
 
 const NOW = '2026-11-01T12:00:00.000Z';
@@ -20,7 +20,7 @@ function contest(id: string, date: string, judges: { name: string; email?: strin
   });
   c = withDetails(c, { contestDate: date, numJudges: 3 }, NOW);
   c = withCmInfo(c, { email: 'cm@example.org' }, NOW);
-  judges.forEach((j, i) => (c = withAdjudicator(c, i, { name: j.name, email: j.email ?? '' }, NOW)));
+  judges.forEach((j, i) => (c = setJudge(c, i, { name: j.name, email: j.email ?? '' }, NOW)));
   return c;
 }
 
@@ -100,7 +100,7 @@ describe('buildJudgeRoster', () => {
 
   it('carries no private judge fields', () => {
     let c = contest('c1', '2027-03-25', [{ name: 'Jane', email: 'jane@x.org' }]);
-    c = withAdjudicator(c, 0, { mailingAddress: '1 Main', cellPhone: '555', bio: 'Bio', dietary: 'Vegan' }, NOW);
+    c = setJudge(c, 0, { mailingAddress: '1 Main', cellPhone: '555', bio: 'Bio', dietary: 'Vegan' }, NOW);
     const text = JSON.stringify(buildJudgeRoster([c], TODAY));
     for (const secret of ['1 Main', '555', 'Bio', 'Vegan']) expect(text).not.toContain(secret);
   });

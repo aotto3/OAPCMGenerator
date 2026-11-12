@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { addDirector, setTabulationRank, withAdjudicator, withCmInfo, withDetails, withDirector, withIdentity } from '../model/contest';
+import { addDirector, setTabulationRank, withCmInfo, withDetails, withDirector, withIdentity } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import { tabulationPlainText, tabulationReport } from '../model/tabulationReport';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import {
@@ -139,7 +140,7 @@ describe('judgeNeedsEmail', () => {
   });
 
   it('lists all three categories for a judge with every need set', () => {
-    const c = withAdjudicator(
+    const c = setJudge(
       fixtureContest(),
       0,
       {
@@ -169,7 +170,7 @@ describe('judgeNeedsEmail', () => {
 
   it('lists only the active judges (per numJudges)', () => {
     let c = withDetails(fixtureContest(), { numJudges: 2 }, FIXTURE_NOW);
-    c = withAdjudicator(c, 2, { name: 'Ms. Mary Adjudicator' }, FIXTURE_NOW);
+    c = setJudge(c, 2, { name: 'Ms. Mary Adjudicator' }, FIXTURE_NOW);
     const { body } = judgeNeedsEmail(c);
     expect(body).toContain('Dr. Jane Judge:');
     expect(body).toContain('Prof. John Critic:');
@@ -178,13 +179,13 @@ describe('judgeNeedsEmail', () => {
 
   it('falls back to "Judge N" for a blank judge name', () => {
     let c = withDetails(fixtureContest(), { numJudges: 1 }, FIXTURE_NOW);
-    c = withAdjudicator(c, 0, { name: '' }, FIXTURE_NOW);
+    c = setJudge(c, 0, { name: '' }, FIXTURE_NOW);
     expect(judgeNeedsEmail(c).body).toContain('Judge 1:');
   });
 
   it('names the single night for a one-night hotel stay', () => {
     const c = withDetails(
-      withAdjudicator(fixtureContest(), 0, { needsHotel: true, hotelNights: { before: false, after: true } }, FIXTURE_NOW),
+      setJudge(fixtureContest(), 0, { needsHotel: true, hotelNights: { before: false, after: true } }, FIXTURE_NOW),
       { numJudges: 1 },
       FIXTURE_NOW,
     );

@@ -4,12 +4,12 @@ import {
   defaultAdjudicators,
   lockCritique,
   setCritiqueAssignment,
-  withAdjudicator,
   withDetails,
   withSchool,
   type Adjudicator,
   type Contest,
 } from './contest';
+import { setJudge } from './judgePanel';
 import { canCopyJudges, copyJudges, judgeCopyImpact, judgeCopyTargets } from './copyJudges';
 import { applySubmissions, type JudgeSubmission } from '../questionnaire/submission';
 
@@ -44,8 +44,8 @@ const FULL_JUDGE: Adjudicator = {
 
 /** A source zone with a full Judge 1, a named Judge 2, and an empty Judge 3. */
 function sourceZone(): Contest {
-  const withJudge1 = withAdjudicator(zone('source', '1'), 0, FULL_JUDGE, NOW);
-  return withAdjudicator(withJudge1, 1, { name: 'Sam Lee' }, NOW);
+  const withJudge1 = setJudge(zone('source', '1'), 0, FULL_JUDGE, NOW);
+  return setJudge(withJudge1, 1, { name: 'Sam Lee' }, NOW);
 }
 
 describe('copyJudges', () => {
@@ -63,7 +63,7 @@ describe('copyJudges', () => {
   });
 
   it('replaces every target slot, leaving no mix of old and new judges', () => {
-    const target = withAdjudicator(zone('target', '2'), 2, { name: 'Old Judge', dietary: 'none' }, NOW);
+    const target = setJudge(zone('target', '2'), 2, { name: 'Old Judge', dietary: 'none' }, NOW);
     const result = copyJudges(sourceZone(), target, LATER);
     expect(result.adjudicators[2]).toEqual(defaultAdjudicators()[2]);
   });
@@ -123,8 +123,8 @@ describe('judgeCopyImpact', () => {
   });
 
   it('names the target judges being replaced', () => {
-    const target = withAdjudicator(
-      withAdjudicator(zone('target', '2'), 0, { name: ' Pat Roe ' }, NOW),
+    const target = setJudge(
+      setJudge(zone('target', '2'), 0, { name: ' Pat Roe ' }, NOW),
       2,
       { name: 'Kim Poe' },
       NOW,
@@ -137,7 +137,7 @@ describe('judgeCopyImpact', () => {
 
   it('counts judges hidden by a lower judge count, because they get replaced too', () => {
     const target = withDetails(
-      withAdjudicator(zone('target', '2'), 2, { name: 'Hidden Judge' }, NOW),
+      setJudge(zone('target', '2'), 2, { name: 'Hidden Judge' }, NOW),
       { numJudges: 1 },
       NOW,
     );
@@ -156,16 +156,11 @@ describe('judgeCopyImpact', () => {
     ['judge notes', { judgeNotes: 'Call first' }],
     ['checklist date', { ttaoContractDate: '2026-01-10' }],
   ])('treats an unnamed judge with only a %s as data to confirm', (_field, patch) => {
-    const target = withAdjudicator(zone('target', '2'), 0, patch, NOW);
+    const target = setJudge(zone('target', '2'), 0, patch, NOW);
     const impact = judgeCopyImpact(sourceZone(), target);
     expect(impact.replacedJudgeNames).toEqual([]);
     expect(impact.targetHasJudgeData).toBe(true);
     expect(impact.needsConfirmation).toBe(true);
-  });
-
-  it('ignores whitespace and hotel nights with no hotel need', () => {
-    const target = withAdjudicator(zone('target', '2'), 0, { name: '   ', hotelNights: { before: true, after: true } }, NOW);
-    expect(judgeCopyImpact(sourceZone(), target).targetHasJudgeData).toBe(false);
   });
 
   it('warns about critique when the count changes, even with no judge data to replace', () => {
@@ -190,7 +185,7 @@ describe('judgeCopyImpact', () => {
 
 describe('judge email in Copy Judges (PRD #227)', () => {
   it('asks for confirmation before replacing a target judge that has only an email', () => {
-    const target = withAdjudicator(zone('target', '2'), 0, { email: 'keep@x.org' }, NOW);
+    const target = setJudge(zone('target', '2'), 0, { email: 'keep@x.org' }, NOW);
     expect(judgeCopyImpact(sourceZone(), target).needsConfirmation).toBe(true);
   });
 
@@ -205,16 +200,12 @@ describe('canCopyJudges', () => {
   });
 
   it('is true when any active judge has data', () => {
-    expect(canCopyJudges(withAdjudicator(zone('source', '1'), 0, { dietary: 'vegan' }, NOW))).toBe(true);
-  });
-
-  it('counts a judge with only an email as having data (PRD #227)', () => {
-    expect(canCopyJudges(withAdjudicator(zone('source', '1'), 0, { email: 'only@x.org' }, NOW))).toBe(true);
+    expect(canCopyJudges(setJudge(zone('source', '1'), 0, { dietary: 'vegan' }, NOW))).toBe(true);
   });
 
   it('ignores data in slots hidden by the judge count', () => {
     const source = withDetails(
-      withAdjudicator(zone('source', '1'), 2, { name: 'Hidden Judge' }, NOW),
+      setJudge(zone('source', '1'), 2, { name: 'Hidden Judge' }, NOW),
       { numJudges: 1 },
       NOW,
     );

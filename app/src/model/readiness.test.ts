@@ -15,7 +15,6 @@ import {
   setReadinessStatus,
   setTabulationConfirmed,
   setTabulationRank,
-  withAdjudicator,
   withCmInfo,
   withDetails,
   withDirector,
@@ -24,6 +23,7 @@ import {
   type Contest,
   type ReadinessPhase,
 } from './contest';
+import { setJudge } from './judgePanel';
 import { readinessReport, type ReadinessReportItem } from './readiness';
 
 const NOW = '2026-07-05T12:00:00.000Z';
@@ -64,7 +64,7 @@ function readyContest(): Contest {
   });
   // Contracting: 3 active judges, each fully entered + all milestones done.
   for (let j = 0; j < 3; j++) {
-    c = withAdjudicator(c, j, { name: `Judge ${j + 1}`, mailingAddress: `${j + 1} Judge Rd`, email: `judge${j + 1}@x.org` });
+    c = setJudge(c, j, { name: `Judge ${j + 1}`, mailingAddress: `${j + 1} Judge Rd`, email: `judge${j + 1}@x.org` });
     c = setAdjudicatorMilestone(c, j, 'ttaoContractDate', true, NOW);
     c = setAdjudicatorMilestone(c, j, 'paymentPaperworkSentDate', true, NOW);
     c = setAdjudicatorMilestone(c, j, 'paymentPaperworkReturnedDate', true, NOW);

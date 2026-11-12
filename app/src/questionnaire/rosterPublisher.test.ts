@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createContest, withAdjudicator, withDetails, type Contest } from '../model/contest';
+import { createContest, withDetails, type Contest } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import type { SyncStatus } from '../storage/syncEngine';
 import type { JudgeRoster } from './roster';
 import { localToday, startRosterPublisher } from './rosterPublisher';
@@ -9,7 +10,7 @@ const NOW = '2026-11-01T12:00:00.000Z';
 function judgedContest(id: string, email: string): Contest {
   let c = createContest({ id, now: NOW });
   c = withDetails(c, { contestDate: '2027-03-25' }, NOW);
-  return withAdjudicator(c, 0, { name: 'Jane', email }, NOW);
+  return setJudge(c, 0, { name: 'Jane', email }, NOW);
 }
 
 function harness(initial: Contest[], failPublish = false) {

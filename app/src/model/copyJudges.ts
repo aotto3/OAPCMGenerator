@@ -3,35 +3,12 @@
  * contest out. The UI (ui/sections/CopyJudgesControl.tsx) picks the target, asks
  * for confirmation using judgeCopyImpact, and persists the result.
  */
-import type { Adjudicator, Contest, ContestLevel } from './contest';
-
-/**
- * True when a judge slot holds anything worth protecting. hotelNights is left out:
- * it only means something once needsHotel is set.
- */
-function hasJudgeData(judge: Adjudicator): boolean {
-  return (
-    judge.needsPower ||
-    judge.needsHotel ||
-    judge.requestingFlight ||
-    [
-      judge.name,
-      judge.mailingAddress,
-      judge.email,
-      judge.cellPhone,
-      judge.dietary,
-      judge.bio,
-      judge.judgeNotes,
-      judge.ttaoContractDate,
-      judge.paymentPaperworkSentDate,
-      judge.paymentPaperworkReturnedDate,
-    ].some((value) => value.trim() !== '')
-  );
-}
+import { activeJudges, type Contest, type ContestLevel } from './contest';
+import { hasJudgeData, judgeForOtherContest } from './judgePanel';
 
 /** True when the contest's active judges have something to copy. */
 export function canCopyJudges(source: Contest): boolean {
-  return source.adjudicators.slice(0, source.details.numJudges).some(hasJudgeData);
+  return activeJudges(source).some(hasJudgeData);
 }
 
 /**
@@ -72,22 +49,6 @@ export function judgeCopyImpact(source: Contest, target: Contest): JudgeCopyImpa
 }
 
 /**
- * One judge as copied to another contest (#263): identity, person-level fields
- * and bookkeeping dates carry over; the per-contest travel answers are blanked and
- * the questionnaire stamp cleared, so the judge's own answers for the target
- * contest still apply when submissions sync.
- */
-function copyJudge(judge: Adjudicator): Adjudicator {
-  return {
-    ...judge,
-    needsHotel: false,
-    hotelNights: { before: false, after: false },
-    requestingFlight: false,
-    questionnaireUpdatedAt: '',
-  };
-}
-
-/**
  * Returns the target with the source's judges and judge count. Critique refers to
  * judges by number, so it survives unless the count changes; then it is cleared,
  * even if locked, because a school could be left with a judge who no longer exists.
@@ -97,7 +58,8 @@ export function copyJudges(source: Contest, target: Contest, now?: string): Cont
     ...target,
     updatedAt: now ?? new Date().toISOString(),
     details: { ...target.details, numJudges: source.details.numJudges },
-    adjudicators: source.adjudicators.map(copyJudge),
+    // #263: identity, person and bookkeeping carry over; travel answers and the stamp do not.
+    adjudicators: source.adjudicators.map(judgeForOtherContest),
     critique: clearsCritique(source, target) ? null : target.critique,
   };
 }

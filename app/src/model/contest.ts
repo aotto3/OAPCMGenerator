@@ -777,6 +777,15 @@ export function defaultAdjudicators(): Adjudicator[] {
   return Array.from({ length: MAX_JUDGES }, blankAdjudicator);
 }
 
+/**
+ * The one definition of who is judging (RFC #267): the first details.numJudges
+ * stored slots. Slots beyond the count keep their data but are inactive. Use this
+ * (or judgePanel's activeJudgeSlots) rather than slicing by the count.
+ */
+export function activeJudges(contest: Contest): readonly Adjudicator[] {
+  return contest.adjudicators.slice(0, contest.details.numJudges);
+}
+
 function blankSchool(position: number): School {
   return {
     name: '',
@@ -1330,16 +1339,6 @@ export function withScheduleOverrides(
   return { ...touch(contest, now), scheduleOverrides: nextScheduleOverrides(contest.scheduleOverrides, change) };
 }
 
-export function withAdjudicator(
-  contest: Contest,
-  index: number,
-  patch: Partial<Adjudicator>,
-  now?: string,
-): Contest {
-  const adjudicators = contest.adjudicators.map((j, i) => (i === index ? { ...j, ...patch } : j));
-  return { ...touch(contest, now), adjudicators };
-}
-
 /* ────────────────────── adjudicator contracting milestones ──────────────────────
  * PRD #67. Three per-judge date fields tracked as a check-off list. The DATE is
  * the record — '' ⇒ not done, a date ⇒ done. This ordered list is the single
@@ -1381,7 +1380,7 @@ export function adjudicatorMilestoneStatus(judge: Adjudicator): AdjudicatorMiles
  * injected `now`'s date ('YYYY-MM-DD'); unchecking clears it back to ''. The stamp
  * comes from `now` (same value that bumps updatedAt) — the model never reads the
  * clock on its own for a document-visible value. Editing an already-stamped date
- * goes through the regular withAdjudicator patch, not this updater.
+ * goes through judgePanel's setJudge, not this updater.
  */
 export function setAdjudicatorMilestone(
   contest: Contest,
@@ -2522,8 +2521,7 @@ export function allDirectorEmails(contest: Contest): string[] {
  * order, trimmed, blanks skipped. Join with ', ' for the copyable box.
  */
 export function allJudgeEmails(contest: Contest): string[] {
-  return contest.adjudicators
-    .slice(0, contest.details.numJudges)
+  return activeJudges(contest)
     .map((j) => j.email.trim())
     .filter(Boolean);
 }
@@ -2568,7 +2566,7 @@ export function sectionCompletion(contest: Contest): Record<SectionId, SectionCo
   ];
   if (identity.contestLevel === 'BiDistrict') detailFields.push(details.bidcContestDate);
 
-  const activeJudges = contest.adjudicators.slice(0, details.numJudges);
+  const judges = activeJudges(contest);
   const schoolFields = contest.schools.flatMap((s) => [
     s.name,
     ...s.directors.flatMap((d) => [d.name, d.email]),
@@ -2578,7 +2576,7 @@ export function sectionCompletion(contest: Contest): Record<SectionId, SectionCo
     cm: filled([cmInfo.name, cmInfo.email, cmInfo.phone, cmInfo.mailingAddress, cmInfo.techContact]),
     identity: filled([identity.contestYear, identity.hostSchoolName, identity.hostVenueName, identity.hostAddress]),
     details: filled(detailFields),
-    adjudicators: filled(activeJudges.flatMap((j) => [j.name, j.mailingAddress, j.email])),
+    adjudicators: filled(judges.flatMap((j) => [j.name, j.mailingAddress, j.email])),
     schools: filled(schoolFields),
     plays: filled(contest.schools.map((s) => s.playTitle)),
   };
