@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type Adjudicator,
+  hotelNightsSummary,
   BUILT_IN_COMPLIANCE_ITEMS,
   BUILT_IN_READINESS_ITEMS,
   READINESS_PHASES,
@@ -176,7 +178,7 @@ describe('createContest', () => {
     });
   });
 
-  it('starts with 3 blank adjudicators (hotel nights default 1)', () => {
+  it('starts with 3 blank adjudicators (no hotel nights chosen)', () => {
     const c = contest();
     expect(c.adjudicators).toHaveLength(3);
     expect(c.adjudicators[0]).toEqual({
@@ -186,12 +188,15 @@ describe('createContest', () => {
       cellPhone: '',
       needsPower: false,
       needsHotel: false,
-      hotelNights: 1,
+      hotelNights: { before: false, after: false },
+      requestingFlight: false,
       dietary: '',
       ttaoContractDate: '',
       paymentPaperworkSentDate: '',
       paymentPaperworkReturnedDate: '',
       bio: '',
+      judgeNotes: '',
+      questionnaireUpdatedAt: '',
     });
   });
 
@@ -254,9 +259,14 @@ describe('update helpers', () => {
   });
 
   it('withAdjudicator patches one judge and leaves the others alone', () => {
-    const c = withAdjudicator(contest(), 1, { name: 'Jane Judge', needsHotel: true, hotelNights: 2 }, LATER);
+    const c = withAdjudicator(
+      contest(),
+      1,
+      { name: 'Jane Judge', needsHotel: true, hotelNights: { before: true, after: false } },
+      LATER,
+    );
     expect(c.adjudicators[1].name).toBe('Jane Judge');
-    expect(c.adjudicators[1].hotelNights).toBe(2);
+    expect(c.adjudicators[1].hotelNights).toEqual({ before: true, after: false });
     expect(c.adjudicators[0].name).toBe('');
     expect(c.adjudicators[2].name).toBe('');
   });
@@ -975,7 +985,94 @@ describe('judge email (PRD #227)', () => {
     expect(migrated.adjudicators.map((j) => j.cellPhone)).toEqual(['', '', '']);
     expect(migrated.adjudicators.map((j) => j.name)).toEqual(['Jane Judge', '', 'Hidden Judge']);
     expect(migrated.adjudicators[0].email).toBe('jane@x.org');
-    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(17);
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('round-trips hotel nights, the fly request, and judge notes', () => {
+    const c = withAdjudicator(contest(), 0, {
+      needsHotel: true,
+      hotelNights: { before: false, after: true },
+      requestingFlight: true,
+      judgeNotes: 'Arriving late Friday',
+    });
+    const j = parseContest(serializeContest(c)).adjudicators[0];
+    expect(j.hotelNights).toEqual({ before: false, after: true });
+    expect(j.requestingFlight).toBe(true);
+    expect(j.judgeNotes).toBe('Arriving late Friday');
+  });
+
+  it('migrates a v17 contest: hotel night counts become specific nights, new fields start blank', () => {
+    let c = withDetails(contest(), { numJudges: 1 });
+    c = withAdjudicator(c, 0, { name: 'One Night', needsHotel: true });
+    c = withAdjudicator(c, 1, { name: 'Two Nights', needsHotel: true });
+    c = withAdjudicator(c, 2, { name: 'No Hotel', needsHotel: false });
+    const { speechwire: _dev, ...rest } = c;
+    const counts = [1, 2, 3];
+    const v17Contest = {
+      ...rest,
+      adjudicators: rest.adjudicators.map(
+        ({ hotelNights: _h, requestingFlight: _f, judgeNotes: _n, questionnaireUpdatedAt: _q, ...j }, i) => ({
+          ...j,
+          hotelNights: counts[i],
+        }),
+      ),
+    };
+    const migrated = parseContest(JSON.stringify({ schemaVersion: 17, contest: v17Contest }));
+    expect(migrated.adjudicators.map((j) => j.hotelNights)).toEqual([
+      { before: true, after: false },
+      { before: true, after: true },
+      { before: false, after: false }, // no hotel needed, so the stored count meant nothing
+    ]);
+    expect(migrated.adjudicators.map((j) => j.requestingFlight)).toEqual([false, false, false]);
+    expect(migrated.adjudicators.map((j) => j.judgeNotes)).toEqual(['', '', '']);
+    expect(migrated.adjudicators.map((j) => j.questionnaireUpdatedAt)).toEqual(['', '', '']);
+    expect(migrated.adjudicators[0].name).toBe('One Night');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('migrates a v17 three-night count to both nights', () => {
+    const c = withAdjudicator(contest(), 0, { needsHotel: true });
+    const { speechwire: _dev, ...rest } = c;
+    const v17Contest = {
+      ...rest,
+      adjudicators: rest.adjudicators.map(
+        ({ hotelNights: _h, requestingFlight: _f, judgeNotes: _n, questionnaireUpdatedAt: _q, ...j }) => ({
+          ...j,
+          hotelNights: 3,
+        }),
+      ),
+    };
+    const migrated = parseContest(JSON.stringify({ schemaVersion: 17, contest: v17Contest }));
+    expect(migrated.adjudicators[0].hotelNights).toEqual({ before: true, after: true });
+  });
+});
+
+describe('hotelNightsSummary', () => {
+  const judge = (patch: Partial<Adjudicator>): Adjudicator => ({ ...contest().adjudicators[0], ...patch });
+
+  it('reads "none" when no hotel is needed, whatever nights are ticked', () => {
+    expect(hotelNightsSummary(judge({ needsHotel: false, hotelNights: { before: true, after: true } }))).toBe('none');
+  });
+
+  it('names one night with a singular count', () => {
+    expect(hotelNightsSummary(judge({ needsHotel: true, hotelNights: { before: true, after: false } }))).toBe(
+      'night before (1 night)',
+    );
+    expect(hotelNightsSummary(judge({ needsHotel: true, hotelNights: { before: false, after: true } }))).toBe(
+      'night after (1 night)',
+    );
+  });
+
+  it('names both nights with a plural count', () => {
+    expect(hotelNightsSummary(judge({ needsHotel: true, hotelNights: { before: true, after: true } }))).toBe(
+      'night before, night after (2 nights)',
+    );
+  });
+
+  it('flags a hotel need with no nights chosen yet', () => {
+    expect(hotelNightsSummary(judge({ needsHotel: true, hotelNights: { before: false, after: false } }))).toBe(
+      'nights not chosen yet',
+    );
   });
 });
 
@@ -983,7 +1080,7 @@ describe('serialize / parse', () => {
   it('round-trips a fully filled contest exactly (minus device-only fields)', () => {
     let c = contest({ district: '20', hostSchoolName: 'Friendswood High School' });
     c = withDetails(c, { contestDate: '2026-04-10', entryFee: '50' });
-    c = withAdjudicator(c, 0, { name: 'Jane Judge', needsHotel: true, hotelNights: 2 });
+    c = withAdjudicator(c, 0, { name: 'Jane Judge', needsHotel: true, hotelNights: { before: true, after: true } });
     c = withSchool(c, 0, { name: 'Westlake HS', playTitle: 'Our Town' });
     c = addDirector(c, 0);
     c = setDocumentSelected(c, 'timer', true);

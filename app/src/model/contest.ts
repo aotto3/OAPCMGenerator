@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 17;
+export const CONTEST_SCHEMA_VERSION = 18;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -35,7 +35,6 @@ export const DEFAULT_SCHOOLS = 6;
 export const MAX_JUDGES = 3;
 export const DEFAULT_JUDGES = 3;
 export const REHEARSAL_LENGTH_OPTIONS = [45, 60, 90, 120] as const;
-export const HOTEL_NIGHTS_OPTIONS = [1, 2, 3] as const;
 
 /** Contest Identity — the "Upon Appointment" fields (v12 sec-t1). */
 export interface ContestIdentity {
@@ -125,8 +124,15 @@ export interface Adjudicator {
   cellPhone: string;
   needsPower: boolean;
   needsHotel: boolean;
-  /** 1–3; only meaningful when needsHotel. */
-  hotelNights: number;
+  /**
+   * Which nights the judge needs a room (PRD #252); only meaningful when needsHotel.
+   * Every contest is one day, so there are two: the night before and the night after.
+   * A judge on back-to-back Zones books the night between as Zone 1's after and
+   * Zone 2's before.
+   */
+  hotelNights: HotelNights;
+  /** The judge is requesting to fly to this contest. CM-only (Info Sheet). */
+  requestingFlight: boolean;
   /** Dietary / other requests, free text. */
   dietary: string;
   /* ── contracting milestones (PRD #67) ──
@@ -142,6 +148,32 @@ export interface Adjudicator {
   paymentPaperworkReturnedDate: string;
   /** Optional free-text bio printed on the Audience Program front matter (PRD #68). */
   bio: string;
+  /**
+   * CM-only free-text notes (PRD #252), e.g. the questionnaire's "anything else".
+   * Printed only on the Adjudicator Info Sheet, never on director-facing output.
+   */
+  judgeNotes: string;
+  /** ISO timestamp of the questionnaire submission last applied to this row, or ''. */
+  questionnaireUpdatedAt: string;
+}
+
+export interface HotelNights {
+  before: boolean;
+  after: boolean;
+}
+
+/**
+ * The one wording of a judge's hotel need, shared by the Info Sheet and the Judge
+ * Needs email: 'none', 'nights not chosen yet', or the nights plus a count, e.g.
+ * 'night before, night after (2 nights)'.
+ */
+export function hotelNightsSummary(judge: Adjudicator): string {
+  if (!judge.needsHotel) return 'none';
+  const nights: string[] = [];
+  if (judge.hotelNights.before) nights.push('night before');
+  if (judge.hotelNights.after) nights.push('night after');
+  if (nights.length === 0) return 'nights not chosen yet';
+  return `${nights.join(', ')} (${nights.length} night${nights.length === 1 ? '' : 's'})`;
 }
 
 export interface Director {
@@ -729,12 +761,15 @@ function blankAdjudicator(): Adjudicator {
     cellPhone: '',
     needsPower: false,
     needsHotel: false,
-    hotelNights: 1,
+    hotelNights: { before: false, after: false },
+    requestingFlight: false,
     dietary: '',
     ttaoContractDate: '',
     paymentPaperworkSentDate: '',
     paymentPaperworkReturnedDate: '',
     bio: '',
+    judgeNotes: '',
+    questionnaireUpdatedAt: '',
   };
 }
 
@@ -2757,6 +2792,26 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
     ...raw,
     adjudicators: Array.isArray(raw.adjudicators)
       ? (raw.adjudicators as Record<string, unknown>[]).map((j) => ({ ...j, cellPhone: '' }))
+      : raw.adjudicators,
+  }),
+  // v17 predates the judge questionnaire (PRD #252): the 1-3 hotel night count
+  // becomes specific nights (1 => before; 2 or 3 => before and after, since a
+  // contest is one day), and every judge slot gains a blank fly request, notes,
+  // and questionnaire stamp. A count without a hotel need meant nothing.
+  17: (raw) => ({
+    ...raw,
+    adjudicators: Array.isArray(raw.adjudicators)
+      ? (raw.adjudicators as Record<string, unknown>[]).map((j) => {
+          const count = typeof j.hotelNights === 'number' ? j.hotelNights : 1;
+          const hotel = j.needsHotel === true;
+          return {
+            ...j,
+            hotelNights: { before: hotel, after: hotel && count >= 2 },
+            requestingFlight: false,
+            judgeNotes: '',
+            questionnaireUpdatedAt: '',
+          };
+        })
       : raw.adjudicators,
   }),
 };

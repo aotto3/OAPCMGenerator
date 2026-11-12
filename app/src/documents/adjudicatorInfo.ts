@@ -4,7 +4,8 @@
  * Ported from v12 genAdjudicatorInfo (_Templates/OAP Contest Setup.html, ~lines
  * 2149–2179). A plain (unstyled) label/value grid: contest details, the judge
  * panel (name, script-mailing address, email and cell, with per-judge
- * power/hotel/dietary notes, bio and contracting status), and CM contact block.
+ * power/hotel/fly/dietary notes, bio, CM-only judge notes and contracting
+ * status), and CM contact block.
  * The sheet is the CM's full record of the panel, so it carries the CM-only
  * email and cell columns too. Reproduces v12's fallback strings exactly ('TBA'
  * judge names, 'Address TBA' addresses, the host/venue/address placeholders).
@@ -12,7 +13,7 @@
  * Pure: no DOM. Synchronous — XLSX.write packs the workbook directly.
  */
 
-import { adjudicatorMilestoneStatus, contestTitleLong, type Contest } from '../model/contest';
+import { adjudicatorMilestoneStatus, contestTitleLong, hotelNightsSummary, type Contest } from '../model/contest';
 import { fmtDate } from './format';
 import { docCmInfo } from './docVars';
 import { makeSheet } from './xlsx';
@@ -33,10 +34,12 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
     ]);
     const extras: string[] = [];
     if (j && j.needsPower) extras.push('Needs power at table');
-    if (j && j.needsHotel) extras.push('Hotel: ' + j.hotelNights + ' night(s)');
+    if (j && j.needsHotel) extras.push('Hotel: ' + hotelNightsSummary(j));
+    if (j && j.requestingFlight) extras.push('Requesting to fly');
     if (j && j.dietary) extras.push('Dietary/Other: ' + j.dietary);
     if (extras.length) panelRows.push(['', extras.join('  |  '), '']);
     if (j && j.bio.trim()) panelRows.push(['', 'Bio: ' + j.bio.trim(), '']);
+    if (j && j.judgeNotes.trim()) panelRows.push(['', 'Notes: ' + j.judgeNotes.trim(), '']);
     // Contracting milestones (PRD #67), a snapshot as of generation: a completed
     // one shows a check + its stored date, a pending one shows 'pending'. Renders
     // from the shared derivation so labels/order match the Judges UI exactly.

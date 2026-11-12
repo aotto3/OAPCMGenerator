@@ -142,12 +142,18 @@ describe('judgeNeedsEmail', () => {
     const c = withAdjudicator(
       fixtureContest(),
       0,
-      { name: 'Dr. Jane Judge', needsHotel: true, hotelNights: 2, dietary: 'vegetarian', needsPower: true },
+      {
+        name: 'Dr. Jane Judge',
+        needsHotel: true,
+        hotelNights: { before: true, after: true },
+        dietary: 'vegetarian',
+        needsPower: true,
+      },
       FIXTURE_NOW,
     );
     const { body } = judgeNeedsEmail(c);
     expect(body).toContain('Dr. Jane Judge:');
-    expect(body).toContain('• Hotel: 2 nights');
+    expect(body).toContain('• Hotel: night before, night after (2 nights)');
     expect(body).toContain('• Food/Dietary: vegetarian');
     expect(body).toContain('• Power: yes — power needed at the judge table');
   });
@@ -176,13 +182,13 @@ describe('judgeNeedsEmail', () => {
     expect(judgeNeedsEmail(c).body).toContain('Judge 1:');
   });
 
-  it('uses a singular "night" for a one-night hotel stay', () => {
+  it('names the single night for a one-night hotel stay', () => {
     const c = withDetails(
-      withAdjudicator(fixtureContest(), 0, { needsHotel: true, hotelNights: 1 }, FIXTURE_NOW),
+      withAdjudicator(fixtureContest(), 0, { needsHotel: true, hotelNights: { before: false, after: true } }, FIXTURE_NOW),
       { numJudges: 1 },
       FIXTURE_NOW,
     );
-    expect(judgeNeedsEmail(c).body).toContain('• Hotel: 1 night');
+    expect(judgeNeedsEmail(c).body).toContain('• Hotel: night after (1 night)');
   });
 });
 

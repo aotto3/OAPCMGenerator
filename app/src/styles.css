@@ -377,23 +377,20 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .judge-grid {
   display: grid; gap: var(--space-2) var(--space-3);
   grid-template-columns: 1fr;
-  grid-template-areas: "name" "addr" "email" "cell" "diet" "needs" "bio" "check";
+  grid-template-areas: "name" "addr" "email" "cell" "diet" "needs" "bio" "notes" "check";
 }
 .judge-grid > div { min-width: 0; }
 .jg-name { grid-area: name; } .jg-addr { grid-area: addr; } .jg-email { grid-area: email; }
 .jg-cell { grid-area: cell; } .jg-diet { grid-area: diet; } .jg-needs { grid-area: needs; }
-.jg-bio { grid-area: bio; } .jg-check { grid-area: check; }
-.jg-bio .field textarea { min-height: 3.6em; }
+.jg-bio { grid-area: bio; } .jg-notes { grid-area: notes; } .jg-check { grid-area: check; }
+.jg-bio .field textarea, .jg-notes .field textarea { min-height: 3.6em; }
 .jg-needs { display: flex; flex-direction: column; justify-content: flex-end; gap: var(--space-2); padding-bottom: 6px; }
 .judge-hotel { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.judge-hotel-nights {
-  font: inherit; font-size: var(--fs-sm); padding: 2px 6px;
-  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
-}
+.judge-hotel-nights { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--fs-sm); }
 @container (min-width: 560px) {
   .judge-grid {
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: "name addr" "email cell" "diet needs" "bio check";
+    grid-template-areas: "name addr" "email cell" "diet needs" "bio check" "notes check";
   }
 }
 @container (min-width: 820px) {
@@ -402,7 +399,8 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
     grid-template-areas:
       "name addr addr cell"
       "email diet diet needs"
-      "bio bio check check";
+      "bio bio check check"
+      "notes notes check check";
   }
 }
 .company-block:first-of-type { border-top: none; padding-top: 0; margin-top: var(--space-2); }

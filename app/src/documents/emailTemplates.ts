@@ -23,7 +23,7 @@
  * "critique in the judges email" clause — decided out).
  */
 
-import { contestFullName, type Contest } from '../model/contest';
+import { contestFullName, hotelNightsSummary, type Contest } from '../model/contest';
 import { fmtTime, parseTime } from '../model/schedule';
 import { schoolLabel, tabulationFill } from '../model/tabulation';
 import { STATE_THEATRE_DIRECTOR_EMAIL, tabulationPlainText, tabulationReport } from '../model/tabulationReport';
@@ -186,7 +186,7 @@ export function judgeNeedsEmail(contest: Contest): EmailDraft {
   const active = contest.adjudicators.slice(0, contest.details.numJudges);
   const blocks = active.map((j, i) => {
     const name = j.name.trim() || `Judge ${i + 1}`;
-    const hotel = j.needsHotel ? `${j.hotelNights} night${j.hotelNights === 1 ? '' : 's'}` : 'none';
+    const hotel = hotelNightsSummary(j);
     const food = j.dietary.trim() || 'none';
     const power = j.needsPower ? 'yes — power needed at the judge table' : 'none';
     return name + ':\n' + '  • Hotel: ' + hotel + '\n' + '  • Food/Dietary: ' + food + '\n' + '  • Power: ' + power;

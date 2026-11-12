@@ -1,5 +1,4 @@
 import {
-  HOTEL_NIGHTS_OPTIONS,
   adjudicatorMilestoneStatus,
   setAdjudicatorMilestone,
   withAdjudicator,
@@ -124,20 +123,34 @@ function JudgeFields({
               🏨 Needs a hotel
             </label>
             {judge.needsHotel && (
-              <select
-                className="judge-hotel-nights"
-                aria-label="Hotel nights"
-                value={String(judge.hotelNights)}
-                onChange={(e) => edit({ hotelNights: Number(e.target.value) })}
-              >
-                {HOTEL_NIGHTS_OPTIONS.map((n) => (
-                  <option key={n} value={String(n)}>
-                    {n} night{n === 1 ? '' : 's'}
-                  </option>
-                ))}
-              </select>
+              <div className="judge-hotel-nights" role="group" aria-label="Hotel nights">
+                <label className="check-option">
+                  <input
+                    type="checkbox"
+                    checked={judge.hotelNights.before}
+                    onChange={(e) => edit({ hotelNights: { ...judge.hotelNights, before: e.target.checked } })}
+                  />
+                  Night before
+                </label>
+                <label className="check-option">
+                  <input
+                    type="checkbox"
+                    checked={judge.hotelNights.after}
+                    onChange={(e) => edit({ hotelNights: { ...judge.hotelNights, after: e.target.checked } })}
+                  />
+                  Night after
+                </label>
+              </div>
             )}
           </div>
+          <label className="check-option">
+            <input
+              type="checkbox"
+              checked={judge.requestingFlight}
+              onChange={(e) => edit({ requestingFlight: e.target.checked })}
+            />
+            ✈️ Requesting to fly
+          </label>
         </div>
         <div className="jg-bio">
           <TextAreaField
@@ -145,6 +158,14 @@ function JudgeFields({
             placeholder="A short adjudicator bio for the printed program. Leave blank to omit."
             value={judge.bio}
             onChange={(v) => edit({ bio: v })}
+          />
+        </div>
+        <div className="jg-notes">
+          <TextAreaField
+            label="Judge notes (only you see these)"
+            placeholder="Anything else to remember about this judge. Prints on the Adjudicator Info Sheet only."
+            value={judge.judgeNotes}
+            onChange={(v) => edit({ judgeNotes: v })}
           />
         </div>
         <div className="jg-check judge-milestones">

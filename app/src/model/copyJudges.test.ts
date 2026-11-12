@@ -30,12 +30,15 @@ const FULL_JUDGE: Adjudicator = {
   cellPhone: '512-555-0100',
   needsPower: true,
   needsHotel: true,
-  hotelNights: 2,
+  hotelNights: { before: true, after: true },
+  requestingFlight: true,
   dietary: 'vegetarian',
   ttaoContractDate: '2026-01-10',
   paymentPaperworkSentDate: '2026-01-11',
   paymentPaperworkReturnedDate: '2026-01-12',
   bio: 'A longtime adjudicator.',
+  judgeNotes: 'Prefers aisle seats',
+  questionnaireUpdatedAt: '2026-01-09T12:00:00.000Z',
 };
 
 /** A source zone with a full Judge 1, a named Judge 2, and an empty Judge 3. */
@@ -141,6 +144,8 @@ describe('judgeCopyImpact', () => {
     ['bio', { bio: 'Bio' }],
     ['power need', { needsPower: true }],
     ['hotel need', { needsHotel: true }],
+    ['fly request', { requestingFlight: true }],
+    ['judge notes', { judgeNotes: 'Call first' }],
     ['checklist date', { ttaoContractDate: '2026-01-10' }],
   ])('treats an unnamed judge with only a %s as data to confirm', (_field, patch) => {
     const target = withAdjudicator(zone('target', '2'), 0, patch, NOW);
@@ -150,8 +155,8 @@ describe('judgeCopyImpact', () => {
     expect(impact.needsConfirmation).toBe(true);
   });
 
-  it('ignores whitespace and a hotel-night value with no hotel need', () => {
-    const target = withAdjudicator(zone('target', '2'), 0, { name: '   ', hotelNights: 3 }, NOW);
+  it('ignores whitespace and hotel nights with no hotel need', () => {
+    const target = withAdjudicator(zone('target', '2'), 0, { name: '   ', hotelNights: { before: true, after: true } }, NOW);
     expect(judgeCopyImpact(sourceZone(), target).targetHasJudgeData).toBe(false);
   });
 
