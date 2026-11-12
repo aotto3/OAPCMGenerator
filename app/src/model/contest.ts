@@ -1256,15 +1256,13 @@ export function withDetails(contest: Contest, patch: Partial<ContestDetails>, no
       if (stillAuto(details.lightCueDeadlineDate)) details.lightCueDeadlineDate = auto;
     }
   }
-  // A critique-format flip rebuilds the transition/critique rows, so manual
-  // breaks are cleared to a clean slate (PRD #179). Other detail edits — judge
-  // count, the anchor times — keep them (they only shift, not restructure).
-  const clearsBreaks =
-    'critiqueFormat' in patch && patch.critiqueFormat !== contest.details.critiqueFormat;
+  // A restructuring edit (critique-format flip) clears manual schedule edits to
+  // a clean slate; see scheduleChangeClearsOverrides for the one rule.
+  const clears = scheduleChangeClearsOverrides(contest, patch);
   return {
     ...touch(contest, now),
     details,
-    ...(clearsBreaks ? { scheduleOverrides: defaultScheduleOverrides() } : {}),
+    ...(clears ? { scheduleOverrides: nextScheduleOverrides(contest.scheduleOverrides, null) } : {}),
   };
 }
 
@@ -1276,7 +1274,63 @@ export function withSpeechwire(contest: Contest, patch: Partial<SpeechwireCreden
  * PRD #179. Immutable updaters over the inserted-gap list. `anchor` is a stable
  * row key (schedule.ts scheduleEventKey); the engine ignores an orphaned anchor,
  * so these never need to validate against a computed timeline.
+ *
+ * Every change to `scheduleOverrides` goes through nextScheduleOverrides (one
+ * writer that keeps the fields it is not changing, so a new override field can
+ * never be dropped by a gap edit again, #263), and the "which edits restructure
+ * the timeline and clear overrides" rule lives only in
+ * scheduleChangeClearsOverrides. Both are used by scheduleEdit.ts (RFC #264),
+ * which owns the meaning of a schedule edit; the updaters below remain until
+ * slice C2 (#266) moves the UI onto that module.
  */
+
+/** A change that may restructure the timeline: a details patch and/or a new school count. */
+export type ScheduleRestructure = Partial<ContestDetails> & { numSchools?: number };
+
+/** The school count setNumSchools would produce for a requested count (clamped, rounded). */
+function clampSchoolCount(count: number): number {
+  return Math.min(MAX_SCHOOLS, Math.max(MIN_SCHOOLS, Math.round(count)));
+}
+
+/**
+ * THE rule for which edits clear manual schedule overrides (PRD #179): changing
+ * the school count or flipping the critique format rebuilds the timeline's rows,
+ * so overrides are cleared to a clean slate. Other detail edits (judge count,
+ * the anchor times) only shift rows and keep them. withDetails, setNumSchools
+ * and scheduleEdit.scheduleImpactOf all ask this one function.
+ */
+export function scheduleChangeClearsOverrides(contest: Contest, change: ScheduleRestructure): boolean {
+  if ('critiqueFormat' in change && change.critiqueFormat !== contest.details.critiqueFormat) return true;
+  if (change.numSchools !== undefined && clampSchoolCount(change.numSchools) !== contest.schools.length) return true;
+  return false;
+}
+
+/**
+ * The single writer for `scheduleOverrides`. `null` clears everything to a blank
+ * block (the restructure case). Otherwise the fields in `change` replace the
+ * current ones and every other field is kept; a field given as `undefined` is
+ * removed (e.g. reverting the arrival override to derived).
+ */
+export function nextScheduleOverrides(
+  current: ScheduleOverrides,
+  change: Partial<ScheduleOverrides> | null,
+): ScheduleOverrides {
+  if (change === null) return defaultScheduleOverrides();
+  const next: ScheduleOverrides = { ...current, ...change };
+  for (const key of Object.keys(change) as (keyof ScheduleOverrides)[]) {
+    if (change[key] === undefined) delete next[key];
+  }
+  return next;
+}
+
+/** Applies one overrides change to a contest, bumping updatedAt. */
+export function withScheduleOverrides(
+  contest: Contest,
+  change: Partial<ScheduleOverrides> | null,
+  now?: string,
+): Contest {
+  return { ...touch(contest, now), scheduleOverrides: nextScheduleOverrides(contest.scheduleOverrides, change) };
+}
 
 /**
  * Inserts a break/gap after the row identified by `anchor`. `minutes` is its
@@ -1290,10 +1344,7 @@ export function addBreak(
   now?: string,
 ): Contest {
   const gap: InsertedGap = { id: crypto.randomUUID(), anchor, minutes, label };
-  return {
-    ...touch(contest, now),
-    scheduleOverrides: { ...contest.scheduleOverrides, gaps: [...contest.scheduleOverrides.gaps, gap] },
-  };
+  return withScheduleOverrides(contest, { gaps: [...contest.scheduleOverrides.gaps, gap] }, now);
 }
 
 /**
@@ -1301,17 +1352,14 @@ export function addBreak(
  * (PRD #192). `null` reverts to the derived value (one hour before rehearsals).
  */
 export function setArrival(contest: Contest, minutes: number | null, now?: string): Contest {
-  const scheduleOverrides = { ...contest.scheduleOverrides };
-  if (minutes == null) delete scheduleOverrides.arrival;
-  else scheduleOverrides.arrival = minutes;
-  return { ...touch(contest, now), scheduleOverrides };
+  return withScheduleOverrides(contest, { arrival: minutes ?? undefined }, now);
 }
 
 /** Removes the inserted gap with the given id. Unknown id ⇒ no-op (returns as-is). */
 export function removeBreak(contest: Contest, id: string, now?: string): Contest {
   const gaps = contest.scheduleOverrides.gaps.filter((g) => g.id !== id);
   if (gaps.length === contest.scheduleOverrides.gaps.length) return contest;
-  return { ...touch(contest, now), scheduleOverrides: { ...contest.scheduleOverrides, gaps } };
+  return withScheduleOverrides(contest, { gaps }, now);
 }
 
 /**
@@ -1332,7 +1380,7 @@ export function updateBreak(
     return { ...g, ...patch };
   });
   if (!changed) return contest;
-  return { ...touch(contest, now), scheduleOverrides: { ...contest.scheduleOverrides, gaps } };
+  return withScheduleOverrides(contest, { gaps }, now);
 }
 
 export function withAdjudicator(
@@ -1838,8 +1886,9 @@ export function companyCounts(school: School): CompanyCounts {
  * blank ones with performanceOrder = position.
  */
 export function setNumSchools(contest: Contest, count: number, now?: string): Contest {
-  const n = Math.min(MAX_SCHOOLS, Math.max(MIN_SCHOOLS, Math.round(count)));
-  if (n === contest.schools.length) return touch(contest, now);
+  // A count change restructures the timeline (see scheduleChangeClearsOverrides).
+  if (!scheduleChangeClearsOverrides(contest, { numSchools: count })) return touch(contest, now);
+  const n = clampSchoolCount(count);
   const schools = contest.schools.slice(0, n);
   while (schools.length < n) schools.push(blankSchool(schools.length + 1));
   // Changing the school count restructures the timeline (rows appear/disappear),
@@ -1851,7 +1900,7 @@ export function setNumSchools(contest: Contest, count: number, now?: string): Co
   return {
     ...touch(contest, now),
     schools,
-    scheduleOverrides: defaultScheduleOverrides(),
+    scheduleOverrides: nextScheduleOverrides(contest.scheduleOverrides, null),
     tabulation: { ...contest.tabulation, entries },
   };
 }
