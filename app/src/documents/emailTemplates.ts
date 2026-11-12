@@ -25,6 +25,7 @@
 
 import { contestFullName, type Contest } from '../model/contest';
 import { fmtTime, parseTime } from '../model/schedule';
+import { schoolLabel, tabulationFill } from '../model/tabulation';
 import { STATE_THEATRE_DIRECTOR_EMAIL, tabulationPlainText, tabulationReport } from '../model/tabulationReport';
 import { docSchools } from './docVars';
 import { fmtDate, fmtDateShort } from './format';
@@ -256,8 +257,9 @@ export interface TabulationDraft extends EmailDraft {
 
 /**
  * Tabulation to State Office (PRD #236): UIL's results page says to email the
- * tabulation to the State Theatre Director immediately. The body is UIL's
- * plain-text report; the first line reminds the CM to attach Panel
+ * tabulation to the State Theatre Director immediately. The body opens with the
+ * advancing plays and their directors' emails, then UIL's plain-text report.
+ * A first line reminds the CM to attach Panel
  * Tabulation.pdf, from the documents ZIP (the composer) or from Downloads (the
  * Gmail button, which saves the PDF as it opens Gmail). Null until every ballot
  * is valid, so it is only offered once there are results.
@@ -267,6 +269,12 @@ export function tabulationEmail(contest: Contest, pdfFrom: 'zip' | 'downloads' =
   if (!report) return null;
   const cn = contestFullName(contest.identity) || '[Contest Name]';
   const cmn = contest.cmInfo.name || '[CM Name]';
+  // The advancing plays are the tabulation's top places (3, or 2 at Region),
+  // each followed by its directors' emails.
+  const advancing = (tabulationFill(contest)?.advancing ?? []).map((i) => {
+    const emails = contest.schools[i].directors.map((d) => d.email.trim()).filter(Boolean);
+    return schoolLabel(contest, i) + '\n' + (emails.length > 0 ? emails.join(', ') : '[Director email]');
+  });
   return {
     to: [STATE_THEATRE_DIRECTOR_EMAIL],
     subject: cn + ' - Panel Tabulation',
@@ -274,7 +282,9 @@ export function tabulationEmail(contest: Contest, pdfFrom: 'zip' | 'downloads' =
       '[Before sending: attach Panel Tabulation.pdf from ' +
       (pdfFrom === 'zip' ? 'the documents ZIP' : 'your Downloads folder') +
       ', then delete this line.]\n\n' +
-      'Attached is the panel tabulation for the ' + cn + '.\n\n' +
+      'Attached is the panel tabulation for the ' + cn + '.\n' +
+      'The advancing plays are:\n' +
+      advancing.join('\n\n') + '\n\n' +
       tabulationPlainText(report) + '\n\n' +
       cmn + '\nContest Manager',
   };

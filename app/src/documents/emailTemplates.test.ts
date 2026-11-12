@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { setTabulationRank, withAdjudicator, withCmInfo, withDetails, withIdentity } from '../model/contest';
+import { addDirector, setTabulationRank, withAdjudicator, withCmInfo, withDetails, withDirector, withIdentity } from '../model/contest';
 import { tabulationPlainText, tabulationReport } from '../model/tabulationReport';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import {
@@ -262,6 +262,26 @@ describe('tabulationEmail (PRD #236)', () => {
     expect(body).toContain(tabulationPlainText(tabulationReport(c)!));
     expect(body).toContain('Attached is the panel tabulation for the ' + CONTEST_NAME + '.');
     expect(body.endsWith('Contest Manager')).toBe(true);
+  });
+
+  it('opens with the advancing plays and their directors\' emails, in place order', () => {
+    const { body } = tabulationEmail(tabulated())!;
+    expect(body).toContain(
+      'Attached is the panel tabulation for the ' + CONTEST_NAME + '.\n' +
+        'The advancing plays are:\n' +
+        'Bravo HS - The Crucible\ndir2@example.com\n\n' +
+        'Alpha HS - Romeo & Juliet\ndir1@example.com\n\n' +
+        'Charlie HS - Antigone\ndir3@example.com\n\n' +
+        'UIL One-Act Play Panel Tabulation\n',
+    );
+  });
+
+  it('lists every director email for a school and marks a missing one', () => {
+    let c = withDirector(addDirector(tabulated(), 1), 1, 1, { name: 'Asst', email: 'asst@example.com' }, FIXTURE_NOW);
+    c = withDirector(c, 2, 0, { email: '' }, FIXTURE_NOW);
+    const { body } = tabulationEmail(c)!;
+    expect(body).toContain('Bravo HS - The Crucible\ndir2@example.com, asst@example.com\n\n');
+    expect(body).toContain('Charlie HS - Antigone\n[Director email]\n\n');
   });
 
   it('points the attach reminder at Downloads for the Gmail button', () => {

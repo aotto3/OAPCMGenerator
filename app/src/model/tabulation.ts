@@ -77,7 +77,7 @@ export function cellIssueMessage(issue: TabulationCellIssue, rankedCount: number
 }
 
 /** The display label for a school: "School - Play", or just the school when no play is entered. */
-function schoolLabel(contest: Contest, schoolIndex: number): string {
+export function schoolLabel(contest: Contest, schoolIndex: number): string {
   const school = contest.schools[schoolIndex];
   const name = school.name.trim() || `School ${schoolIndex + 1}`;
   const play = school.playTitle.trim();
