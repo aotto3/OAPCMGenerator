@@ -1,20 +1,16 @@
 /**
  * Reproductions of two data-loss bugs in the sync layer that were inferred by
  * reading code (#263, part of #262). Both run against the real store on
- * fake-indexeddb with the real browserSyncStore and a fake server, the same way
- * the app wires them in browserSync.ts.
+ * fake-indexeddb with the real library-backed sync store and a fake server, the
+ * same way the app wires them in browserSync.ts.
  */
+// The globals (IDBRequest and friends) for idb; each test still gets its own factory.
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it } from 'vitest';
-import {
-  __resetStoreForTests,
-  deleteContest,
-  getContest,
-  onContestChanged,
-  saveContest,
-} from './contestStore';
+import { IDBFactory } from 'fake-indexeddb';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createContestLibrary, type ContestLibrary } from './contestLibrary';
 import { createSyncEngine, type SyncEngine } from './syncEngine';
-import { browserSyncStore } from './syncStore';
+import { createLibrarySyncStore } from './syncStore';
 import { SyncHttpError, SyncNetworkError, type RemoteContest, type SyncClient } from './syncClient';
 import { createContest, withDetails, withIdentity, type Contest } from '../model/contest';
 import { serializeSyncBundle } from '../model/syncBundle';
@@ -24,8 +20,9 @@ const T1 = '2026-07-06T12:00:00.000Z';
 const T2 = '2026-07-07T12:00:00.000Z';
 const T3 = '2026-07-08T12:00:00.000Z';
 
-afterEach(async () => {
-  await __resetStoreForTests();
+let library: ContestLibrary;
+beforeEach(() => {
+  library = createContestLibrary({ idb: new IDBFactory(), clock: () => T0 });
 });
 
 /** A fake server holding contests in memory; `reachable` toggles network failure. */
@@ -89,17 +86,19 @@ function manualScheduler() {
   };
 }
 
-/** Builds an engine wired to the store's change notifier, as startBrowserSync does. */
+/** Builds an engine wired to the library's events, as startBrowserSync does. */
 function wireEngine(client: SyncClient, scheduler: ReturnType<typeof manualScheduler>) {
   const engine: SyncEngine = createSyncEngine({
     client,
-    store: browserSyncStore,
+    store: createLibrarySyncStore(library),
     isOnline: () => true,
     schedule: scheduler.schedule,
     flushDelayMs: 0,
     backoff: () => 0,
   });
-  const off = onContestChanged((id, type) => engine.markDirty(id, type));
+  const off = library.subscribe((event) => {
+    if (event.origin === 'device') engine.markDirty(event.id, event.type === 'removed' ? 'delete' : 'save');
+  });
   engine.start();
   return {
     engine,
@@ -125,7 +124,7 @@ describe('sync data-loss reproductions (#263)', () => {
     const server = fakeServer();
     const contest = sampleContest();
     server.put(contest);
-    await saveContest(contest);
+    await library.save(contest);
 
     // Session 1: the server goes away, then the CM deletes the contest. The
     // delete push fails and stays queued in the engine's memory.
@@ -133,7 +132,7 @@ describe('sync data-loss reproductions (#263)', () => {
     const session1 = wireEngine(server.client, scheduler1);
     await scheduler1.drain(1); // the start-up reconcile (nothing to do)
     server.state.reachable = false;
-    await deleteContest(contest.id);
+    await library.remove(contest.id);
     await scheduler1.drain(3);
     expect(server.removed).toEqual([]);
     session1.dispose();
@@ -145,7 +144,7 @@ describe('sync data-loss reproductions (#263)', () => {
     await scheduler2.drain();
     session2.dispose();
 
-    expect(await getContest(contest.id)).toBeUndefined();
+    expect(await library.read(contest.id)).toBeUndefined();
     expect(server.records.has(contest.id)).toBe(false);
   });
 
@@ -155,10 +154,10 @@ describe('sync data-loss reproductions (#263)', () => {
   it.fails('a pull of the open contest is not overwritten by the next autosave', async () => {
     const server = fakeServer();
     const contest = sampleContest();
-    await saveContest(contest);
+    await library.save(contest);
 
     // The Workspace loads the contest into memory and holds it.
-    const open = (await getContest(contest.id))!;
+    const open = (await library.read(contest.id))!;
 
     // Another device renames the host school; this device pulls it into IndexedDB.
     const remote = withIdentity(contest, { hostSchoolName: 'Remote Edit HS' }, T2);
@@ -166,14 +165,14 @@ describe('sync data-loss reproductions (#263)', () => {
     const scheduler = manualScheduler();
     const session = wireEngine(server.client, scheduler);
     await scheduler.drain();
-    expect((await getContest(contest.id))?.identity.hostSchoolName).toBe('Remote Edit HS');
+    expect((await library.read(contest.id))?.identity.hostSchoolName).toBe('Remote Edit HS');
 
     // The CM keeps typing in the stale in-memory copy; useAutosave saves it.
-    await saveContest(withDetails(open, { contestDate: '2026-03-14' }, T3));
+    await library.save(withDetails(open, { contestDate: '2026-03-14' }, T3));
     await scheduler.drain();
     session.dispose();
 
-    const stored = (await getContest(contest.id))!;
+    const stored = (await library.read(contest.id))!;
     expect(stored.details.contestDate).toBe('2026-03-14');
     expect(stored.identity.hostSchoolName).toBe('Remote Edit HS');
   });

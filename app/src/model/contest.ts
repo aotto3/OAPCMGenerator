@@ -14,7 +14,7 @@
  * Device-only fields: `speechwire` never leaves the device. serializeContest
  * strips it by construction, so the sync layer and the contest-file export
  * cannot leak credentials even by accident. The local store persists it
- * separately (see storage/contestStore.ts).
+ * separately (see storage/contestLibrary.ts).
  */
 
 export const CONTEST_SCHEMA_VERSION = 18;
@@ -2849,6 +2849,6 @@ export function parseContest(json: string): Contest {
     throw new Error('Contest record is malformed.');
   }
   // Device-only fields are never in the payload; hydrate with blanks. The
-  // local store re-attaches this device's values (storage/contestStore.ts).
+  // local store re-attaches this device's values (storage/contestLibrary.ts).
   return { ...c, speechwire: defaultSpeechwire() };
 }

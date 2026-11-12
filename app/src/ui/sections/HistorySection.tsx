@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Contest } from '../../model/contest';
 import type { Checkpoint } from '../../model/checkpoint';
-import {
-  createCheckpoint,
-  deleteCheckpoint,
-  listCheckpoints,
-  restoreCheckpoint,
-  updateCheckpointNote,
-} from '../../storage/checkpointStore';
+import { contestLibrary } from '../../storage/browserLibrary';
 import { relativeTime } from '../relativeTime';
 import { Section } from './Section';
 
@@ -15,7 +9,7 @@ import { Section } from './Section';
  * Version History (PRD user stories 10 & 11) — the 2.0 replacement for v12's
  * browser "snapshots" panel. Save a named checkpoint with an optional note, see
  * the per-contest history with relative times, and restore one (after a confirm)
- * to roll back. Restore is undoable: restoreCheckpoint auto-checkpoints the
+ * to roll back. Restore is undoable: the library's restore auto-checkpoints the
  * current state first, so the pre-restore working copy is always recoverable.
  *
  * This is the one workspace panel that owns async storage state (the checkpoint
@@ -38,7 +32,7 @@ export function HistorySection({
   const contestId = contest.id;
 
   async function reload() {
-    setCheckpoints(await listCheckpoints(contestId));
+    setCheckpoints(await contestLibrary().checkpoints.list(contestId));
   }
 
   // Reload only when switching contests; checkpoint edits reload explicitly.
@@ -53,7 +47,7 @@ export function HistorySection({
       return;
     }
     setError(null);
-    await createCheckpoint(contest, trimmed, note);
+    await contestLibrary().checkpoints.save(contest, trimmed, note);
     setName('');
     setNote('');
     await reload();
@@ -68,7 +62,7 @@ export function HistorySection({
     ) {
       return;
     }
-    const restored = await restoreCheckpoint(contest, checkpoint.id);
+    const restored = await contestLibrary().checkpoints.restore(contest, checkpoint.id);
     onRestore(restored);
     await reload();
   }
@@ -76,13 +70,13 @@ export function HistorySection({
   async function handleEditNote(checkpoint: Checkpoint) {
     const next = window.prompt(`Note for "${checkpoint.name}":\n(Leave blank to clear)`, checkpoint.note);
     if (next === null) return; // cancelled
-    await updateCheckpointNote(checkpoint.id, next);
+    await contestLibrary().checkpoints.setNote(checkpoint.id, next);
     await reload();
   }
 
   async function handleDelete(checkpoint: Checkpoint) {
     if (!window.confirm(`Delete checkpoint "${checkpoint.name}"?`)) return;
-    await deleteCheckpoint(checkpoint.id);
+    await contestLibrary().checkpoints.remove(checkpoint.id);
     await reload();
   }
 

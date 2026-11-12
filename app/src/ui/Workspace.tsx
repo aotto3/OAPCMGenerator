@@ -8,7 +8,7 @@ import {
   type Contest,
 } from '../model/contest';
 import { EditableContestTitle } from './EditableContestTitle';
-import { getContest } from '../storage/contestStore';
+import { contestLibrary } from '../storage/browserLibrary';
 import { applySubmissions } from '../questionnaire/submission';
 import { latestSubmissions, onSubmissionsChanged } from '../questionnaire/submissionSync';
 import { useAutosave } from '../storage/useAutosave';
@@ -73,7 +73,7 @@ export function Workspace({
       setContest(draft);
       return;
     }
-    void getContest(contestId).then((c) => (c ? setContest(c) : setMissing(true)));
+    void contestLibrary().read(contestId).then((c) => (c ? setContest(c) : setMissing(true)));
   }, [contestId, draft]);
 
   // Judge questionnaire answers (PRD #252) that arrive while this contest is open

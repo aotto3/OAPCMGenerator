@@ -10,7 +10,7 @@
  * versioned envelope serializeContest() produces, so a checkpoint round-trips
  * through the same forward-migrating codec as sync and export, and device-only
  * Speechwire credentials are stripped by construction (they are never in the
- * payload). The IndexedDB persistence lives in storage/checkpointStore.ts.
+ * payload). The IndexedDB persistence lives in storage/contestLibrary.ts.
  */
 import { parseContest, serializeContest, type Contest } from './contest';
 

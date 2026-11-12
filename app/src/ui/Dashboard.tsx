@@ -1,16 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { contestDisplayName, createContest, duplicateContest, importContest, withArchived } from '../model/contest';
 import type { Contest } from '../model/contest';
 import { triggerContestFileDownload } from '../documents/generate';
 import { reportContestExported, reportContestImported } from '../telemetry/telemetryClient';
-import {
-  deleteContest,
-  getContest,
-  listContests,
-  onContestPulled,
-  saveContest,
-  type ContestSummary,
-} from '../storage/contestStore';
+import { contestLibrary } from '../storage/browserLibrary';
+import type { ContestSummary } from '../storage/contestLibrary';
+import { useContestAction, useContestList } from './contestHooks';
 import {
   DEFAULT_SORT,
   SORT_KEYS,
@@ -94,10 +89,11 @@ export function Dashboard({
   /** Persist a fully-formed new contest (import/duplicate), then open it. */
   onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
-  const [contests, setContests] = useState<ContestSummary[] | null>(null);
+  // Live: local writes, pulls and deletes all refresh it.
+  const contests = useContestList();
+  const action = useContestAction();
   const [filter, setFilter] = useState<ContestFilter>('active');
   const [sort, setSort] = useState<SortPref>(loadSortPref);
-  const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Persist on every change so the choice survives a reload.
@@ -105,20 +101,6 @@ export function Dashboard({
     setSort(next);
     saveSortPref(next);
   }
-
-  useEffect(() => {
-    let active = true;
-    const refresh = () => void listContests().then((list) => active && setContests(list));
-    refresh();
-    // Background sync pulls land in IndexedDB without re-rendering us; refresh
-    // the list when one arrives so a pull while the dashboard is open shows up
-    // without a manual reload (Slice 14 gap, closed in Slice 15 / #28).
-    const off = onContestPulled(refresh);
-    return () => {
-      active = false;
-      off();
-    };
-  }, []);
 
   // Opens an in-memory draft; nothing is stored until the first edit.
   function handleCreate() {
@@ -129,49 +111,45 @@ export function Dashboard({
   // contest. The model parses + migrates + rejects bad input; we only read the
   // file and surface a friendly error. Reset the input so re-picking the same
   // file fires onChange again.
-  async function handleImportFile(file: File) {
-    setImportError(null);
-    try {
+  function handleImportFile(file: File) {
+    action.run(`Couldn't import "${file.name}"`, async () => {
       const contest = importContest(await file.text());
       await onOpenSaved(contest);
       // Best-effort telemetry — never awaited, never blocks the import.
       reportContestImported(contest.id, contestDisplayName(contest.identity));
-    } catch (err) {
-      setImportError(
-        `Couldn't import "${file.name}": ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    });
   }
 
-  async function handleDuplicate(summary: ContestSummary) {
-    const source = await getContest(summary.id);
-    if (!source) return; // deleted out from under us
-    await onOpenSaved(duplicateContest(source));
+  function handleDuplicate(summary: ContestSummary) {
+    action.run(`Couldn't duplicate "${summary.name}"`, async () => {
+      const source = await contestLibrary().read(summary.id);
+      if (!source) return; // deleted out from under us
+      await onOpenSaved(duplicateContest(source));
+    });
   }
 
   // Export the portable contest file (the ZIP's JSON, plus judge preferences),
   // then record a best-effort export event. The download drives the action; the
   // telemetry is fire-and-forget and never blocks it.
   async function handleExport(summary: ContestSummary) {
-    const source = await getContest(summary.id);
+    const source = await contestLibrary().read(summary.id);
     if (!source) return; // deleted out from under us
     triggerContestFileDownload(source);
     reportContestExported(summary.id, summary.name);
   }
 
-  async function handleDelete(summary: ContestSummary) {
+  function handleDelete(summary: ContestSummary) {
     if (!window.confirm(`Delete "${summary.name}"? This cannot be undone.`)) return;
-    await deleteContest(summary.id);
-    setContests(await listContests());
+    action.run(`Couldn't delete "${summary.name}"`, () => contestLibrary().remove(summary.id));
   }
 
-  // Archive/unarchive is a reversible edit made without opening the contest:
-  // load it, flip the flag, persist (which syncs), and refresh the list.
-  async function handleSetArchived(summary: ContestSummary, archived: boolean) {
-    const source = await getContest(summary.id);
-    if (!source) return; // deleted out from under us
-    await saveContest(withArchived(source, archived));
-    setContests(await listContests());
+  // Archive/unarchive is a reversible edit made without opening the contest; the
+  // library reads it fresh, flips the flag, and persists (which syncs). A contest
+  // deleted out from under us is simply skipped.
+  function handleSetArchived(summary: ContestSummary, archived: boolean) {
+    action.run(`Couldn't ${archived ? 'archive' : 'unarchive'} "${summary.name}"`, async () => {
+      await contestLibrary().transform(summary.id, (fresh) => withArchived(fresh, archived));
+    });
   }
 
   // The rows to render: current filter applied, then sorted by the chosen key.
@@ -195,7 +173,7 @@ export function Dashboard({
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = '';
-              if (file) void handleImportFile(file);
+              if (file) handleImportFile(file);
             }}
           />
           <button className="btn-secondary" onClick={() => fileInput.current?.click()}>
@@ -207,9 +185,9 @@ export function Dashboard({
         </div>
       </div>
 
-      {importError && (
+      {action.error && (
         <p className="import-error" role="alert">
-          ⚠️ {importError}
+          ⚠️ {action.error}
         </p>
       )}
 
@@ -284,7 +262,7 @@ export function Dashboard({
               </button>
               <button
                 className="btn-secondary"
-                onClick={() => void handleDuplicate(c)}
+                onClick={() => handleDuplicate(c)}
                 aria-label={`Duplicate ${c.name}`}
               >
                 Duplicate
@@ -298,14 +276,14 @@ export function Dashboard({
               </button>
               <button
                 className="btn-secondary"
-                onClick={() => void handleSetArchived(c, !c.archived)}
+                onClick={() => handleSetArchived(c, !c.archived)}
                 aria-label={`${c.archived ? 'Unarchive' : 'Archive'} ${c.name}`}
               >
                 {c.archived ? 'Unarchive' : 'Archive'}
               </button>
               <button
                 className="btn-danger"
-                onClick={() => void handleDelete(c)}
+                onClick={() => handleDelete(c)}
                 aria-label={`Delete ${c.name}`}
               >
                 Delete

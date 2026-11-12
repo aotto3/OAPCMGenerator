@@ -1,4 +1,4 @@
-import type { ContestSummary } from '../../storage/contestStore';
+import type { ContestSummary } from '../../storage/contestLibrary';
 
 /** A bare ISO date in words. Noon keeps it on the same day in every time zone. */
 function summaryDate(iso: string): string {
