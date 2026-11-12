@@ -1,13 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createContest, withAdjudicator, type Contest } from '../model/contest';
 import type { SyncStatus } from '../storage/syncEngine';
 import { blankAnswers, type JudgeSubmission } from './submission';
-import {
-  __resetSubmissionCacheForTests,
-  latestSubmissions,
-  onSubmissionsChanged,
-  startSubmissionSync,
-} from './submissionSync';
+import { startSubmissionSync } from './submissionSync';
 
 const NOW = '2026-11-01T12:00:00.000Z';
 
@@ -35,10 +30,17 @@ function harness(contests: Contest[], submissions: JudgeSubmission[] | Error) {
       if (result instanceof Error) throw result;
       return result;
     },
-    loadContests: async () => [...store.values()],
-    saveContest: async (c) => {
-      saved.push(c);
-      store.set(c.id, c);
+    contestIds: async () => [...store.keys()],
+    // The library's transform: an identical result is a no-op.
+    transform: async (id, fn) => {
+      const fresh = store.get(id);
+      if (!fresh) return undefined;
+      const next = fn(fresh);
+      if (next !== fresh) {
+        saved.push(next);
+        store.set(id, next);
+      }
+      return next;
     },
     now: () => '2026-11-20T00:00:00.000Z',
   });
@@ -53,8 +55,6 @@ function harness(contests: Contest[], submissions: JudgeSubmission[] | Error) {
     },
   };
 }
-
-beforeEach(() => __resetSubmissionCacheForTests());
 
 describe('startSubmissionSync', () => {
   it('applies submissions to matching contests after a sync pass and saves only those', async () => {
@@ -75,16 +75,6 @@ describe('startSubmissionSync', () => {
     await h.settle();
     await h.settle();
     expect(h.saved).toHaveLength(1);
-  });
-
-  it('publishes the latest submissions to listeners (the open Workspace)', async () => {
-    const seen: JudgeSubmission[][] = [];
-    onSubmissionsChanged((s) => seen.push(s));
-    const h = harness([judged('c1')], [SUB]);
-    await h.settle();
-    await h.settle();
-    expect(seen).toEqual([[SUB]]);
-    expect(latestSubmissions()).toEqual([SUB]);
   });
 
   it('survives a failed fetch and retries at the next settle', async () => {

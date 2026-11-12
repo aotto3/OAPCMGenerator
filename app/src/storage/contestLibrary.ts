@@ -13,8 +13,16 @@
  * which emits `remote` events (so a pull never bounces back up as a push, and
  * every listener, including the dashboard list, hears about it).
  *
- * No React, no `window`, no `fetch`: IndexedDB and the clock are injected, so
- * tests run against fake-indexeddb with a manual clock.
+ * Open-contest sessions (slice A2 #278): `open(id)` hands the workspace a live
+ * in-memory copy that owns the debounced write, the "unedited draft is not
+ * stored" rule, and the flush on close and on `flush()` (pagehide). Every other
+ * write to an open contest (a pull, a `transform`, an add, a checkpoint restore)
+ * goes through the session too, so the workspace never autosaves a stale copy
+ * over it: a newer pull swaps the session and sets `notice`; a newer session
+ * edit survives the pull and is pushed.
+ *
+ * No React, no `window`, no `fetch`: IndexedDB, the clock and the timers are
+ * injected, so tests run against fake-indexeddb with a manual clock and timers.
  */
 import { wrap, type DBSchema, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import { makeCheckpoint, planRestore, type Checkpoint } from '../model/checkpoint';
@@ -67,14 +75,51 @@ export interface RemoteBundle {
   payload: string;
 }
 
+/** What an open session holds. `getState()` returns a stable snapshot (for useSyncExternalStore). */
+export type OpenState =
+  | { status: 'loading' }
+  | { status: 'missing' }
+  /** Deleted while open. */
+  | { status: 'removed'; origin: Origin }
+  | { status: 'ready'; contest: Contest; notice: { origin: Origin; at: string } | null };
+
+export interface OpenContest {
+  getState(): OpenState;
+  subscribe(listener: () => void): () => void;
+  /** Synchronous: replaces the live copy and arms the debounced write. Never awaits. */
+  set(next: Contest): void;
+  update(fn: (contest: Contest) => Contest): void;
+  dismissNotice(): void;
+  checkpoints: {
+    list(): Promise<Checkpoint[]>;
+    save(name: string, note?: string): Promise<Checkpoint>;
+    /** Auto-checkpoint + swap, counted as the session's own change (no notice). */
+    restore(checkpointId: string): Promise<void>;
+    setNote(checkpointId: string, note: string): Promise<void>;
+    remove(checkpointId: string): Promise<void>;
+  };
+  /** Flushes any pending write and releases this handle. */
+  close(): Promise<void>;
+}
+
 export interface ContestLibrary {
+  /**
+   * Opens a session on a contest. Handles opened on the same id share one live
+   * copy. `draft` is a brand-new contest not in storage yet: it is stored only
+   * after its first edit.
+   */
+  open(id: string, opts?: { draft?: Contest }): OpenContest;
+  /** Writes every open session's pending edit now (pagehide). */
+  flush(): Promise<void>;
   list(): Promise<ContestSummary[]>;
   read(id: string): Promise<Contest | undefined>;
   readAll(): Promise<Contest[]>;
   /**
    * Reads the stored contest, runs the pure `fn`, and persists the result, all in
    * ONE transaction. Returns undefined (and writes nothing) if the contest is
-   * gone; returning the same object is a no-op with no event.
+   * gone; returning the same object is a no-op with no event. If the contest is
+   * open, `fn` runs on the session's live copy (unflushed edits included), the
+   * session swaps to the result, and the result is written at once.
    */
   transform(id: string, fn: (fresh: Contest) => Contest, opts?: { by?: string }): Promise<Contest | undefined>;
   /** Stores a fully-formed new contest (import, duplicate, sibling zone, advance-clone). */
@@ -107,12 +152,27 @@ export interface ContestLibrary {
   close(): Promise<void>;
 }
 
+export interface Timers {
+  set(fn: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
+
 export interface LibraryDeps {
   /** Production: the browser's `indexedDB`; tests: a fake-indexeddb `IDBFactory`. */
   idb: IDBFactory;
-  /** ISO timestamp for checkpoint stamps and restores. */
+  /** ISO timestamp for checkpoint stamps, restores and notices. */
   clock: () => string;
+  /** The session debounce's timers. Defaults to the global setTimeout/clearTimeout. */
+  timers?: Timers;
 }
+
+/** How long an open session waits after the last edit before writing it. */
+export const SAVE_DEBOUNCE_MS = 300;
+
+const globalTimers: Timers = {
+  set: (fn, ms) => setTimeout(fn, ms),
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
 
 /* ────────────────────────── record shape (private) ────────────────────────── */
 
@@ -221,6 +281,7 @@ export function nextVersion(contestUpdatedAt: string, storedVersion: string | un
 export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
   let dbPromise: Promise<IDBPDatabase<OapDB>> | undefined;
   const db = () => (dbPromise ??= openDatabase(deps.idb));
+  const timers = deps.timers ?? globalTimers;
   const listeners = new Set<(event: ContestEvent) => void>();
 
   function emit(event: ContestEvent): void {
@@ -266,13 +327,219 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
     for (const event of events) if (event) emit(event);
   }
 
+  /* ────────────────────────── open-contest sessions ────────────────────────── */
+
+  interface Session {
+    handles: number;
+    state: OpenState;
+    /** The live copy while `ready`. */
+    live?: Contest;
+    /** Whether a stored record backs this session (false for a draft not yet written). */
+    stored: boolean;
+    /** False only for a draft that has not been edited yet: it is never stored. */
+    persistable: boolean;
+    /** The live copy has edits not yet written. */
+    dirty: boolean;
+    timer?: unknown;
+    /** A write that landed while the session was still loading wins over the load's read. */
+    loadedOverride?: Contest;
+    subscribers: Set<() => void>;
+  }
+
+  const sessions = new Map<string, Session>();
+  /** Final flushes of sessions whose last handle closed; a reopen waits for them. */
+  const closing = new Map<string, Promise<void>>();
+
+  function setState(session: Session, state: OpenState): void {
+    session.state = state;
+    for (const subscriber of session.subscribers) subscriber();
+  }
+
+  function readySession(id: string): Session | undefined {
+    const session = sessions.get(id);
+    return session?.state.status === 'ready' ? session : undefined;
+  }
+
+  function cancelTimer(session: Session): void {
+    if (session.timer !== undefined) timers.clear(session.timer);
+    session.timer = undefined;
+  }
+
+  /** Writes the session's pending edit now. A failure leaves it pending for the next flush. */
+  async function flushSession(session: Session, by?: string): Promise<void> {
+    cancelTimer(session);
+    if (!session.dirty || !session.live) return;
+    const contest = session.live;
+    session.dirty = false;
+    try {
+      const tx = await readWrite();
+      const event = await commitDevice(tx, contest, by);
+      await finish(tx, event);
+      session.stored = true;
+    } catch (err) {
+      if (session.state.status === 'ready') session.dirty = true;
+      throw err;
+    }
+  }
+
+  function setLive(session: Session, next: Contest): void {
+    const state = session.state;
+    if (state.status !== 'ready' || next === session.live) return;
+    session.live = next;
+    // An unedited draft (updatedAt still equals createdAt) is not stored, so an
+    // accidental "+ New Contest" click never creates a contest. The first real
+    // edit bumps updatedAt and makes the session persistable for good.
+    if (!session.persistable && next.updatedAt !== next.createdAt) session.persistable = true;
+    if (session.persistable) {
+      session.dirty = true;
+      cancelTimer(session);
+      session.timer = timers.set(() => {
+        session.timer = undefined;
+        void flushSession(session).catch(() => {});
+      }, SAVE_DEBOUNCE_MS);
+    }
+    setState(session, { status: 'ready', contest: next, notice: state.notice });
+  }
+
+  /**
+   * After a write that did not come from the session's own edits: the session
+   * now holds what was stored. A loading session keeps it for when its read lands.
+   */
+  function adoptStored(id: string, contest: Contest, notice?: { origin: Origin; at: string }): void {
+    const session = sessions.get(id);
+    if (!session) return;
+    if (session.state.status === 'loading') {
+      session.loadedOverride = contest;
+      return;
+    }
+    if (session.state.status !== 'ready') return;
+    cancelTimer(session);
+    session.live = contest;
+    session.dirty = false;
+    session.stored = true;
+    session.persistable = true;
+    setState(session, { status: 'ready', contest, notice: notice ?? session.state.notice });
+  }
+
+  function markRemoved(id: string, origin: Origin): void {
+    const session = sessions.get(id);
+    if (!session) return;
+    cancelTimer(session);
+    session.dirty = false;
+    session.live = undefined;
+    session.loadedOverride = undefined;
+    setState(session, { status: 'removed', origin });
+  }
+
+  function startSession(id: string, draft: Contest | undefined): Session {
+    const session: Session = {
+      handles: 0,
+      state: { status: 'loading' },
+      stored: false,
+      persistable: true,
+      dirty: false,
+      subscribers: new Set(),
+    };
+    if (draft && draft.id === id) {
+      session.live = draft;
+      session.persistable = draft.updatedAt !== draft.createdAt;
+      session.state = { status: 'ready', contest: draft, notice: null };
+      return session;
+    }
+    void (async () => {
+      await closing.get(id);
+      let contest: Contest | undefined;
+      try {
+        contest = await library.read(id);
+      } catch {
+        contest = undefined;
+      }
+      if (session.state.status !== 'loading') return; // removed while loading
+      contest = session.loadedOverride ?? contest;
+      session.loadedOverride = undefined;
+      if (!contest) {
+        setState(session, { status: 'missing' });
+        return;
+      }
+      session.live = contest;
+      session.stored = true;
+      setState(session, { status: 'ready', contest, notice: null });
+    })();
+    return session;
+  }
+
+  /** Writes the open session's pending edit on `id`, if any, before another write to it. */
+  async function flushIfOpen(id: string): Promise<Session | undefined> {
+    const session = readySession(id);
+    if (session) await flushSession(session);
+    return session;
+  }
+
   async function writeWhole(contest: Contest): Promise<void> {
+    await flushIfOpen(contest.id);
     const tx = await readWrite();
     const event = await commitDevice(tx, contest);
     await finish(tx, event);
+    adoptStored(contest.id, contest);
   }
 
-  return {
+  const library: ContestLibrary = {
+    open(id, opts) {
+      let session = sessions.get(id);
+      if (!session) {
+        session = startSession(id, opts?.draft);
+        sessions.set(id, session);
+      }
+      const s = session;
+      s.handles += 1;
+      let closed = false;
+      return {
+        getState: () => s.state,
+        subscribe(listener) {
+          s.subscribers.add(listener);
+          return () => s.subscribers.delete(listener);
+        },
+        set: (next) => setLive(s, next),
+        update(fn) {
+          if (s.state.status === 'ready' && s.live) setLive(s, fn(s.live));
+        },
+        dismissNotice() {
+          if (s.state.status === 'ready' && s.state.notice) setState(s, { ...s.state, notice: null });
+        },
+        checkpoints: {
+          list: () => library.checkpoints.list(id),
+          async save(name, note) {
+            if (!s.live) throw new Error('The contest is not open.');
+            return library.checkpoints.save(s.live, name, note);
+          },
+          async restore(checkpointId) {
+            if (!s.live) throw new Error('The contest is not open.');
+            await library.checkpoints.restore(s.live, checkpointId);
+          },
+          setNote: (checkpointId, note) => library.checkpoints.setNote(checkpointId, note),
+          remove: (checkpointId) => library.checkpoints.remove(checkpointId),
+        },
+        async close() {
+          if (closed) return;
+          closed = true;
+          s.handles -= 1;
+          if (s.handles > 0) {
+            await flushSession(s);
+            return;
+          }
+          if (sessions.get(id) === s) sessions.delete(id);
+          const final = flushSession(s).catch(() => {});
+          closing.set(id, final);
+          await final;
+          if (closing.get(id) === final) closing.delete(id);
+        },
+      };
+    },
+
+    async flush() {
+      await Promise.all([...sessions.values()].map((session) => flushSession(session).catch(() => {})));
+    },
+
     async list() {
       return (await (await db()).getAll('contests')).map(summaryFromRecord);
     },
@@ -287,6 +554,16 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
     },
 
     async transform(id, fn, opts) {
+      const session = readySession(id);
+      if (session?.stored && session.live) {
+        // The live copy is the freshest: it holds the edits the debounce has not written yet.
+        const fresh = session.live;
+        const next = fn(fresh);
+        if (next === fresh) return fresh;
+        setLive(session, next);
+        await flushSession(session, opts?.by);
+        return next;
+      }
       const tx = await readWrite();
       const record = await tx.objectStore('contests').get(id);
       if (!record) {
@@ -301,6 +578,7 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       }
       const event = await commitDevice(tx, next, opts?.by);
       await finish(tx, event);
+      adoptStored(id, next);
       return next;
     },
 
@@ -313,6 +591,7 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       const checkpoints = tx.objectStore('checkpoints');
       for (const key of await checkpoints.index('byContest').getAllKeys(id)) await checkpoints.delete(key);
       await finish(tx, { type: 'removed', id, origin: 'device' });
+      markRemoved(id, 'device');
     },
 
     subscribe(listener) {
@@ -327,8 +606,11 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       },
 
       async save(contest, name, note = '') {
+        // An open contest is snapshotted as its session holds it, after writing its pending edit.
+        const session = await flushIfOpen(contest.id);
+        const subject = session?.live ?? contest;
         const now = deps.clock();
-        const checkpoint = makeCheckpoint(contest, name, note, now);
+        const checkpoint = makeCheckpoint(subject, name, note, now);
         const tx = await readWrite();
         await tx.objectStore('checkpoints').put(checkpoint);
         // Checkpoints ride the contest's sync bundle, so the contest's version moves with them.
@@ -338,16 +620,20 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       },
 
       async restore(current, checkpointId) {
+        const session = await flushIfOpen(current.id);
+        const subject = session?.live ?? current;
         const tx = await readWrite();
         const target = await tx.objectStore('checkpoints').get(checkpointId);
         if (!target) {
           await tx.done;
           throw new Error('Checkpoint not found.');
         }
-        const plan = planRestore(current, target, deps.clock());
+        const plan = planRestore(subject, target, deps.clock());
         await tx.objectStore('checkpoints').put(plan.autoCheckpoint);
         const event = await commitDevice(tx, plan.restored);
         await finish(tx, event);
+        // The session's own change: it swaps without a notice.
+        adoptStored(current.id, plan.restored);
         return plan.restored;
       },
 
@@ -396,6 +682,31 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       const tx = await readWrite();
       const contests = tx.objectStore('contests');
       const existing = await contests.get(contest.id);
+      const localVersion = existing?.updatedAt;
+
+      // An open session's pending edit is resolved first, in this same
+      // transaction: the two versions are compared and the newer one wins.
+      const session = readySession(contest.id);
+      if (session?.dirty && session.live) {
+        const pending = session.live;
+        cancelTimer(session);
+        session.dirty = false;
+        const pendingVersion = nextVersion(pending.updatedAt, existing?.updatedAt);
+        if (pendingVersion > remote.updatedAt) {
+          // The session's edit is newer: it is stored (and so pushed); the pull is dropped.
+          const event = await commitDevice(tx, pending);
+          await finish(tx, event);
+          session.stored = true;
+          return;
+        }
+        // Otherwise the pending edit is older than the pulled copy and loses (last write wins).
+      }
+      // A local write that landed after the engine planned this pull is newer: keep it.
+      if (localVersion !== undefined && localVersion >= remote.updatedAt) {
+        await tx.done;
+        return;
+      }
+
       // The server's clock is stored as the version; this device's credentials are kept.
       const deviceOnly = existing?.deviceOnly ?? contest.speechwire;
       const record = toRecord(contest, remote.updatedAt, deviceOnly);
@@ -404,13 +715,15 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       const store = tx.objectStore('checkpoints');
       for (const key of await store.index('byContest').getAllKeys(contest.id)) await store.delete(key);
       for (const checkpoint of checkpoints) await store.put(checkpoint);
+      const pulled = contestFromRecord(record);
       await finish(tx, {
         type: 'changed',
         id: contest.id,
         origin: 'remote',
-        contest: contestFromRecord(record),
+        contest: pulled,
         summary: summaryFromRecord(record),
       });
+      adoptStored(contest.id, pulled, { origin: 'remote', at: deps.clock() });
     },
 
     async close() {
@@ -418,4 +731,5 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       dbPromise = undefined;
     },
   };
+  return library;
 }

@@ -88,8 +88,10 @@ verbatim everywhere:
    judge-scored fields stay blank. Filenames match v12's ZIP exactly.
 
 3. **Local-first storage + sync** (`app/src/storage/`) — IndexedDB is the working
-   copy (`contestStore.ts` is the only file that touches it; `useAutosave.ts` is
-   the one debounced-write pattern). The sync layer (`syncEngine`/`syncClient`/
+   copy. `contestLibrary.ts` is the only file that touches it (RFC #276): one
+   commit path for every write, and open-contest sessions (`useOpenContest` in
+   `ui/contestHooks.ts`) that own the debounced save and swap in a newer pulled
+   copy with an "Updated from another device" notice. The sync layer (`syncEngine`/`syncClient`/
    `syncStore`/`syncReconcile`/`syncBackoff`/`browserSync`) pushes/pulls to the
    server with **last-write-wins per contest** by `updatedAt`, off the edit path.
    Device-only fields (Speechwire creds) are marked in the model and excluded from
