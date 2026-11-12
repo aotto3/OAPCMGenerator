@@ -3,6 +3,7 @@ import { allJudgeEmails, type Contest } from '../model/contest';
 import {
   advancingEmail,
   EMAIL_TEMPLATES,
+  tabulationEmail,
   type EmailTemplateId,
 } from '../documents/emailTemplates';
 import { CopyButton } from './sections/fields';
@@ -55,6 +56,17 @@ export function EmailComposer({ contest }: { contest: Contest }) {
     } else {
       setToList(null);
     }
+  }
+
+  // Offered only once every ballot is valid (PRD #236); null hides it as disabled.
+  const tabulationDraft = tabulationEmail(contest);
+
+  function loadTabulation() {
+    if (!tabulationDraft) return;
+    setSubject(tabulationDraft.subject);
+    setBody(tabulationDraft.body);
+    setToList(tabulationDraft.to);
+    setShowPicker(false);
   }
 
   function toggleAdvancing() {
@@ -116,6 +128,16 @@ export function EmailComposer({ contest }: { contest: Contest }) {
           onClick={toggleAdvancing}
         >
           🏆 Advancing Schools
+        </button>
+        <button
+          type="button"
+          className="email-template-btn"
+          data-template="tabulation"
+          disabled={!tabulationDraft}
+          title={tabulationDraft ? undefined : 'Enter every judge’s ranks in Panel Tabulation first'}
+          onClick={loadTabulation}
+        >
+          🧮 Tabulation to State Office
         </button>
       </div>
 

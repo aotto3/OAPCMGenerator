@@ -226,3 +226,24 @@ ${rows}
 </html>
 `;
 }
+
+/**
+ * UIL's plain-text report (its "text-template"), used in the State Office email.
+ * Same lines and order as UIL, including the trailing comma after each row's
+ * scores. Values are written as plain text (UIL's template HTML-escaped them,
+ * which would put "&amp;" into an email).
+ */
+export function tabulationPlainText(report: TabulationReport): string {
+  const [judgeA, judgeB, judgeC] = report.judgeNames;
+  return [
+    'UIL One-Act Play Panel Tabulation',
+    '*********************************',
+    ...tabulationHeaderLines(report.header).map((line) => `${line.label}: ${line.value}`),
+    '',
+    'Results',
+    '*******',
+    '',
+    `Tie, Place, ${judgeA}, ${judgeB}, ${judgeC}`,
+    ...report.results.map((r) => `${r.label}${r.tie ? ' - TIE' : ''},${r.place},${r.ranks.map((n) => `${n},`).join('')}`),
+  ].join('\n');
+}
