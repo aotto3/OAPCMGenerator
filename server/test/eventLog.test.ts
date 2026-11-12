@@ -34,6 +34,7 @@ async function buildApp(overrideLog?: EventLog) {
   const app = createApp({
     repo: createContestRepo(pool),
     questionnaireRepo: createQuestionnaireRepo(pool),
+    mailSender: async () => {},
     eventLog,
     userDirectory: createInMemoryUserDirectory([]),
     authAdmin: { sendSignInLink: async () => {} },

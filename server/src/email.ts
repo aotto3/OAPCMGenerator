@@ -14,6 +14,7 @@
  * end without a real email provider or any secret.
  */
 import { optionalEnv } from './env';
+import type { MailSender } from './questionnaireEmail';
 
 const MAILERSEND_ENDPOINT = 'https://api.mailersend.com/v1/email';
 
@@ -81,6 +82,46 @@ export function makeMagicLinkSender(): MagicLinkSender {
       }),
     });
     // MailerSend returns 202 Accepted on success.
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`MailerSend send failed (${res.status}): ${detail}`);
+    }
+  };
+}
+
+/**
+ * General transactional sender (PRD #252: the judge questionnaire notice). Same
+ * MailerSend account and From address as the magic link; logs instead of sending
+ * when unconfigured, like the magic-link sender.
+ */
+export function makeMailSender(): MailSender {
+  const apiKey = optionalEnv('MAILERSEND_API_KEY');
+  const fromEmail = optionalEnv('MAGIC_LINK_FROM_EMAIL');
+  const fromName = optionalEnv('MAGIC_LINK_FROM_NAME', 'OAP Contest Manager');
+
+  if (!apiKey || !fromEmail) {
+    return async ({ to, subject }) => {
+      // eslint-disable-next-line no-console
+      console.log(`[dev] email to ${to}: ${subject}`);
+    };
+  }
+
+  return async ({ to, replyTo, subject, text, html }) => {
+    const res = await fetch(MAILERSEND_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: { email: fromEmail, name: fromName },
+        to: [{ email: to }],
+        ...(replyTo ? { reply_to: { email: replyTo } } : {}),
+        subject,
+        text,
+        html,
+      }),
+    });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(`MailerSend send failed (${res.status}): ${detail}`);

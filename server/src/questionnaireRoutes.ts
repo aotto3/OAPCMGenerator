@@ -12,6 +12,7 @@
  *   POST /public/lookup  { token, email, website } -> the judge's contests and
  *                        their last answers
  *   POST /public/submit  { token, email, website, answers } -> stores the answers
+ *                        and emails each CM involved (best-effort)
  *
  * The public route is the only unauthenticated surface that reads account data,
  * so it gives nothing away: an unknown token, an unknown email, a filled honeypot
@@ -24,6 +25,7 @@ import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { findJudge, normalizeEmail, parseAnswers, parseRoster, type JudgeLookup } from './judgeRoster';
 import type { QuestionnaireRepo } from './questionnaireRepo';
+import { buildSubmissionNotices, type MailSender } from './questionnaireEmail';
 import { createRateLimiter, type RateLimiter } from './rateLimiter';
 import { resolveUserOrNull, type ResolveUser } from './requestAuth';
 
@@ -50,6 +52,10 @@ export interface QuestionnaireRoutesDeps {
   repo: QuestionnaireRepo;
   resolveUser: ResolveUser;
   limiters: QuestionnaireLimiters;
+  /** Sends the CM notice on submit. A failure is logged, never surfaced to the judge. */
+  mailSender: MailSender;
+  /** The account's sign-in email: the notice's fallback recipient. */
+  ownerEmail: (ownerId: string) => Promise<string | undefined>;
   /** Link token generator; defaults to 144 random bits, base64url. */
   newToken?: () => string;
 }
@@ -160,6 +166,36 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
     return { owner, email: key, judge };
   }
 
+  /** Emails each CM involved. Best-effort: a mail failure never fails the submit. */
+  async function notifyCms(
+    match: { owner: string; email: string; judge: JudgeLookup },
+    answers: NonNullable<ReturnType<typeof parseAnswers>>,
+    isUpdate: boolean,
+  ): Promise<void> {
+    try {
+      const fallbackEmail = await deps.ownerEmail(match.owner).catch(() => undefined);
+      const mails = buildSubmissionNotices({
+        judgeName: match.judge.judgeName,
+        judgeEmail: match.email,
+        contests: match.judge.contests,
+        answers,
+        isUpdate,
+        fallbackEmail,
+      });
+      for (const mail of mails) {
+        try {
+          await deps.mailSender(mail);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('Questionnaire notice failed to send (ignored)', err);
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Questionnaire notice failed (ignored)', err);
+    }
+  }
+
   router.post('/public/lookup', async (req, res) => {
     const match = await matchJudge(req, res, () => void res.status(404).json({ error: 'not_found' }));
     if (!match) return;
@@ -179,8 +215,10 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
       res.status(400).json({ error: 'invalid_answers' });
       return;
     }
+    const previous = await repo.getSubmission(match.owner, match.email);
     const submittedAt = new Date().toISOString();
     await repo.putSubmission(match.owner, match.email, submittedAt, JSON.stringify(answers));
+    await notifyCms(match, answers, previous !== undefined);
     res.json({ submittedAt });
   });
 
