@@ -169,12 +169,11 @@ const ANSWERS = {
   cellPhone: '512-555-0100',
   mailingAddress: '1 Main St',
   dietary: 'vegetarian',
-  needsPower: true,
   bio: 'A bio',
   notes: 'Arriving late',
   contests: {
-    z1: { hotelBefore: true, hotelAfter: true, requestingFlight: false },
-    z2: { hotelBefore: true, hotelAfter: false, requestingFlight: false },
+    z1: { hotelBefore: true, hotelAfter: true, requestingFlight: false, needsPower: true },
+    z2: { hotelBefore: true, hotelAfter: false, requestingFlight: false, needsPower: false },
   },
 };
 
@@ -215,8 +214,27 @@ describe('public submit', () => {
     const notTheirs = { ...ANSWERS, contests: { d: { hotelBefore: false, hotelAfter: false, requestingFlight: false } } };
     await submit(h, { token, email: 'jane@x.org', answers: notTheirs }).expect(400);
     await submit(h, { token, email: 'jane@x.org', answers: { ...ANSWERS, needsPower: 'yes' } }).expect(400);
+    const badPower = { ...ANSWERS, contests: { z1: { ...ANSWERS.contests.z1, needsPower: 'yes' } } };
+    await submit(h, { token, email: 'jane@x.org', answers: badPower }).expect(400);
     await submit(h, { token, email: 'jane@x.org', answers: { ...ANSWERS, bio: 'x'.repeat(5000) } }).expect(400);
     await submit(h, { token, email: 'jane@x.org' }).expect(400);
+  });
+
+  it('spreads a legacy top-level power answer to contests that give none of their own', async () => {
+    const token = await ready();
+    const legacy = {
+      ...ANSWERS,
+      needsPower: true,
+      contests: {
+        z1: { hotelBefore: false, hotelAfter: false, requestingFlight: false },
+        z2: { hotelBefore: false, hotelAfter: false, requestingFlight: false, needsPower: false },
+      },
+    };
+    await submit(h, { token, email: 'jane@x.org', answers: legacy }).expect(200);
+    const again = await lookup(h, { token, email: 'jane@x.org' }).expect(200);
+    expect(again.body.lastSubmission.contests.z1.needsPower).toBe(true);
+    expect(again.body.lastSubmission.contests.z2.needsPower).toBe(false);
+    expect(again.body.lastSubmission).not.toHaveProperty('needsPower');
   });
 
   it('drops unknown fields', async () => {

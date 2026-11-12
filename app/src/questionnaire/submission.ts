@@ -15,15 +15,18 @@ export interface ContestAnswers {
   hotelBefore: boolean;
   hotelAfter: boolean;
   requestingFlight: boolean;
+  /** Power at the judging table, asked per contest. Absent on older submissions. */
+  needsPower?: boolean;
 }
 
 export interface SubmissionAnswers {
   cellPhone: string;
   mailingAddress: string;
   dietary: string;
-  needsPower: boolean;
+  /** Legacy: the one power answer for every contest, before it moved per contest. */
+  needsPower?: boolean;
   bio: string;
-  /** "Anything else you'd like me to know": saved as the CM-only judge notes. */
+  /** "What else would you like me to know": saved as the CM-only judge notes. */
   notes: string;
   /** Keyed by contest id; only the judge's own contests. */
   contests: Record<string, ContestAnswers>;
@@ -41,13 +44,17 @@ export function blankAnswers(contestIds: string[]): SubmissionAnswers {
     cellPhone: '',
     mailingAddress: '',
     dietary: '',
-    needsPower: false,
     bio: '',
     notes: '',
     contests: Object.fromEntries(
-      contestIds.map((id) => [id, { hotelBefore: false, hotelAfter: false, requestingFlight: false }]),
+      contestIds.map((id) => [id, { hotelBefore: false, hotelAfter: false, requestingFlight: false, needsPower: false }]),
     ),
   };
+}
+
+/** A contest's power answer, falling back to an older submission's single answer. */
+export function contestPower(perContest: ContestAnswers, answers: SubmissionAnswers): boolean {
+  return perContest.needsPower ?? answers.needsPower ?? false;
 }
 
 export function applySubmission(contest: Contest, submission: JudgeSubmission, now: string): Contest {
@@ -66,7 +73,7 @@ export function applySubmission(contest: Contest, submission: JudgeSubmission, n
         cellPhone: a.cellPhone,
         mailingAddress: a.mailingAddress,
         dietary: a.dietary,
-        needsPower: a.needsPower,
+        needsPower: contestPower(perContest, a),
         bio: a.bio,
         judgeNotes: a.notes,
         needsHotel: perContest.hotelBefore || perContest.hotelAfter,
@@ -103,6 +110,7 @@ export interface GroupAnswers {
   between: boolean;
   after: boolean;
   requestingFlight: boolean;
+  needsPower: boolean;
 }
 
 function nextDay(iso: string): string {
@@ -131,13 +139,19 @@ export function groupContestIds(group: ContestGroup): string[] {
   return group.kind === 'single' ? [group.contest.id] : [group.first.id, group.second.id];
 }
 
-const NONE: ContestAnswers = { hotelBefore: false, hotelAfter: false, requestingFlight: false };
+const NONE: ContestAnswers = { hotelBefore: false, hotelAfter: false, requestingFlight: false, needsPower: false };
 
 /** Reads a group's answers out of the per-contest answers. */
 export function readGroup(group: ContestGroup, contests: Record<string, ContestAnswers>): GroupAnswers {
   if (group.kind === 'single') {
     const c = contests[group.contest.id] ?? NONE;
-    return { before: c.hotelBefore, between: false, after: c.hotelAfter, requestingFlight: c.requestingFlight };
+    return {
+      before: c.hotelBefore,
+      between: false,
+      after: c.hotelAfter,
+      requestingFlight: c.requestingFlight,
+      needsPower: c.needsPower ?? false,
+    };
   }
   const first = contests[group.first.id] ?? NONE;
   const second = contests[group.second.id] ?? NONE;
@@ -146,19 +160,18 @@ export function readGroup(group: ContestGroup, contests: Record<string, ContestA
     between: first.hotelAfter || second.hotelBefore,
     after: second.hotelAfter,
     requestingFlight: first.requestingFlight || second.requestingFlight,
+    needsPower: (first.needsPower ?? false) || (second.needsPower ?? false),
   };
 }
 
 /** Writes a group's answers back as per-contest answers. */
 export function writeGroup(group: ContestGroup, answers: GroupAnswers): Record<string, ContestAnswers> {
-  const fly = answers.requestingFlight;
+  const shared = { requestingFlight: answers.requestingFlight, needsPower: answers.needsPower };
   if (group.kind === 'single') {
-    return {
-      [group.contest.id]: { hotelBefore: answers.before, hotelAfter: answers.after, requestingFlight: fly },
-    };
+    return { [group.contest.id]: { hotelBefore: answers.before, hotelAfter: answers.after, ...shared } };
   }
   return {
-    [group.first.id]: { hotelBefore: answers.before, hotelAfter: answers.between, requestingFlight: fly },
-    [group.second.id]: { hotelBefore: answers.between, hotelAfter: answers.after, requestingFlight: fly },
+    [group.first.id]: { hotelBefore: answers.before, hotelAfter: answers.between, ...shared },
+    [group.second.id]: { hotelBefore: answers.between, hotelAfter: answers.after, ...shared },
   };
 }

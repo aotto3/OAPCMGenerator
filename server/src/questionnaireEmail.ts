@@ -86,6 +86,7 @@ function buildOne(input: SubmissionNoticeInput, to: string, contests: RosterCont
       lines: [
         `Hotel: ${hotelText(ans.hotelBefore, ans.hotelAfter)}`,
         `Requesting to fly: ${yesNo(ans.requestingFlight)}`,
+        `Power at judging table: ${yesNo(ans.needsPower)}`,
       ],
     };
   });
@@ -93,7 +94,6 @@ function buildOne(input: SubmissionNoticeInput, to: string, contests: RosterCont
     ['Cell', orBlank(a.cellPhone)],
     ['Mailing address', orBlank(a.mailingAddress)],
     ['Dietary', orBlank(a.dietary)],
-    ['Power at judging table', yesNo(a.needsPower)],
     ['Bio', orBlank(a.bio)],
     ['Anything else', orBlank(a.notes)],
   ];

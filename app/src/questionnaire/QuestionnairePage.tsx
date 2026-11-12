@@ -12,6 +12,7 @@ import { createQuestionnaireClient, type JudgeLookup, type LookupResult } from '
 import type { RosterContest } from './roster';
 import {
   blankAnswers,
+  contestPower,
   groupContestIds,
   groupContests,
   readGroup,
@@ -101,10 +102,17 @@ function initialAnswers(judge: JudgeLookup): SubmissionAnswers {
   const blank = blankAnswers(ids);
   const last = judge.lastSubmission;
   if (!last) return blank;
+  // Older submissions held one power answer for every contest; carry it into each.
+  const { needsPower: _legacyPower, ...rest } = last;
   return {
     ...blank,
-    ...last,
-    contests: Object.fromEntries(ids.map((id) => [id, last.contests[id] ?? blank.contests[id]])),
+    ...rest,
+    contests: Object.fromEntries(
+      ids.map((id) => {
+        const saved = last.contests[id];
+        return [id, saved ? { ...saved, needsPower: contestPower(saved, last) } : blank.contests[id]];
+      }),
+    ),
   };
 }
 
@@ -171,17 +179,8 @@ function QuestionnaireForm({
     <form className="questionnaire-form" onSubmit={(e) => void submit(e)}>
       <p>
         {judge.judgeName ? `Hi, ${judge.judgeName}. ` : ''}You're scheduled to adjudicate the contests below. Please
-        answer for each, then the general questions at the end.
+        tell us a little about yourself, then answer for each contest.
       </p>
-
-      {groups.map((group) => (
-        <ContestGroupCard
-          key={groupContestIds(group).join('+')}
-          group={group}
-          answers={readGroup(group, answers.contests)}
-          onChange={(patch) => setGroup(group, patch)}
-        />
-      ))}
 
       <fieldset className="questionnaire-card">
         <legend>About you</legend>
@@ -199,7 +198,7 @@ function QuestionnaireForm({
             onChange={(e) => set({ cellPhone: e.target.value })}
           />
         </Field>
-        <Field label="Mailing address (for scripts and/or your check)">
+        <Field label="Mailing address (scripts will be sent here)">
           <textarea
             autoComplete="street-address"
             maxLength={400}
@@ -211,17 +210,22 @@ function QuestionnaireForm({
         <Field label="Any dietary preferences or restrictions?">
           <input maxLength={1000} value={answers.dietary} onChange={(e) => set({ dietary: e.target.value })} />
         </Field>
-        <label className="check-option">
-          <input type="checkbox" checked={answers.needsPower} onChange={(e) => set({ needsPower: e.target.checked })} />
-          I'll need an electrical outlet for a computer at my judging table
-        </label>
-        <Field label="Short bio (optional; may be printed in the audience program)">
+        <Field label="Short bio (optional; if none provided, your TTAO summary may be used)">
           <textarea maxLength={4000} rows={4} value={answers.bio} onChange={(e) => set({ bio: e.target.value })} />
         </Field>
-        <Field label="Anything else you'd like me to know to make your time with us as easy as it can be?">
+        <Field label="What else would you like me to know to make the contest easy for you?">
           <textarea maxLength={4000} rows={3} value={answers.notes} onChange={(e) => set({ notes: e.target.value })} />
         </Field>
       </fieldset>
+
+      {groups.map((group) => (
+        <ContestGroupCard
+          key={groupContestIds(group).join('+')}
+          group={group}
+          answers={readGroup(group, answers.contests)}
+          onChange={(patch) => setGroup(group, patch)}
+        />
+      ))}
 
       <button type="submit" className="btn-primary" disabled={busy}>
         {busy ? 'Sending…' : judge.lastSubmission ? 'Update my answers' : 'Send my answers'}
@@ -306,7 +310,12 @@ function ContestGroupCard({
           checked={answers.requestingFlight}
           onChange={(e) => onChange({ requestingFlight: e.target.checked })}
         />
-        Yes, I'd like to fly
+        Yes. I understand I cannot make flight arrangements until it is approved.
+      </label>
+      <p className="questionnaire-question">Will you need power at your judging table?</p>
+      <label className="check-option">
+        <input type="checkbox" checked={answers.needsPower} onChange={(e) => onChange({ needsPower: e.target.checked })} />
+        I'll need an electrical outlet for a computer at my judging table
       </label>
     </fieldset>
   );
