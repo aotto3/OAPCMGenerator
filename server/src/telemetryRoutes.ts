@@ -22,6 +22,8 @@ export const MAX_DETAIL_BYTES = 4096;
 export interface TelemetryRoutesDeps {
   eventLog: EventLog;
   resolveUser: ResolveUser;
+  /** Injected clock; every timestamp this router stamps or compares comes from it. */
+  now: () => Date;
 }
 
 /** Reads an optional string field, ignoring anything that isn't a non-empty string. */
@@ -30,7 +32,7 @@ function optionalString(value: unknown): string | undefined {
 }
 
 export function createTelemetryRoutes(deps: TelemetryRoutesDeps): Router {
-  const { eventLog, resolveUser } = deps;
+  const { eventLog, resolveUser, now } = deps;
   const router = Router();
 
   router.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -63,7 +65,7 @@ export function createTelemetryRoutes(deps: TelemetryRoutesDeps): Router {
 
     try {
       await eventLog.recordEvent({
-        occurredAt: new Date().toISOString(),
+        occurredAt: now().toISOString(),
         userId: user.id,
         userEmail: user.email,
         type,

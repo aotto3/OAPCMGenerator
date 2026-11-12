@@ -35,6 +35,7 @@ async function main(): Promise<void> {
       },
     },
     adminEmails: adminEmails(),
+    now: () => new Date(),
     corsOrigin: requireEnv('WEB_ORIGIN'),
     webOrigin: requireEnv('WEB_ORIGIN'),
     // Mount Better Auth at /api/auth (before the JSON body parser — see app.ts).
