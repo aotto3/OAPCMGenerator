@@ -72,6 +72,22 @@ export function judgeCopyImpact(source: Contest, target: Contest): JudgeCopyImpa
 }
 
 /**
+ * One judge as copied to another contest (#263): identity, person-level fields
+ * and bookkeeping dates carry over; the per-contest travel answers are blanked and
+ * the questionnaire stamp cleared, so the judge's own answers for the target
+ * contest still apply when submissions sync.
+ */
+function copyJudge(judge: Adjudicator): Adjudicator {
+  return {
+    ...judge,
+    needsHotel: false,
+    hotelNights: { before: false, after: false },
+    requestingFlight: false,
+    questionnaireUpdatedAt: '',
+  };
+}
+
+/**
  * Returns the target with the source's judges and judge count. Critique refers to
  * judges by number, so it survives unless the count changes; then it is cleared,
  * even if locked, because a school could be left with a judge who no longer exists.
@@ -81,7 +97,7 @@ export function copyJudges(source: Contest, target: Contest, now?: string): Cont
     ...target,
     updatedAt: now ?? new Date().toISOString(),
     details: { ...target.details, numJudges: source.details.numJudges },
-    adjudicators: source.adjudicators.map((judge) => ({ ...judge })),
+    adjudicators: source.adjudicators.map(copyJudge),
     critique: clearsCritique(source, target) ? null : target.critique,
   };
 }
