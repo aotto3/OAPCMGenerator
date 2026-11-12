@@ -38,6 +38,8 @@ describe('sendTelemetry failure-swallowing', () => {
     expect(String(url)).toMatch(/\/api\/telemetry$/);
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('include');
+    expect(init.keepalive).toBe(true);
+    expect(init.headers['content-type']).toBe('application/json');
     expect(JSON.parse(init.body)).toEqual({
       type: 'contest.exported',
       contestId: 'c1',
