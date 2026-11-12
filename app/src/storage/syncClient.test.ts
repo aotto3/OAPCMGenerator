@@ -1,7 +1,8 @@
 /**
- * The sync network client (the only fetch caller in the sync layer). `fetch` is
- * injected so its URL/method/body wiring, credentialed same-origin requests, JSON
- * parsing, and error classification are all verifiable without the network.
+ * The sync network client, an adapter over the shared transport (api/http.ts).
+ * `fetch` is injected so its endpoint wiring, credentialed same-origin requests,
+ * and the mapping onto SyncHttpError / SyncNetworkError (which the engine's
+ * retry policy depends on) are verifiable without the network.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -13,13 +14,9 @@ import {
   type ContestWrite,
 } from './syncClient';
 
-/** A Response-like object carrying just what the client reads (ok/status/json). */
+/** A real Response carrying `body` as JSON (no body for 204). */
 function response(status: number, body: unknown = {}): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response;
+  return status === 204 ? new Response(null, { status }) : new Response(JSON.stringify(body), { status });
 }
 
 /** A fetch stub that records each call and replies via `responder`. */

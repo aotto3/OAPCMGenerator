@@ -14,6 +14,7 @@
  * Only metadata is ever sent — contest ids/names and (for errors) a truncated
  * message plus the app version. Never contest contents, never credentials.
  */
+import { createApi } from '../api/http';
 
 /** App version stamped in at build time (see vite.config.ts). */
 export const APP_VERSION: string =
@@ -34,8 +35,6 @@ export const TELEMETRY_TYPES = {
 /** Max client-error message length; longer messages are truncated before send. */
 export const MAX_ERROR_MESSAGE = 1000;
 
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
-
 export interface TelemetryPayload {
   type: string;
   contestId?: string;
@@ -54,27 +53,35 @@ export function clientErrorDetail(message: string): { message: string; appVersio
 }
 
 /**
- * Posts one event, swallowing every failure. Returns a promise that ALWAYS
- * resolves (never rejects) so callers can safely `void` it and tests can await
- * it deterministically. `keepalive` lets a client-error report survive the page
- * unload that a crash may trigger.
+ * A telemetry sender over an injectable fetch (tests). Each send posts one event
+ * through the shared transport and swallows every failure: the returned promise
+ * ALWAYS resolves (never rejects), so callers can safely `void` it and tests can
+ * await it. `keepalive` lets a client-error report survive the page unload that
+ * a crash may trigger.
  */
+export function createTelemetryClient(fetchImpl?: typeof fetch) {
+  const api = createApi(fetchImpl);
+  return {
+    send(payload: TelemetryPayload): Promise<void> {
+      try {
+        return api
+          .send('POST', '/api/telemetry', payload, { keepalive: true })
+          .then(() => undefined)
+          .catch(() => undefined);
+      } catch {
+        // Guard even a synchronous throw: a report from inside an error handler
+        // must never surface.
+        return Promise.resolve();
+      }
+    },
+  };
+}
+
+const defaultClient = createTelemetryClient();
+
+/** Posts one event through the app's default sender; never rejects. */
 export function sendTelemetry(payload: TelemetryPayload): Promise<void> {
-  try {
-    return fetch(`${API_URL}/api/telemetry`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    })
-      .then(() => undefined)
-      .catch(() => undefined);
-  } catch {
-    // Guard even a synchronous throw (e.g. fetch unavailable) — a report from
-    // inside an error handler must never surface.
-    return Promise.resolve();
-  }
+  return defaultClient.send(payload);
 }
 
 /** Records that a user built (generated) the documents ZIP — the fact only. */

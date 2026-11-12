@@ -4,14 +4,13 @@
  * that calls fetch; the engine talks to the SyncClient interface, so tests
  * inject a fake and never touch the network.
  *
- * Requests are credentialed (the Better Auth session cookie rides along, as in
- * authClient.ts) and are same-origin by default — the frontend reverse proxy
- * forwards /api/* to the API (Slice 17, #46), so paths are relative unless
- * VITE_API_URL overrides the origin. Failures are classified for the
- * engine's retry policy: a dropped connection is a SyncNetworkError (transient);
+ * Transport (origin, credentials, JSON) is the shared `api/http.ts`; this file
+ * keeps the contest endpoints and classifies failures for the engine's retry
+ * policy: a dropped connection is a SyncNetworkError (transient);
  * a non-2xx response is a SyncHttpError carrying its status (the engine decides
  * — 5xx/429 transient, 401 auth-lost, 404/409 handled structurally).
  */
+import { ApiHttpError, ApiNetworkError, createApi } from '../api/http';
 
 export interface RemoteSummary {
   id: string;
@@ -67,54 +66,45 @@ export interface SyncClient {
   remove(id: string): Promise<void>;
 }
 
-// Empty by default → relative, same-origin requests (`/api/contests`), which the
-// frontend reverse proxy forwards to the API. Set VITE_API_URL to an absolute
-// origin to override.
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+/** Maps the shared transport's errors onto the sync layer's own classes. */
+function toSyncError(err: unknown): unknown {
+  if (err instanceof ApiNetworkError) return new SyncNetworkError();
+  if (err instanceof ApiHttpError) return new SyncHttpError(err.status);
+  return err;
+}
 
 /**
- * The production SyncClient talking to the deployed API. `fetchImpl` is injectable
- * (defaulting to the global fetch) so the URL/credential wiring and the error
- * classification are testable without touching the network.
+ * The production SyncClient talking to the deployed API, built on the shared
+ * transport (`api/http.ts`). `fetchImpl` is injectable (defaulting to the global
+ * fetch) so the request wiring and error classification are testable offline.
  */
-export function createBrowserSyncClient(fetchImpl: typeof fetch = fetch): SyncClient {
-  async function request(path: string, init: RequestInit = {}): Promise<Response> {
-    let res: Response;
+export function createBrowserSyncClient(fetchImpl?: typeof fetch): SyncClient {
+  const api = createApi(fetchImpl);
+  const contestPath = (id: string) => `/api/contests/${encodeURIComponent(id)}`;
+  async function call<T>(run: () => Promise<T>): Promise<T> {
     try {
-      res = await fetchImpl(`${API_URL}${path}`, {
-        credentials: 'include',
-        headers: init.body ? { 'content-type': 'application/json' } : undefined,
-        ...init,
-      });
-    } catch {
-      // fetch rejects only on network-level failure (offline, DNS, CORS preflight).
-      throw new SyncNetworkError();
+      return await run();
+    } catch (err) {
+      throw toSyncError(err);
     }
-    if (!res.ok) throw new SyncHttpError(res.status);
-    return res;
   }
 
   return {
     async list() {
-      const res = await request('/api/contests');
-      const body = (await res.json()) as { contests: RemoteSummary[] };
+      const body = await call(() => api.get<{ contests: RemoteSummary[] }>('/api/contests'));
       return body.contests;
     },
-    async get(id) {
-      const res = await request(`/api/contests/${encodeURIComponent(id)}`);
-      return (await res.json()) as RemoteContest;
+    get(id) {
+      return call(() => api.get<RemoteContest>(contestPath(id)));
     },
     async create(body) {
-      await request('/api/contests', { method: 'POST', body: JSON.stringify(body) });
+      await call(() => api.send('POST', '/api/contests', body));
     },
     async update(id, body) {
-      await request(`/api/contests/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        body: JSON.stringify(body),
-      });
+      await call(() => api.send('PUT', contestPath(id), body));
     },
     async remove(id) {
-      await request(`/api/contests/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await call(() => api.send('DELETE', contestPath(id)));
     },
   };
 }

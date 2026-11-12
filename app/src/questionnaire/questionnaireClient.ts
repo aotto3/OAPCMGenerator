@@ -1,12 +1,12 @@
 /**
  * Network boundary for the judge questionnaire (PRD #252): the signed-in CM's
- * link + roster calls, and the public page's lookup. Same-origin and credentialed
- * like the sync client; `fetchImpl` is injectable for tests.
+ * link + roster calls, and the public page's lookup and submit. Built on the
+ * shared transport (`api/http.ts`); the public calls send no cookies.
+ * `fetchImpl` is injectable for tests.
  */
 import type { JudgeRoster, RosterContest } from './roster';
 import type { JudgeSubmission, SubmissionAnswers } from './submission';
-
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+import { ApiHttpError, createApi } from '../api/http';
 
 export interface JudgeLookup {
   judgeName: string;
@@ -28,65 +28,60 @@ export type LookupResult =
   | { kind: 'rate_limited' }
   | { kind: 'error' };
 
-export class QuestionnaireHttpError extends Error {
-  constructor(public readonly status: number) {
-    super(`Server responded ${status}`);
-    this.name = 'QuestionnaireHttpError';
-  }
+/** The HTTP status of a failed call, or null when it never got an answer. */
+function statusOf(err: unknown): number | null {
+  return err instanceof ApiHttpError ? err.status : null;
 }
 
-export function createQuestionnaireClient(fetchImpl: typeof fetch = (...a) => fetch(...a)) {
-  async function call(path: string, init: RequestInit = {}): Promise<Response> {
-    const res = await fetchImpl(`${API_URL}/api/questionnaire${path}`, {
-      credentials: 'include',
-      headers: init.body ? { 'content-type': 'application/json' } : undefined,
-      ...init,
-    });
-    if (!res.ok) throw new QuestionnaireHttpError(res.status);
-    return res;
-  }
+export function createQuestionnaireClient(fetchImpl?: typeof fetch) {
+  const api = createApi(fetchImpl);
+  const base = '/api/questionnaire';
 
   return {
     async getLinkToken(): Promise<string> {
-      return ((await (await call('/link')).json()) as { token: string }).token;
+      return (await api.get<{ token: string }>(`${base}/link`)).token;
     },
     async resetLinkToken(): Promise<string> {
-      return ((await (await call('/link/reset', { method: 'POST' })).json()) as { token: string }).token;
+      return (await api.send<{ token: string }>('POST', `${base}/link/reset`)).token;
     },
     async publishRoster(roster: JudgeRoster): Promise<void> {
-      await call('/roster', { method: 'PUT', body: JSON.stringify({ roster }) });
+      await api.send('PUT', `${base}/roster`, { roster });
     },
     async listSubmissions(): Promise<JudgeSubmission[]> {
-      return ((await (await call('/submissions')).json()) as { submissions: JudgeSubmission[] }).submissions;
+      return (await api.get<{ submissions: JudgeSubmission[] }>(`${base}/submissions`)).submissions;
     },
     /** Never throws: the public page only needs to know which message to show. */
     async submit(token: string, email: string, website: string, answers: SubmissionAnswers): Promise<SubmitResult> {
       try {
-        const res = await call('/public/submit', {
-          method: 'POST',
-          credentials: 'omit',
-          body: JSON.stringify({ token, email, website, answers }),
-        });
-        return { kind: 'saved', submittedAt: ((await res.json()) as { submittedAt: string }).submittedAt };
+        const body = await api.send<{ submittedAt: string }>(
+          'POST',
+          `${base}/public/submit`,
+          { token, email, website, answers },
+          { anonymous: true },
+        );
+        return { kind: 'saved', submittedAt: body.submittedAt };
       } catch (err) {
-        if (err instanceof QuestionnaireHttpError && err.status === 404) return { kind: 'not_found' };
-        if (err instanceof QuestionnaireHttpError && err.status === 429) return { kind: 'rate_limited' };
-        if (err instanceof QuestionnaireHttpError && err.status === 400) return { kind: 'invalid' };
+        const status = statusOf(err);
+        if (status === 404) return { kind: 'not_found' };
+        if (status === 429) return { kind: 'rate_limited' };
+        if (status === 400) return { kind: 'invalid' };
         return { kind: 'error' };
       }
     },
     /** Never throws: the public page only needs to know which message to show. */
     async lookup(token: string, email: string, website: string): Promise<LookupResult> {
       try {
-        const res = await call('/public/lookup', {
-          method: 'POST',
-          credentials: 'omit',
-          body: JSON.stringify({ token, email, website }),
-        });
-        return { kind: 'found', judge: (await res.json()) as JudgeLookup };
+        const judge = await api.send<JudgeLookup>(
+          'POST',
+          `${base}/public/lookup`,
+          { token, email, website },
+          { anonymous: true },
+        );
+        return { kind: 'found', judge };
       } catch (err) {
-        if (err instanceof QuestionnaireHttpError && err.status === 404) return { kind: 'not_found' };
-        if (err instanceof QuestionnaireHttpError && err.status === 429) return { kind: 'rate_limited' };
+        const status = statusOf(err);
+        if (status === 404) return { kind: 'not_found' };
+        if (status === 429) return { kind: 'rate_limited' };
         return { kind: 'error' };
       }
     },

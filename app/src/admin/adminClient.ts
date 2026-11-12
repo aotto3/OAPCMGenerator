@@ -1,7 +1,6 @@
 /**
- * Typed browser client for the admin API (Slice #57 server). Same network shape
- * as the sync client: credentialed, same-origin by default (the frontend proxy
- * forwards /api/* to the API), VITE_API_URL only to override. Every admin route
+ * Typed browser client for the admin API (Slice #57 server), built on the shared
+ * transport (`api/http.ts`): credentialed and same-origin. Every admin route
  * is 404 for non-admins, so `probeAdmin` treats any non-2xx as "not admin" and
  * the app simply never renders the panel — no error surfaced to a regular user.
  *
@@ -9,6 +8,7 @@
  * emails, counts). The server never returns a contest payload here, and this
  * client never asks for one.
  */
+import { ApiHttpError, createApi } from '../api/http';
 
 export interface AdminStats {
   totalUsers: number;
@@ -82,33 +82,6 @@ export interface AdminAnalytics {
   volumeByType: Array<{ type: string; count: number }>;
 }
 
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
-
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { credentials: 'include' });
-  if (!res.ok) throw new Error(`Admin request failed: ${res.status}`);
-  return (await res.json()) as T;
-}
-
-/** True iff the current session is an admin. Any failure (incl. 404) → false. */
-export async function probeAdmin(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_URL}/api/admin/me`, { credentials: 'include' });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export function fetchStats(): Promise<AdminStats> {
-  return getJson<AdminStats>('/api/admin/stats');
-}
-
-export async function fetchUsers(): Promise<AdminUser[]> {
-  const body = await getJson<{ users: AdminUser[] }>('/api/admin/users');
-  return body.users;
-}
-
 /** Filters for the activity feed — all optional, ANDed server-side. */
 export interface EventFilters {
   userId?: string;
@@ -122,28 +95,6 @@ export interface EventFilters {
   text?: string;
 }
 
-/**
- * A page of the activity feed, newest-first, narrowed by any combination of the
- * feed filters (user, type, contest, date range, free text) plus paging. Empty
- * filter values are omitted so the default is the whole feed.
- */
-export function fetchEvents(opts: EventFilters & { limit: number; offset: number }): Promise<EventPage> {
-  const params = new URLSearchParams({ limit: String(opts.limit), offset: String(opts.offset) });
-  if (opts.userId) params.set('userId', opts.userId);
-  if (opts.type) params.set('type', opts.type);
-  if (opts.contestId) params.set('contestId', opts.contestId);
-  if (opts.from) params.set('from', opts.from);
-  if (opts.to) params.set('to', opts.to);
-  if (opts.text) params.set('text', opts.text);
-  return getJson<EventPage>(`/api/admin/events?${params.toString()}`);
-}
-
-/** Analytics report over a window of `windowDays` (server default 30 if omitted). */
-export function fetchAnalytics(windowDays?: number): Promise<AdminAnalytics> {
-  const q = windowDays ? `?window=${windowDays}` : '';
-  return getJson<AdminAnalytics>(`/api/admin/analytics${q}`);
-}
-
 /** A fingerprinted group of client errors (mirrors server errorTriage). */
 export interface ErrorGroup {
   fingerprint: string;
@@ -153,13 +104,6 @@ export interface ErrorGroup {
   lastSeen: string;
   affectedUsers: number;
   latestAppVersion?: string;
-}
-
-/** Client-error groups over a window (server default 30 days if omitted). */
-export async function fetchErrorGroups(windowDays?: number): Promise<ErrorGroup[]> {
-  const q = windowDays ? `?window=${windowDays}` : '';
-  const body = await getJson<{ groups: ErrorGroup[] }>(`/api/admin/errors${q}`);
-  return body.groups;
 }
 
 /** Per-user sync-health derived from server-visible signals (mirrors syncHealth). */
@@ -176,29 +120,104 @@ export interface AdminUserDetail {
   syncHealth: SyncHealth;
 }
 
-/** One user's record + derived sync-health for the drill-down. */
-export function fetchUser(userId: string): Promise<AdminUserDetail> {
-  return getJson<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(userId)}`);
+/** The admin panel's error for a failed request, as the panel has always shown it. */
+function adminError(err: unknown): unknown {
+  return err instanceof ApiHttpError ? new Error(`Admin request failed: ${err.status}`) : err;
 }
 
-/**
- * Resends a fresh sign-in link to a user (the one account-acting admin call).
- * Returns 'sent' on success, 'rate-limited' on a 429, and throws on other
- * failures. Same credentialed, same-origin POST shape as the rest of the client.
- */
-export async function resendSignInLink(userId: string): Promise<'sent' | 'rate-limited'> {
-  const res = await fetch(`${API_URL}/api/admin/users/${encodeURIComponent(userId)}/resend-signin`, {
-    method: 'POST',
-    credentials: 'include',
-  });
-  if (res.status === 429) return 'rate-limited';
-  if (!res.ok) throw new Error(`Admin request failed: ${res.status}`);
-  return 'sent';
+/** The activity-feed path for a page of events; empty filter values are omitted. */
+function eventsPath(opts: EventFilters & { limit: number; offset: number }): string {
+  const params = new URLSearchParams({ limit: String(opts.limit), offset: String(opts.offset) });
+  if (opts.userId) params.set('userId', opts.userId);
+  if (opts.type) params.set('type', opts.type);
+  if (opts.contestId) params.set('contestId', opts.contestId);
+  if (opts.from) params.set('from', opts.from);
+  if (opts.to) params.set('to', opts.to);
+  if (opts.text) params.set('text', opts.text);
+  return `/api/admin/events?${params.toString()}`;
 }
 
-export async function fetchUserContests(userId: string): Promise<AdminContest[]> {
-  const body = await getJson<{ contests: AdminContest[] }>(
-    `/api/admin/users/${encodeURIComponent(userId)}/contests`,
-  );
-  return body.contests;
+const windowQuery = (windowDays?: number) => (windowDays ? `?window=${windowDays}` : '');
+const userPath = (userId: string) => `/api/admin/users/${encodeURIComponent(userId)}`;
+
+/** The admin API over an injectable fetch (tests); the app uses the default instance below. */
+export function createAdminClient(fetchImpl?: typeof fetch) {
+  const api = createApi(fetchImpl);
+  async function getJson<T>(path: string): Promise<T> {
+    try {
+      return await api.get<T>(path);
+    } catch (err) {
+      throw adminError(err);
+    }
+  }
+
+  return {
+    /** True iff the current session is an admin. Any failure (incl. 404) is false. */
+    async probeAdmin(): Promise<boolean> {
+      try {
+        await api.get('/api/admin/me');
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    fetchStats(): Promise<AdminStats> {
+      return getJson<AdminStats>('/api/admin/stats');
+    },
+    async fetchUsers(): Promise<AdminUser[]> {
+      return (await getJson<{ users: AdminUser[] }>('/api/admin/users')).users;
+    },
+    /**
+     * A page of the activity feed, newest-first, narrowed by any combination of
+     * the feed filters (user, type, contest, date range, free text) plus paging.
+     * Empty filter values are omitted so the default is the whole feed.
+     */
+    fetchEvents(opts: EventFilters & { limit: number; offset: number }): Promise<EventPage> {
+      return getJson<EventPage>(eventsPath(opts));
+    },
+    /** Analytics report over a window of `windowDays` (server default 30 if omitted). */
+    fetchAnalytics(windowDays?: number): Promise<AdminAnalytics> {
+      return getJson<AdminAnalytics>(`/api/admin/analytics${windowQuery(windowDays)}`);
+    },
+    /** Client-error groups over a window (server default 30 days if omitted). */
+    async fetchErrorGroups(windowDays?: number): Promise<ErrorGroup[]> {
+      return (await getJson<{ groups: ErrorGroup[] }>(`/api/admin/errors${windowQuery(windowDays)}`)).groups;
+    },
+    /** One user's record + derived sync-health for the drill-down. */
+    fetchUser(userId: string): Promise<AdminUserDetail> {
+      return getJson<AdminUserDetail>(userPath(userId));
+    },
+    /**
+     * Resends a fresh sign-in link to a user (the one account-acting admin call).
+     * Returns 'sent' on success, 'rate-limited' on a 429, and throws on other failures.
+     */
+    async resendSignInLink(userId: string): Promise<'sent' | 'rate-limited'> {
+      try {
+        await api.send('POST', `${userPath(userId)}/resend-signin`);
+        return 'sent';
+      } catch (err) {
+        if (err instanceof ApiHttpError && err.status === 429) return 'rate-limited';
+        throw adminError(err);
+      }
+    },
+    async fetchUserContests(userId: string): Promise<AdminContest[]> {
+      return (await getJson<{ contests: AdminContest[] }>(`${userPath(userId)}/contests`)).contests;
+    },
+  };
 }
+
+export type AdminClient = ReturnType<typeof createAdminClient>;
+
+const defaultClient = createAdminClient();
+
+export const {
+  probeAdmin,
+  fetchStats,
+  fetchUsers,
+  fetchEvents,
+  fetchAnalytics,
+  fetchErrorGroups,
+  fetchUser,
+  resendSignInLink,
+  fetchUserContests,
+} = defaultClient;
