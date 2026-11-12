@@ -181,7 +181,6 @@ function JudgeFields({
           />
         </div>
         <div className="jg-check judge-milestones">
-        <span className="milestone-heading">Contracting checklist</span>
         {adjudicatorMilestoneStatus(judge).map((m) => (
           <div key={m.key} className="milestone-row">
             <label className="check-option">
