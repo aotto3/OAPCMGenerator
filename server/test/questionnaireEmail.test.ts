@@ -18,12 +18,11 @@ const input = (patch: Partial<SubmissionNoticeInput> = {}): SubmissionNoticeInpu
     cellPhone: '512-555-0100',
     mailingAddress: '1 Main St\nAustin TX',
     dietary: '',
-    needsPower: true,
     bio: 'A bio',
     notes: 'Arriving <late>',
     contests: {
-      a: { hotelBefore: true, hotelAfter: true, requestingFlight: false },
-      b: { hotelBefore: false, hotelAfter: false, requestingFlight: true },
+      a: { hotelBefore: true, hotelAfter: true, requestingFlight: false, needsPower: true },
+      b: { hotelBefore: false, hotelAfter: false, requestingFlight: true, needsPower: false },
     },
   },
   isUpdate: false,
@@ -48,7 +47,6 @@ describe('buildSubmissionNotices', () => {
     expect(text).toContain('Cell: 512-555-0100');
     expect(text).toContain('Mailing address: 1 Main St\nAustin TX');
     expect(text).toContain('Dietary: (blank)');
-    expect(text).toContain('Power at judging table: yes');
     expect(text).toContain('Bio: A bio');
     expect(text).toContain('Anything else: Arriving <late>');
   });

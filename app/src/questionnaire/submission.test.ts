@@ -41,10 +41,9 @@ function submission(submittedAt: string, patch: Partial<JudgeSubmission['answers
       cellPhone: '512-555-0100',
       mailingAddress: '1 Main St',
       dietary: 'vegetarian',
-      needsPower: true,
       bio: 'A bio',
       notes: 'Arriving late',
-      contests: { c1: { hotelBefore: true, hotelAfter: false, requestingFlight: true } },
+      contests: { c1: { hotelBefore: true, hotelAfter: false, requestingFlight: true, needsPower: true } },
       ...patch,
     },
   };
@@ -67,6 +66,19 @@ describe('applySubmission', () => {
       questionnaireUpdatedAt: '2026-11-10T00:00:00.000Z',
     });
     expect(next.updatedAt).toBe(LATER);
+  });
+
+  it("uses an older submission's single power answer when the contest has none", () => {
+    const legacy = submission('2026-11-10T00:00:00.000Z', {
+      needsPower: true,
+      contests: { c1: { hotelBefore: false, hotelAfter: false, requestingFlight: false } },
+    });
+    expect(applySubmission(contest('c1'), legacy, LATER).adjudicators[0].needsPower).toBe(true);
+    const perContest = submission('2026-11-10T00:00:00.000Z', {
+      needsPower: true,
+      contests: { c1: { hotelBefore: false, hotelAfter: false, requestingFlight: false, needsPower: false } },
+    });
+    expect(applySubmission(contest('c1'), perContest, LATER).adjudicators[0].needsPower).toBe(false);
   });
 
   it('never touches name, email, contracting dates, or other judges', () => {
@@ -152,20 +164,26 @@ describe('readGroup / writeGroup', () => {
   const single = groupContests([rc('d', 'District', '2027-03-25')])[0];
 
   it('saves a Zone pair\'s "between" night as the first zone\'s after and the second\'s before', () => {
-    expect(writeGroup(pair, { before: true, between: true, after: false, requestingFlight: true })).toEqual({
-      z1: { hotelBefore: true, hotelAfter: true, requestingFlight: true },
-      z2: { hotelBefore: true, hotelAfter: false, requestingFlight: true },
+    expect(writeGroup(pair, { before: true, between: true, after: false, requestingFlight: true, needsPower: true })).toEqual({
+      z1: { hotelBefore: true, hotelAfter: true, requestingFlight: true, needsPower: true },
+      z2: { hotelBefore: true, hotelAfter: false, requestingFlight: true, needsPower: true },
     });
   });
 
   it('round-trips group answers', () => {
-    const answers = { before: false, between: true, after: true, requestingFlight: false };
+    const answers = { before: false, between: true, after: true, requestingFlight: false, needsPower: true };
     expect(readGroup(pair, writeGroup(pair, answers))).toEqual(answers);
-    const one = { before: true, between: false, after: true, requestingFlight: true };
+    const one = { before: true, between: false, after: true, requestingFlight: true, needsPower: false };
     expect(readGroup(single, writeGroup(single, one))).toEqual(one);
   });
 
   it('reads blank answers for contests with none saved', () => {
-    expect(readGroup(pair, {})).toEqual({ before: false, between: false, after: false, requestingFlight: false });
+    expect(readGroup(pair, {})).toEqual({
+      before: false,
+      between: false,
+      after: false,
+      requestingFlight: false,
+      needsPower: false,
+    });
   });
 });

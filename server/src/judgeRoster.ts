@@ -107,13 +107,14 @@ export interface ContestAnswers {
   hotelBefore: boolean;
   hotelAfter: boolean;
   requestingFlight: boolean;
+  /** Power at the judging table; asked per contest (it was once one answer for all). */
+  needsPower: boolean;
 }
 
 export interface SubmissionAnswers {
   cellPhone: string;
   mailingAddress: string;
   dietary: string;
-  needsPower: boolean;
   bio: string;
   notes: string;
   contests: Record<string, ContestAnswers>;
@@ -142,7 +143,10 @@ export function parseAnswers(input: unknown, judgeContestIds: readonly string[])
     if (typeof value !== 'string' || value.length > max) return null;
     text[key] = value;
   }
-  if (typeof raw.needsPower !== 'boolean') return null;
+  // Legacy shape: one top-level power answer for every contest. Still accepted
+  // (a cached page may send it) and used where a contest gives no answer of its own.
+  if (raw.needsPower !== undefined && typeof raw.needsPower !== 'boolean') return null;
+  const legacyPower = raw.needsPower === true;
   const contestsRaw = record(raw.contests);
   if (!contestsRaw) return null;
   const contests: Record<string, ContestAnswers> = {};
@@ -153,17 +157,22 @@ export function parseAnswers(input: unknown, judgeContestIds: readonly string[])
       !c ||
       typeof c.hotelBefore !== 'boolean' ||
       typeof c.hotelAfter !== 'boolean' ||
-      typeof c.requestingFlight !== 'boolean'
+      typeof c.requestingFlight !== 'boolean' ||
+      (c.needsPower !== undefined && typeof c.needsPower !== 'boolean')
     ) {
       return null;
     }
-    contests[id] = { hotelBefore: c.hotelBefore, hotelAfter: c.hotelAfter, requestingFlight: c.requestingFlight };
+    contests[id] = {
+      hotelBefore: c.hotelBefore,
+      hotelAfter: c.hotelAfter,
+      requestingFlight: c.requestingFlight,
+      needsPower: typeof c.needsPower === 'boolean' ? c.needsPower : legacyPower,
+    };
   }
   return {
     cellPhone: text.cellPhone!,
     mailingAddress: text.mailingAddress!,
     dietary: text.dietary!,
-    needsPower: raw.needsPower,
     bio: text.bio!,
     notes: text.notes!,
     contests,

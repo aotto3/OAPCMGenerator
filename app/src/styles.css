@@ -213,6 +213,21 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .contest-row-line { display: block; }
 .contest-row-title { font-size: var(--fs-base); }
 .contest-name { font-weight: 600; font-size: var(--fs-base); }
+.contest-open { color: inherit; }
+
+/* Phones: the title takes the full row and the four actions share an even
+   row beneath it, instead of crushing the title to one word per line. */
+@media (max-width: 640px) {
+  .toolbar { flex-wrap: wrap; gap: var(--space-2); }
+  .toolbar h2 { margin: var(--space-2) 0; white-space: nowrap; }
+  .toolbar-actions { flex: 1 1 100%; }
+  .toolbar-actions button { flex: 1; }
+  .contest-row { flex-wrap: wrap; row-gap: var(--space-1); padding-bottom: var(--space-3); }
+  .contest-open { flex: 1 1 100%; padding-bottom: var(--space-1); }
+  .contest-row .btn-secondary, .contest-row .btn-danger {
+    flex: 1 1 0; min-width: 0; padding: 6px 4px; font-size: var(--fs-sm);
+  }
+}
 
 .section {
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg);
@@ -392,21 +407,32 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .jg-cell { grid-area: cell; } .jg-diet { grid-area: diet; } .jg-needs { grid-area: needs; }
 .jg-bio { grid-area: bio; } .jg-notes { grid-area: notes; } .jg-check { grid-area: check; }
 .jg-bio .field textarea, .jg-notes .field textarea { min-height: 3.6em; }
-.jg-needs { display: flex; flex-direction: column; justify-content: flex-end; gap: var(--space-2); padding-bottom: 6px; }
-.judge-hotel { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.judge-hotel-nights { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--fs-sm); }
+/* The needs checklist is its own soft panel spanning two field rows (wider
+   layouts), so revealing the hotel nights fills reserved room instead of
+   stretching the neighbouring fields' row. */
+.jg-needs {
+  display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-border); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--c-page-bg) 35%, var(--c-surface));
+}
+.judge-hotel { display: flex; flex-direction: column; gap: 4px; }
+.judge-hotel-nights {
+  display: flex; gap: 2px var(--space-3); flex-wrap: wrap; font-size: var(--fs-sm);
+  padding-left: 22px;
+}
 @container (min-width: 560px) {
   .judge-grid {
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: "name addr" "email cell" "diet needs" "bio check" "notes check";
+    grid-template-areas: "name needs" "addr needs" "email cell" "diet diet" "bio check" "notes check";
   }
 }
 @container (min-width: 820px) {
   .judge-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-template-areas:
-      "name addr addr cell"
-      "email diet diet needs"
+      "name addr addr needs"
+      "email cell diet needs"
       "bio bio check check"
       "notes notes check check";
   }
@@ -1282,10 +1308,18 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .questionnaire-form { display: flex; flex-direction: column; gap: var(--space-4); align-items: flex-start; }
 .questionnaire-card {
   align-self: stretch; display: flex; flex-direction: column; gap: var(--space-2); margin: 0;
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  min-width: 0; padding: var(--space-3) var(--space-4) var(--space-4);
   border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
 }
-.questionnaire-card legend { font-weight: 700; padding: 0 var(--space-1); }
+/* Float takes the legend out of the border notch, so it becomes the card's
+   first flex item: a heading inside the box rather than one straddling it. */
+.questionnaire-card legend {
+  float: left; width: 100%; padding: 0 0 var(--space-2); margin: 0 0 var(--space-1);
+  font-size: var(--fs-base); font-weight: 700; color: var(--c-blue);
+  border-bottom: 1px solid var(--c-border);
+}
+.questionnaire-card .check-option { white-space: normal; align-items: flex-start; line-height: 1.35; }
+.questionnaire-card .check-option input { margin-top: 2px; flex: none; }
 .questionnaire-card .hint { margin: 0; }
 .questionnaire-contest-line { display: flex; flex-direction: column; gap: 2px; }
 .questionnaire-question { margin: var(--space-2) 0 0; font-size: var(--fs-sm); font-weight: 600; }
