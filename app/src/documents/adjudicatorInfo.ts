@@ -3,8 +3,10 @@
  *
  * Ported from v12 genAdjudicatorInfo (_Templates/OAP Contest Setup.html, ~lines
  * 2149–2179). A plain (unstyled) label/value grid: contest details, the judge
- * panel (name + script-mailing address, with per-judge power/hotel/dietary
- * notes), and CM contact block. Reproduces v12's fallback strings exactly ('TBA'
+ * panel (name, script-mailing address, email and cell, with per-judge
+ * power/hotel/dietary notes, bio and contracting status), and CM contact block.
+ * The sheet is the CM's full record of the panel, so it carries the CM-only
+ * email and cell columns too. Reproduces v12's fallback strings exactly ('TBA'
  * judge names, 'Address TBA' addresses, the host/venue/address placeholders).
  *
  * Pure: no DOM. Synchronous — XLSX.write packs the workbook directly.
@@ -22,12 +24,19 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
   const panelRows: string[][] = [];
   for (let i = 1; i <= d.numJudges; i++) {
     const j = contest.adjudicators[i - 1];
-    panelRows.push(['Judge ' + i, (j && j.name) || 'TBA', (j && j.mailingAddress) || 'Address TBA']);
+    panelRows.push([
+      'Judge ' + i,
+      (j && j.name) || 'TBA',
+      (j && j.mailingAddress) || 'Address TBA',
+      (j && j.email.trim()) || '',
+      (j && j.cellPhone.trim()) || '',
+    ]);
     const extras: string[] = [];
     if (j && j.needsPower) extras.push('Needs power at table');
     if (j && j.needsHotel) extras.push('Hotel: ' + j.hotelNights + ' night(s)');
     if (j && j.dietary) extras.push('Dietary/Other: ' + j.dietary);
     if (extras.length) panelRows.push(['', extras.join('  |  '), '']);
+    if (j && j.bio.trim()) panelRows.push(['', 'Bio: ' + j.bio.trim(), '']);
     // Contracting milestones (PRD #67), a snapshot as of generation: a completed
     // one shows a check + its stored date, a pending one shows 'pending'. Renders
     // from the shared derivation so labels/order match the Judges UI exactly.
@@ -54,7 +63,7 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
     ['Critique Format', d.critiqueFormat === 'after_each' ? 'After each performance' : 'After all performances'],
     [],
     ['ADJUDICATOR PANEL'],
-    ['', 'Name', 'Mailing Address (scripts sent here)'],
+    ['', 'Name', 'Mailing Address (scripts sent here)', 'Email', 'Cell'],
     ...panelRows,
     [],
     ['CONTEST MANAGER'],
@@ -65,8 +74,8 @@ export function buildAdjudicatorInfo(contest: Contest): Uint8Array {
 
   return makeSheet()
     .rows(rows)
-    .cols([20, 32, 50])
-    .merge({ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } })
-    .merge({ s: { r: 1, c: 0 }, e: { r: 1, c: 2 } })
+    .cols([20, 32, 50, 30, 16])
+    .merge({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } })
+    .merge({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } })
     .buffer('Adjudicator Info');
 }

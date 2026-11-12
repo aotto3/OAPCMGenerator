@@ -71,8 +71,13 @@ export function fixtureContest(): Contest {
   );
 
   const judges = [
-    { name: 'Dr. Jane Judge', mailingAddress: '100 Main St, Austin, TX 78701' },
-    { name: 'Prof. John Critic', mailingAddress: '200 Oak Ave, Dallas, TX 75201' },
+    {
+      name: 'Dr. Jane Judge',
+      mailingAddress: '100 Main St, Austin, TX 78701',
+      email: 'jane.judge@example.org',
+      cellPhone: '512-555-0101',
+    },
+    { name: 'Prof. John Critic', mailingAddress: '200 Oak Ave, Dallas, TX 75201', email: 'critic@example.org' },
     { name: 'Ms. Mary Adjudicator', mailingAddress: '300 Elm Blvd, San Antonio, TX 78205' },
   ];
   judges.forEach((j, i) => (c = withAdjudicator(c, i, j, FIXTURE_NOW)));

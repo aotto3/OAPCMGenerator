@@ -22,8 +22,8 @@ import {
   withSpeechwire,
   type Contest,
 } from '../model/contest';
-import { DOCUMENT_REGISTRY, isDocumentAvailable } from './registry';
-import { buildContestArchive, normalizeResult } from './generate';
+import { DOCUMENT_GROUPS, DOCUMENT_REGISTRY, isDocumentAvailable } from './registry';
+import { buildContestArchive, buildSingleDocument, normalizeResult } from './generate';
 
 const NOW = '2026-07-05T12:00:00.000Z';
 
@@ -148,6 +148,35 @@ describe('buildContestArchive', () => {
     expect(onProgress.mock.calls.map(([p]) => p.current)).toEqual([1, 2, 3]);
     expect(onProgress.mock.calls.every(([p]) => p.total === 3)).toBe(true);
     expect(onProgress).toHaveBeenLastCalledWith({ label: 'Contest file', current: 3, total: 3 });
+  });
+});
+
+describe('DOCUMENT_GROUPS', () => {
+  it('places every document in exactly one group', () => {
+    const grouped = DOCUMENT_GROUPS.flatMap((g) => g.documents);
+    expect([...grouped].sort()).toEqual(DOCUMENT_TYPES.map((d) => d.id).sort());
+    expect(new Set(grouped).size).toBe(grouped.length);
+  });
+});
+
+describe('buildSingleDocument', () => {
+  it('builds the one selected document under its own filename, byte-identical to its ZIP copy', async () => {
+    let c = setAllDocuments(contest(), false);
+    c = setDocumentSelected(c, 'awards', true);
+    const now = new Date('2026-03-21T12:00:00Z');
+    const single = await buildSingleDocument(c, { now });
+    expect(single).not.toBeNull();
+    expect(single!.filename).toBe('Awards Script.docx');
+    const archive = await buildContestArchive(c, { now });
+    const zipped = await (await unzip(archive.bytes)).file(`${archive.folderName}/Awards Script.docx`)!.async('uint8array');
+    expect(single!.bytes).toEqual(zipped);
+  });
+
+  it('is null unless exactly one document is selected', async () => {
+    const none = setAllDocuments(contest(), false);
+    expect(await buildSingleDocument(none)).toBeNull();
+    const two = setDocumentSelected(setDocumentSelected(none, 'awards', true), 'checklist', true);
+    expect(await buildSingleDocument(two)).toBeNull();
   });
 });
 
