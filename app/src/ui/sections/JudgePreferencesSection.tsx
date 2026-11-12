@@ -8,7 +8,6 @@ import {
   removeCustomPreferenceList,
   removeRankedJudge,
   removeVetoedJudge,
-  normalizeJudgeName,
   renameCustomPreferenceList,
   setJudgeUnavailable,
   type Contest,
@@ -21,13 +20,20 @@ import {
   enteredJudgeNames,
   firstOpenJudgeSlot,
   judgeSlotNumber,
-  parseJudgeList,
   preferenceProgress,
   preferencesAvailable,
   type ActivePreferenceList,
   type PreferenceConflict,
 } from '../../model/judgePreferences';
-import { matchPastedName, suggestJudges, type RosterJudge } from '../../model/ttaoRoster';
+import {
+  applyPaste,
+  mergeCandidates,
+  mergeImpact,
+  previewPaste,
+  vetoedInSlots,
+  type PasteTarget,
+} from '../../model/judgePreferenceFlows';
+import { suggestJudges, type RosterJudge } from '../../model/ttaoRoster';
 import { TTAO_SNAPSHOT } from '../../model/ttaoRosterSnapshot';
 import { CopyButton } from './fields';
 import { Section } from './Section';
@@ -183,43 +189,27 @@ export function JudgePreferencesSection({
               </tbody>
             </table>
           </div>
-          {vetoed.map((entry) => {
-            const slot = judgeSlotNumber(contest, entry.name);
-            return (
-              slot !== null && (
-                <p key={entry.name} className="pref-warning" role="alert">
-                  {entry.name} is vetoed but is in the Judge {slot} slot. The slot is left as it is for you to review.
-                </p>
-              )
-            );
-          })}
+          {vetoedInSlots(contest).map(({ name, slot }) => (
+            <p key={name} className="pref-warning" role="alert">
+              {name} is vetoed but is in the Judge {slot} slot. The slot is left as it is for you to review.
+            </p>
+          ))}
         </>
       )}
 
-      <MergeJudges contest={contest} names={[...callList, ...vetoed].map((e) => e.name)} onChange={onChange} />
+      <MergeJudges contest={contest} onChange={onChange} />
     </Section>
   );
 }
 
 /** Merges two spellings of one judge, from the names on the call list or the Vetoed section. */
-function MergeJudges({
-  contest,
-  names,
-  onChange,
-}: {
-  contest: Contest;
-  names: string[];
-  onChange: (next: Contest) => void;
-}) {
+function MergeJudges({ contest, onChange }: { contest: Contest; onChange: (next: Contest) => void }) {
   const [keepChoice, setKeep] = useState('');
   const [mergeChoice, setMerge] = useState('');
+  const names = mergeCandidates(contest);
   if (names.length < 2) return null;
 
-  const sorted = [...names].sort((a, b) => a.localeCompare(b));
-  const keep = names.includes(keepChoice) ? keepChoice : '';
-  const merge = names.includes(mergeChoice) && mergeChoice !== keep ? mergeChoice : '';
-  const keepSlot = keep ? judgeSlotNumber(contest, keep) : null;
-  const mergeSlot = merge ? judgeSlotNumber(contest, merge) : null;
+  const { keep, merge, valid, warnings } = mergeImpact(contest, keepChoice, mergeChoice);
 
   function submit() {
     onChange(mergeJudgeNames(contest, keep, merge));
@@ -240,7 +230,7 @@ function MergeJudges({
           Keep this spelling
           <select value={keep} onChange={(e) => setKeep(e.target.value)}>
             <option value="">Choose a name</option>
-            {sorted.map((name) => (
+            {names.map((name) => (
               <option key={name} value={name}>
                 {name}
               </option>
@@ -251,7 +241,7 @@ function MergeJudges({
           Merge this name into it
           <select value={merge} onChange={(e) => setMerge(e.target.value)}>
             <option value="">Choose a name</option>
-            {sorted
+            {names
               .filter((name) => name !== keep)
               .map((name) => (
                 <option key={name} value={name}>
@@ -260,17 +250,15 @@ function MergeJudges({
               ))}
           </select>
         </label>
-        <button type="button" className="btn-util" disabled={!keep || !merge} onClick={submit}>
+        <button type="button" className="btn-util" disabled={!valid} onClick={submit}>
           Merge names
         </button>
       </div>
-      {keep && mergeSlot !== null && (
-        <p className="pref-warning" role="alert">
-          {merge} is in the Judge {mergeSlot} slot. Merging changes that slot to {keep}, so generated documents will
-          use that spelling.
-          {keepSlot !== null && ` ${keep} is also in the Judge ${keepSlot} slot, so you'll need to clear one of them.`}
+      {warnings.map((warning) => (
+        <p key={warning} className="pref-warning" role="alert">
+          {warning}
         </p>
-      )}
+      ))}
     </>
   );
 }
@@ -352,9 +340,9 @@ function PreferenceListCard({
       <PasteNames
         what="rankings"
         listLabel={list.label}
-        current={list.ranked}
-        entered={entered}
-        onAdd={(names) => onChange(names.reduce((next, name) => addRankedJudge(next, ref, name), contest))}
+        contest={contest}
+        target={{ ref, part: 'ranked' }}
+        onChange={onChange}
       />
 
       <div className="pref-subheading">Vetoes</div>
@@ -388,9 +376,9 @@ function PreferenceListCard({
       <PasteNames
         what="vetoes"
         listLabel={list.label}
-        current={list.vetoes}
-        entered={entered}
-        onAdd={(names) => onChange(names.reduce((next, name) => addVetoedJudge(next, ref, name), contest))}
+        contest={contest}
+        target={{ ref, part: 'vetoes' }}
+        onChange={onChange}
       />
 
       {conflicts.map((conflict) => (
@@ -411,15 +399,15 @@ const judgeDetail = (judge: RosterJudge) => [judge.city, judge.esc].filter(Boole
 function PasteNames({
   what,
   listLabel,
-  current,
-  entered,
-  onAdd,
+  contest,
+  target,
+  onChange,
 }: {
   what: 'rankings' | 'vetoes';
   listLabel: string;
-  current: string[];
-  entered: string[];
-  onAdd: (names: string[]) => void;
+  contest: Contest;
+  target: PasteTarget;
+  onChange: (next: Contest) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -439,12 +427,8 @@ function PasteNames({
     );
   }
 
-  const onList = new Set(current.map(normalizeJudgeName));
-  const rows = parseJudgeList(text).map((typed) => {
-    const match = matchPastedName(typed, { roster: TTAO_SNAPSHOT.judges, entered });
-    return { ...match, chosen: choices[typed] ?? match.suggested };
-  });
-  const toAdd = [...new Set(rows.map((row) => row.chosen))].filter((name) => !onList.has(normalizeJudgeName(name)));
+  const preview = previewPaste(contest, target, text, choices);
+  const { rows, toAdd } = preview;
 
   return (
     <div className="pref-paste">
@@ -458,23 +442,23 @@ function PasteNames({
       {rows.length > 0 && (
         <ol className="pref-paste-rows">
           {rows.map((row) => (
-            <li key={row.typed}>
-              {row.candidates.length > 0 ? (
+            <li key={row.raw}>
+              {row.choices.length > 0 ? (
                 <>
                   <select
                     value={row.chosen}
-                    aria-label={`Name to use for ${row.typed}`}
-                    onChange={(e) => setChoices({ ...choices, [row.typed]: e.target.value })}
+                    aria-label={`Name to use for ${row.raw}`}
+                    onChange={(e) => setChoices({ ...choices, [row.raw]: e.target.value })}
                   >
-                    <option value={row.typed}>{row.typed} (as written)</option>
-                    {row.candidates.map((judge) => (
+                    <option value={row.raw}>{row.raw} (as written)</option>
+                    {row.choices.map((judge) => (
                       <option key={judge.name} value={judge.name}>
                         {judge.name}
                         {judgeDetail(judge) && ` (${judgeDetail(judge)})`}
                       </option>
                     ))}
                   </select>
-                  {row.chosen === row.typed && (
+                  {row.asWritten && (
                     <span className="pref-paste-flag">
                       Not on the TTAO list as written. Is it one of these?
                     </span>
@@ -488,9 +472,7 @@ function PasteNames({
                   </span>
                 </>
               )}
-              {onList.has(normalizeJudgeName(row.chosen)) && (
-                <span className="pref-suggest-detail">Already on this list</span>
-              )}
+              {row.duplicate && <span className="pref-suggest-detail">Already on this list</span>}
             </li>
           ))}
         </ol>
@@ -501,7 +483,7 @@ function PasteNames({
           className="btn-util"
           disabled={toAdd.length === 0}
           onClick={() => {
-            onAdd(toAdd);
+            onChange(applyPaste(contest, target, preview));
             close();
           }}
         >
