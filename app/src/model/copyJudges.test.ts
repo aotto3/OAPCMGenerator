@@ -11,6 +11,7 @@ import {
   type Contest,
 } from './contest';
 import { canCopyJudges, copyJudges, judgeCopyImpact, judgeCopyTargets } from './copyJudges';
+import { applySubmissions, type JudgeSubmission } from '../questionnaire/submission';
 
 const NOW = '2026-07-05T12:00:00.000Z';
 const LATER = '2026-07-06T00:00:00.000Z';
@@ -48,9 +49,15 @@ function sourceZone(): Contest {
 }
 
 describe('copyJudges', () => {
-  it('copies every judge field in the same order, including checklist dates', () => {
+  it('copies person-level fields and checklist dates in the same order; blanks travel answers and the stamp (#263)', () => {
     const result = copyJudges(sourceZone(), zone('target', '2'), LATER);
-    expect(result.adjudicators[0]).toEqual(FULL_JUDGE);
+    expect(result.adjudicators[0]).toEqual({
+      ...FULL_JUDGE,
+      needsHotel: false,
+      hotelNights: { before: false, after: false },
+      requestingFlight: false,
+      questionnaireUpdatedAt: '',
+    });
     expect(result.adjudicators[1].name).toBe('Sam Lee');
     expect(result.adjudicators[2]).toEqual(defaultAdjudicators()[2]);
   });
@@ -89,9 +96,10 @@ describe('copyJudges', () => {
     const result = copyJudges(sourceZone(), target, LATER);
     expect(result).toEqual({
       ...target,
-      adjudicators: sourceZone().adjudicators,
+      adjudicators: result.adjudicators,
       updatedAt: LATER,
     });
+    expect(result.adjudicators.map((j) => j.name)).toEqual(sourceZone().adjudicators.map((j) => j.name));
   });
 
   it('leaves the source unchanged and shares no judge objects with it', () => {
@@ -230,5 +238,42 @@ describe('judgeCopyTargets', () => {
 
   it('is empty when no other Zone contest exists', () => {
     expect(judgeCopyTargets([row('open', 'Zone'), row('district', 'District')], 'open')).toEqual([]);
+  });
+});
+
+describe('Copy Judges and the questionnaire (#263)', () => {
+  it("the target's own questionnaire answers apply after a copy", () => {
+    const source = sourceZone();
+    const submission: JudgeSubmission = {
+      email: FULL_JUDGE.email,
+      submittedAt: '2026-01-20T12:00:00.000Z',
+      answers: {
+        cellPhone: FULL_JUDGE.cellPhone,
+        mailingAddress: FULL_JUDGE.mailingAddress,
+        dietary: FULL_JUDGE.dietary,
+        needsPower: FULL_JUDGE.needsPower,
+        bio: FULL_JUDGE.bio,
+        notes: FULL_JUDGE.judgeNotes,
+        contests: {
+          source: { hotelBefore: true, hotelAfter: true, requestingFlight: true },
+          target: { hotelBefore: false, hotelAfter: true, requestingFlight: false },
+        },
+      },
+    };
+    // The source has already absorbed this submission (stamp equals it).
+    const appliedSource = applySubmissions(source, [submission], NOW);
+    const copied = copyJudges(appliedSource, zone('target', '2'), LATER);
+    const result = applySubmissions(copied, [submission], LATER);
+    const judge = result.adjudicators[0];
+    expect(judge.needsHotel).toBe(true);
+    expect(judge.hotelNights).toEqual({ before: false, after: true });
+    expect(judge.requestingFlight).toBe(false);
+    expect(judge.questionnaireUpdatedAt).toBe(submission.submittedAt);
+  });
+
+  it('leaves the source travel answers and stamp untouched', () => {
+    const source = sourceZone();
+    copyJudges(source, zone('target', '2'), LATER);
+    expect(source.adjudicators[0]).toEqual(FULL_JUDGE);
   });
 });

@@ -1292,7 +1292,7 @@ export function addBreak(
   const gap: InsertedGap = { id: crypto.randomUUID(), anchor, minutes, label };
   return {
     ...touch(contest, now),
-    scheduleOverrides: { gaps: [...contest.scheduleOverrides.gaps, gap] },
+    scheduleOverrides: { ...contest.scheduleOverrides, gaps: [...contest.scheduleOverrides.gaps, gap] },
   };
 }
 
@@ -1311,7 +1311,7 @@ export function setArrival(contest: Contest, minutes: number | null, now?: strin
 export function removeBreak(contest: Contest, id: string, now?: string): Contest {
   const gaps = contest.scheduleOverrides.gaps.filter((g) => g.id !== id);
   if (gaps.length === contest.scheduleOverrides.gaps.length) return contest;
-  return { ...touch(contest, now), scheduleOverrides: { gaps } };
+  return { ...touch(contest, now), scheduleOverrides: { ...contest.scheduleOverrides, gaps } };
 }
 
 /**
@@ -1332,7 +1332,7 @@ export function updateBreak(
     return { ...g, ...patch };
   });
   if (!changed) return contest;
-  return { ...touch(contest, now), scheduleOverrides: { gaps } };
+  return { ...touch(contest, now), scheduleOverrides: { ...contest.scheduleOverrides, gaps } };
 }
 
 export function withAdjudicator(

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addBreak,
   updateBreak,
+  removeBreak,
   setArrival,
   createContest,
   setNumSchools,
@@ -493,5 +494,48 @@ describe('computeContestDay — rehearsal & arrival overrides (#192)', () => {
     const set = setArrival(c, 6 * 60 + 30); // 6:30 AM
     expect(computeContestDay(set).find((e) => e.type === 'arrival')!.start).toBe(6 * 60 + 30);
     expect(computeContestDay(setArrival(set, null)).find((e) => e.type === 'arrival')!.start).toBe(derived);
+  });
+});
+
+describe('break edits keep the CM-arrival override (#263)', () => {
+  const ARRIVAL = 6 * 60 + 30;
+  const withArrival = (): Contest => {
+    const c = withDetails(makeContest('after_all', 3, { firstShow: '1:00 PM', dm: '12:30 PM' }), {
+      contestDate: '2026-03-21',
+      rehearsalDate1: '2026-03-21',
+      rehearsalDate2: '',
+      rehearsalStartTime1: '8:00 AM',
+      rehearsalLengthMinutes: 45,
+    });
+    return setArrival(c, ARRIVAL);
+  };
+
+  it('adding a break keeps the arrival', () => {
+    expect(addBreak(withArrival(), 'show:0', 15, 'Lunch').scheduleOverrides.arrival).toBe(ARRIVAL);
+  });
+
+  it('resizing, moving and removing a break keep the arrival', () => {
+    const c = addBreak(withArrival(), 'show:0', 15, 'Lunch');
+    const id = c.scheduleOverrides.gaps[0].id;
+    expect(updateBreak(c, id, { minutes: 30 }).scheduleOverrides.arrival).toBe(ARRIVAL);
+    expect(updateBreak(c, id, { anchor: 'show:1' }).scheduleOverrides.arrival).toBe(ARRIVAL);
+    expect(removeBreak(c, id).scheduleOverrides.arrival).toBe(ARRIVAL);
+  });
+
+  it('nudging a downstream row with setRowStart keeps the arrival', () => {
+    const c = withArrival();
+    const day = computeContestDay(c);
+    const i = day.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
+    let out = setRowStart(c, day, i, day[i].start + 20); // adds a nudge
+    expect(out.scheduleOverrides.arrival).toBe(ARRIVAL);
+    const day2 = computeContestDay(out);
+    const i2 = day2.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
+    out = setRowStart(out, day2, i2, day2[i2].start + 10); // resizes it
+    expect(out.scheduleOverrides.arrival).toBe(ARRIVAL);
+    const day3 = computeContestDay(out);
+    const i3 = day3.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
+    out = setRowStart(out, day3, i3, day[i].start); // removes it
+    expect(out.scheduleOverrides.gaps).toHaveLength(0);
+    expect(out.scheduleOverrides.arrival).toBe(ARRIVAL);
   });
 });
