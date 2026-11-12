@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BUILT_IN_READINESS_ITEMS,
   BUILT_IN_COMPLIANCE_ITEMS,
   addReadinessItem,
   addRosterMember,
@@ -142,7 +143,7 @@ describe('readinessReport — rollup and color', () => {
   it('a fully-ready contest is green (every applicable item resolved)', () => {
     // Manual built-ins have no data source; mark them N-A so only derived items remain.
     let c = readyContest();
-    for (const id of ['venue_reserved', 'hospitality_arranged', 'trophies_ordered', 'programs_printed', 'tech_set']) {
+    for (const { id } of BUILT_IN_READINESS_ITEMS) {
       c = setReadinessStatus(c, id, 'na');
     }
     const report = readinessReport(c);
@@ -153,7 +154,7 @@ describe('readinessReport — rollup and color', () => {
 
   it('marking a manual item Done (not N-A) also counts toward green', () => {
     let c = readyContest();
-    for (const id of ['venue_reserved', 'hospitality_arranged', 'trophies_ordered', 'programs_printed', 'tech_set']) {
+    for (const { id } of BUILT_IN_READINESS_ITEMS) {
       c = setReadinessStatus(c, id, 'done');
     }
     expect(readinessReport(c).color).toBe('green');
@@ -300,6 +301,16 @@ describe('readinessReport — manual and custom flow-through', () => {
     const venue = item(c, 'venue_reserved')!;
     expect(venue.kind).toBe('manual');
     expect(venue.status).toBe('pending');
+  });
+
+  it('lists the post-contest to-dos after Results entered, in Results & Advancement', () => {
+    expect(phase(contest(), 'results_advancement').items.map((i) => [i.id, i.kind])).toEqual([
+      ['results', 'derived'],
+      ['advancing_emailed', 'manual'],
+      ['next_cm_emailed', 'manual'],
+      ['state_office_emailed', 'manual'],
+      ['uil_forms_submitted', 'manual'],
+    ]);
   });
 
   it('reflects a stored manual status', () => {

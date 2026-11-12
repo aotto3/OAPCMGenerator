@@ -49,17 +49,29 @@ interface Fonts {
 /** Converts a top-down y (as measured on the page) to pdf-lib's bottom-up y. */
 const fromTop = (y: number) => PAGE_H - y;
 
+/**
+ * The width text actually takes when drawn. pdf-lib's widthOfTextAtSize adds the
+ * font's kerning pairs, but drawText does not kern, so its figure runs short
+ * (about 5pt on the email line, which ate the space before the address).
+ * Summing per-character widths matches what is drawn.
+ */
+function textWidth(font: PDFFont, text: string, size: number): number {
+  let w = 0;
+  for (const ch of text) w += font.widthOfTextAtSize(ch, size);
+  return w;
+}
+
 function drawCentered(page: PDFPage, text: string, font: PDFFont, size: number, baselineTop: number): void {
-  const width = font.widthOfTextAtSize(text, size);
+  const width = textWidth(font, text, size);
   page.drawText(text, { x: (PAGE_W - width) / 2, y: fromTop(baselineTop), size, font, color: BLACK });
 }
 
 /** Shortens text with an ellipsis until it fits `max` points. */
 function fit(text: string, font: PDFFont, size: number, max: number): string {
   // The tolerance absorbs rounding: a column is sized to its widest text, which must still fit exactly.
-  if (font.widthOfTextAtSize(text, size) <= max + 0.01) return text;
+  if (textWidth(font, text, size) <= max + 0.01) return text;
   let t = text;
-  while (t.length > 1 && font.widthOfTextAtSize(`${t}…`, size) > max) t = t.slice(0, -1);
+  while (t.length > 1 && textWidth(font, `${t}…`, size) > max) t = t.slice(0, -1);
   return `${t.trimEnd()}…`;
 }
 
@@ -77,8 +89,8 @@ function drawTable(page: PDFPage, report: TabulationReport, fonts: Fonts, top: n
   const widths = (size: number) =>
     head.map((h, c) =>
       Math.max(
-        fonts.bold.widthOfTextAtSize(h, size),
-        ...body.map((row) => fonts.regular.widthOfTextAtSize(row[c], size)),
+        textWidth(fonts.bold, h, size),
+        ...body.map((row) => textWidth(fonts.regular, row[c], size)),
       ) + 2 * size,
     );
   let size = BASE;
@@ -133,9 +145,9 @@ function drawEmailLine(page: PDFPage, fonts: Fonts, baselineTop: number): void {
   const before = 'Email Tabulation the State Theatre Director at ';
   const after = ' immediately.';
   const font = fonts.bold;
-  const wBefore = font.widthOfTextAtSize(before, size);
-  const wLink = font.widthOfTextAtSize(STATE_THEATRE_DIRECTOR_EMAIL, size);
-  const wAfter = font.widthOfTextAtSize(after, size);
+  const wBefore = textWidth(font, before, size);
+  const wLink = textWidth(font, STATE_THEATRE_DIRECTOR_EMAIL, size);
+  const wAfter = textWidth(font, after, size);
   let x = (PAGE_W - (wBefore + wLink + wAfter)) / 2;
   const y = fromTop(baselineTop);
   page.drawText(before, { x, y, size, font, color: BLACK });

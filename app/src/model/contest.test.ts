@@ -183,6 +183,7 @@ describe('createContest', () => {
       name: '',
       mailingAddress: '',
       email: '',
+      cellPhone: '',
       needsPower: false,
       needsHotel: false,
       hotelNights: 1,
@@ -958,6 +959,24 @@ describe('judge email (PRD #227)', () => {
     expect(migrated.details.numJudges).toBe(1);
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
   });
+
+  it('round-trips a judge cell number', () => {
+    const c = withAdjudicator(contest(), 0, { cellPhone: '512-555-0100' });
+    expect(parseContest(serializeContest(c)).adjudicators[0].cellPhone).toBe('512-555-0100');
+  });
+
+  it('migrates a v16 contest: every judge slot, hidden ones too, gains a blank cell number', () => {
+    let c = withDetails(contest(), { numJudges: 1 });
+    c = withAdjudicator(c, 0, { name: 'Jane Judge', email: 'jane@x.org' });
+    c = withAdjudicator(c, 2, { name: 'Hidden Judge' });
+    const { speechwire: _dev, ...rest } = c;
+    const v16Contest = { ...rest, adjudicators: rest.adjudicators.map(({ cellPhone: _p, ...j }) => j) };
+    const migrated = parseContest(JSON.stringify({ schemaVersion: 16, contest: v16Contest }));
+    expect(migrated.adjudicators.map((j) => j.cellPhone)).toEqual(['', '', '']);
+    expect(migrated.adjudicators.map((j) => j.name)).toEqual(['Jane Judge', '', 'Hidden Judge']);
+    expect(migrated.adjudicators[0].email).toBe('jane@x.org');
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(17);
+  });
 });
 
 describe('serialize / parse', () => {
@@ -1649,13 +1668,17 @@ describe('compliance model foundation', () => {
 
 describe('readiness model foundation', () => {
   it('encodes the fixed built-in manual items with stable ids and known phases', () => {
-    expect(BUILT_IN_READINESS_ITEMS).toHaveLength(5);
+    expect(BUILT_IN_READINESS_ITEMS).toHaveLength(9);
     expect(BUILT_IN_READINESS_ITEMS.map((i) => i.id)).toEqual([
       'venue_reserved',
       'hospitality_arranged',
       'trophies_ordered',
       'programs_printed',
       'tech_set',
+      'advancing_emailed',
+      'next_cm_emailed',
+      'state_office_emailed',
+      'uil_forms_submitted',
     ]);
     // Every built-in names one of the seven lifecycle phases.
     for (const item of BUILT_IN_READINESS_ITEMS) {

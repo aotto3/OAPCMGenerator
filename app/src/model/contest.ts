@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 16;
+export const CONTEST_SCHEMA_VERSION = 17;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -121,6 +121,8 @@ export interface Adjudicator {
    * To: line. No document builder reads it, so it never reaches directors.
    */
   email: string;
+  /** CM-only cell number for contest-day contact; no document builder reads it. */
+  cellPhone: string;
   needsPower: boolean;
   needsHotel: boolean;
   /** 1–3; only meaningful when needsHotel. */
@@ -257,6 +259,19 @@ export const BUILT_IN_READINESS_ITEMS: readonly ReadinessItemDef[] = [
   { id: 'trophies_ordered', label: 'Trophies / medals ordered', phase: 'entry' },
   { id: 'programs_printed', label: 'Programs printed', phase: 'draw_schedule' },
   { id: 'tech_set', label: 'Tech / lighting / sound set', phase: 'contest_day' },
+  // Post-contest follow-through, after "Results entered".
+  { id: 'advancing_emailed', label: 'Emailed advancing schools their information', phase: 'results_advancement' },
+  {
+    id: 'next_cm_emailed',
+    label: "Emailed the next contest's CM the advancing schools' information",
+    phase: 'results_advancement',
+  },
+  { id: 'state_office_emailed', label: 'Emailed results to the UIL State Office', phase: 'results_advancement' },
+  {
+    id: 'uil_forms_submitted',
+    label: 'Filled in all required UIL forms online (Speechwire)',
+    phase: 'results_advancement',
+  },
 ] as const;
 
 /* ────────────────────────── company roster ──────────────────────────
@@ -711,6 +726,7 @@ function blankAdjudicator(): Adjudicator {
     name: '',
     mailingAddress: '',
     email: '',
+    cellPhone: '',
     needsPower: false,
     needsHotel: false,
     hotelNights: 1,
@@ -2735,6 +2751,14 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
   // v15 predates panel tabulation (PRD #236): every contest gains an empty
   // tabulation record. Additive/blank-safe.
   15: (raw) => ({ ...raw, tabulation: defaultTabulation() }),
+  // v16 predates judge cell numbers: every stored judge slot, hidden ones
+  // included, gains a blank cellPhone. Additive/blank-safe.
+  16: (raw) => ({
+    ...raw,
+    adjudicators: Array.isArray(raw.adjudicators)
+      ? (raw.adjudicators as Record<string, unknown>[]).map((j) => ({ ...j, cellPhone: '' }))
+      : raw.adjudicators,
+  }),
 };
 
 export function parseContest(json: string): Contest {
