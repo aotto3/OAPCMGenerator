@@ -8,6 +8,8 @@ import {
   tabulationView,
 } from '../../model/tabulation';
 import { tabulationReport } from '../../model/tabulationReport';
+import { gmailComposeUrl, tabulationEmail } from '../../documents/emailTemplates';
+import { triggerPanelTabulationDownload } from '../../documents/generate';
 import { openTabulationPrintPage } from '../tabulationPrint';
 import { Section } from './Section';
 
@@ -28,7 +30,8 @@ const COLUMN_TITLES = ['Acting Judge', 'Judge B', 'Judge C'] as const;
 export function TabulationSection({ contest, onChange }: { contest: Contest; onChange: (c: Contest) => void }) {
   const view = tabulationView(contest);
   const cells = useRef(new Map<string, HTMLInputElement>());
-  const [popupBlocked, setPopupBlocked] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState<'print' | 'gmail' | null>(null);
+  const [gmailNote, setGmailNote] = useState<string | null>(null);
   const [filledNote, setFilledNote] = useState<string | null>(null);
 
   if (!view.applicable) {
@@ -235,20 +238,45 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
           title={view.results ? undefined : "Enter every judge's ranks first"}
           onClick={() => {
             const report = tabulationReport(contest);
-            if (report) setPopupBlocked(!openTabulationPrintPage(report));
+            if (report) setPopupBlocked(openTabulationPrintPage(report) ? null : 'print');
           }}
         >
           🖨 Print UIL Tabulation
         </button>
+        <button
+          type="button"
+          className="btn-util"
+          disabled={!view.results}
+          title={view.results ? undefined : "Enter every judge's ranks first"}
+          onClick={() => {
+            const draft = tabulationEmail(contest, 'downloads');
+            if (!draft) return;
+            // Open Gmail first, inside the click, so the browser treats it as user-initiated.
+            const win = window.open(gmailComposeUrl(draft), '_blank');
+            if (win) win.opener = null;
+            setPopupBlocked(win ? null : 'gmail');
+            setGmailNote(null);
+            triggerPanelTabulationDownload(contest).then(
+              () => setGmailNote('Panel Tabulation.pdf was saved to your Downloads. Attach it in Gmail before sending.'),
+              () => setGmailNote('Could not create Panel Tabulation.pdf. Generate it from the documents ZIP instead.'),
+            );
+          }}
+        >
+          ✉ Email to UIL State Director
+        </button>
         <span className="hint">
           {view.results
-            ? "Opens UIL's results page in a new window to print. Panel Tabulation.pdf is also in the documents ZIP."
+            ? 'Print opens UIL\'s results page. Email opens Gmail filled in and saves Panel Tabulation.pdf for you to attach.'
             : 'Available once every ballot is entered.'}
         </span>
       </div>
       {filledNote && <p className="hint">{filledNote}</p>}
+      {gmailNote && <p className="hint">{gmailNote}</p>}
       {popupBlocked && (
-        <p className="tab-status-error">The browser blocked the print window. Allow pop-ups for this site and try again.</p>
+        <p className="tab-status-error">
+          The browser blocked the {popupBlocked === 'print' ? 'print' : 'Gmail'} window. Allow pop-ups for this site and
+          try again.
+        </p>
       )}
     </Section>
   );

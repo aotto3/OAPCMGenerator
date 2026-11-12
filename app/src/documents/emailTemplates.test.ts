@@ -21,6 +21,7 @@ import {
   judgeNeedsEmail,
   judgesEmail,
   tabulationEmail,
+  gmailComposeUrl,
   EMAIL_TEMPLATES,
 } from './emailTemplates';
 
@@ -263,7 +264,35 @@ describe('tabulationEmail (PRD #236)', () => {
     expect(body.endsWith('Contest Manager')).toBe(true);
   });
 
+  it('points the attach reminder at Downloads for the Gmail button', () => {
+    const { body } = tabulationEmail(tabulated(), 'downloads')!;
+    expect(body.split('\n')[0]).toBe(
+      '[Before sending: attach Panel Tabulation.pdf from your Downloads folder, then delete this line.]',
+    );
+  });
+
   it('leaves the one-click template set unchanged', () => {
     expect(Object.keys(EMAIL_TEMPLATES)).toEqual(['announcement', 'deadline', 'daybefore', 'judges', 'judgeneeds']);
+  });
+});
+
+describe('gmailComposeUrl', () => {
+  const draft = { to: ['a@x.org', 'b@x.org'], subject: 'A & B - Tab', body: 'Line 1\nSchool 1+2,1,2,3,' };
+
+  it('opens a Gmail compose window', () => {
+    expect(gmailComposeUrl(draft).startsWith('https://mail.google.com/mail/?view=cm&fs=1&')).toBe(true);
+  });
+
+  it('round-trips To, Subject and Body exactly', () => {
+    const params = new URL(gmailComposeUrl(draft)).searchParams;
+    expect(params.get('to')).toBe('a@x.org,b@x.org');
+    expect(params.get('su')).toBe('A & B - Tab');
+    expect(params.get('body')).toBe('Line 1\nSchool 1+2,1,2,3,');
+  });
+
+  it("encodes spaces as %20, never '+'", () => {
+    const url = gmailComposeUrl(draft);
+    expect(url).toContain('su=A%20%26%20B%20-%20Tab');
+    expect(url).not.toMatch(/su=[^&]*\+/);
   });
 });

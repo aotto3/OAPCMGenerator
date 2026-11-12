@@ -258,10 +258,11 @@ export interface TabulationDraft extends EmailDraft {
  * Tabulation to State Office (PRD #236): UIL's results page says to email the
  * tabulation to the State Theatre Director immediately. The body is UIL's
  * plain-text report; the first line reminds the CM to attach Panel
- * Tabulation.pdf from the documents ZIP. Null until every ballot is valid, so
- * the composer can only offer it once there are results.
+ * Tabulation.pdf, from the documents ZIP (the composer) or from Downloads (the
+ * Gmail button, which saves the PDF as it opens Gmail). Null until every ballot
+ * is valid, so it is only offered once there are results.
  */
-export function tabulationEmail(contest: Contest): TabulationDraft | null {
+export function tabulationEmail(contest: Contest, pdfFrom: 'zip' | 'downloads' = 'zip'): TabulationDraft | null {
   const report = tabulationReport(contest);
   if (!report) return null;
   const cn = contestFullName(contest.identity) || '[Contest Name]';
@@ -270,9 +271,25 @@ export function tabulationEmail(contest: Contest): TabulationDraft | null {
     to: [STATE_THEATRE_DIRECTOR_EMAIL],
     subject: cn + ' - Panel Tabulation',
     body:
-      '[Before sending: attach Panel Tabulation.pdf from the documents ZIP, then delete this line.]\n\n' +
+      '[Before sending: attach Panel Tabulation.pdf from ' +
+      (pdfFrom === 'zip' ? 'the documents ZIP' : 'your Downloads folder') +
+      ', then delete this line.]\n\n' +
       'Attached is the panel tabulation for the ' + cn + '.\n\n' +
       tabulationPlainText(report) + '\n\n' +
       cmn + '\nContest Manager',
   };
+}
+
+/**
+ * A Gmail web compose link with To, Subject and Body filled in. Links cannot
+ * carry attachments (Gmail's or mailto:), so callers pair it with a download.
+ * Every value is percent-encoded (spaces as %20, never '+', which Gmail would
+ * show literally).
+ */
+export function gmailComposeUrl(draft: { to: string[]; subject: string; body: string }): string {
+  const q = (k: string, v: string) => k + '=' + encodeURIComponent(v);
+  return (
+    'https://mail.google.com/mail/?' +
+    ['view=cm', 'fs=1', q('to', draft.to.join(',')), q('su', draft.subject), q('body', draft.body)].join('&')
+  );
 }
