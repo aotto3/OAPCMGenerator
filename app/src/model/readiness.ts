@@ -61,6 +61,7 @@ export type ReadinessSection =
   | 'sec-schedule'
   | 'sec-critique'
   | 'sec-generate'
+  | 'sec-tabulation'
   | 'sec-results';
 
 /** Partial progress for items that have a count, e.g. "5 of 6 schools". */
@@ -194,6 +195,18 @@ function derivedItems(contest: Contest): { phase: ReadinessPhase; item: Readines
     derived('draw_schedule', 'critique', 'Critique assignment set', 'sec-critique', contest.critique !== null),
     // ── Contest Day ──
     derived('contest_day', 'documents', 'Ready to generate documents', 'sec-generate', generationWarnings(contest).length === 0),
+    // Panel tabulation (PRD #236): only a 3-judge panel is tabulated.
+    ...(contest.details.numJudges === 3
+      ? [
+          derived(
+            'contest_day',
+            'tabulation_confirmed',
+            'Judges confirmed tabulation ranks',
+            'sec-tabulation',
+            contest.tabulation.judgesConfirmed,
+          ),
+        ]
+      : []),
     // ── Results & Advancement ──
     derived('results_advancement', 'results', 'Results entered', 'sec-results', resolveResults(contest) !== null),
   ];

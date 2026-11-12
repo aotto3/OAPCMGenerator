@@ -12,6 +12,8 @@ import {
   setComplianceStatus,
   setCritiqueAssignment,
   setReadinessStatus,
+  setTabulationConfirmed,
+  setTabulationRank,
   withAdjudicator,
   withCmInfo,
   withDetails,
@@ -77,6 +79,8 @@ function readyContest(): Contest {
   c = runDraw(c, [1, 2, 3, 4, 5, 6], NOW);
   c = lockDraw(c, NOW);
   c = setCritiqueAssignment(c, [1, 2, 3, 1, 2, 3], NOW);
+  // Contest Day: the 3-judge panel confirmed the tabulation ranks.
+  c = setTabulationConfirmed(c, true, NOW);
   // Results & Advancement: at least one recorded outcome ⇒ results !== null.
   c = setAdvancing(c, [0, 1]);
   return c;
@@ -159,13 +163,14 @@ describe('readinessReport — rollup and color', () => {
 describe('readinessReport — N-A denominator rules (Group A parity)', () => {
   it('an N-A item drops out of the phase and overall denominators', () => {
     const base = readinessReport(contest());
-    // Contest Day = one derived item (documents, pending) + one manual (tech_set, pending).
+    // Contest Day = two derived items (documents, judges confirmed tabulation; 3 judges
+    // by default) + one manual (tech_set), all pending.
     const beforeDay = phase(contest(), 'contest_day');
-    expect(beforeDay.applicable).toBe(2);
+    expect(beforeDay.applicable).toBe(3);
 
     const c = setReadinessStatus(contest(), 'tech_set', 'na');
     const afterDay = phase(c, 'contest_day');
-    expect(afterDay.applicable).toBe(1); // tech_set no longer counts
+    expect(afterDay.applicable).toBe(2); // tech_set no longer counts
     // Overall applicable drops by exactly one.
     expect(readinessReport(c).applicable).toBe(base.applicable - 1);
   });
@@ -206,6 +211,7 @@ describe('readinessReport — phase assignment of derived sources', () => {
     { id: 'schedule', phase: 'draw_schedule', section: 'sec-schedule' },
     { id: 'critique', phase: 'draw_schedule', section: 'sec-critique' },
     { id: 'documents', phase: 'contest_day', section: 'sec-generate' },
+    { id: 'tabulation_confirmed', phase: 'contest_day', section: 'sec-tabulation' },
     { id: 'results', phase: 'results_advancement', section: 'sec-results' },
   ];
   it('places every derived source in its chronological phase with the right jump link', () => {
@@ -324,5 +330,28 @@ describe('readinessReport — manual and custom flow-through', () => {
     // details (derived) before venue_reserved (built-in) before z_custom (custom).
     expect(ids.indexOf('details')).toBeLessThan(ids.indexOf('venue_reserved'));
     expect(ids.indexOf('venue_reserved')).toBeLessThan(ids.indexOf('z_custom'));
+  });
+});
+
+describe('readinessReport: judges confirmed tabulation ranks (PRD #236)', () => {
+  it('appears for a 3-judge panel, pending until confirmed', () => {
+    const c = withDetails(contest(), { numJudges: 3 }, NOW);
+    expect(item(c, 'tabulation_confirmed')).toMatchObject({
+      label: 'Judges confirmed tabulation ranks',
+      kind: 'derived',
+      status: 'pending',
+    });
+    expect(item(setTabulationConfirmed(c, true, NOW), 'tabulation_confirmed')!.status).toBe('done');
+  });
+
+  it('goes back to pending when a rank changes after confirmation', () => {
+    const c = setTabulationConfirmed(withDetails(contest(), { numJudges: 3 }, NOW), true, NOW);
+    expect(item(setTabulationRank(c, 0, 0, '1', NOW), 'tabulation_confirmed')!.status).toBe('pending');
+  });
+
+  it('is absent for 1- and 5-judge panels', () => {
+    for (const numJudges of [1, 5]) {
+      expect(item(withDetails(contest(), { numJudges }, NOW), 'tabulation_confirmed')).toBeUndefined();
+    }
   });
 });
