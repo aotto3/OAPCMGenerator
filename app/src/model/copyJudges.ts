@@ -17,6 +17,7 @@ function hasJudgeData(judge: Adjudicator): boolean {
       judge.name,
       judge.mailingAddress,
       judge.email,
+      judge.cellPhone,
       judge.dietary,
       judge.bio,
       judge.ttaoContractDate,

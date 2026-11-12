@@ -84,6 +84,13 @@ function JudgeFields({
           value={judge.email}
           onChange={(v) => edit({ email: v })}
         />
+        <TextField
+          label={`${label} — Cell Number`}
+          type="tel"
+          placeholder="555-555-5555"
+          value={judge.cellPhone}
+          onChange={(v) => edit({ cellPhone: v })}
+        />
       </div>
       <div className="judge-extras">
         <label className="check-option">

@@ -27,6 +27,7 @@ const FULL_JUDGE: Adjudicator = {
   name: 'Jane Doe',
   mailingAddress: '1 Main St, Austin TX 78701',
   email: 'jane@example.org',
+  cellPhone: '512-555-0100',
   needsPower: true,
   needsHotel: true,
   hotelNights: 2,
