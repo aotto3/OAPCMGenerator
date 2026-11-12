@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx-js-style';
-import { addBreak, setNumSchools, withAdjudicator, withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
+import { setNumSchools, withAdjudicator, withDetails, withIdentity, withScheduleOverrides, withTitleOverride, type Contest } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildContestSchedule } from './contestSchedule';
@@ -21,6 +21,12 @@ import { buildRehearsalSchedule } from './rehearsalSchedule';
 import { buildContactList } from './contactList';
 import { buildAdjudicatorInfo } from './adjudicatorInfo';
 import { buildChecklist } from './checklist';
+
+/** Test fixture: stores one inserted gap directly (schedule edits live in scheduleEdit.ts). */
+function withGap(c: Contest, anchor: string, minutes: number, label: string, now?: string): Contest {
+  const id = `gap-${c.scheduleOverrides.gaps.length + 1}`;
+  return withScheduleOverrides(c, { gaps: [...c.scheduleOverrides.gaps, { id, anchor, minutes, label }] }, now);
+}
 
 const GOLDEN_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', 'golden');
 const goldenPath = (filename: string) => join(GOLDEN_DIR, filename);
@@ -126,8 +132,8 @@ describe('Contest Day Schedule — content', () => {
 
   it('renders an inserted break at its anchor and shifts later rows (PRD #179)', () => {
     // Bravo (draw 1) is the first performance slot → key "show:0". Insert 30 min after it.
-    const withGap = addBreak(fixtureContest(), 'show:0', 30, 'Lunch', FIXTURE_NOW);
-    const { ws } = firstSheet(buildContestSchedule(withGap));
+    const withLunch = withGap(fixtureContest(), 'show:0', 30, 'Lunch', FIXTURE_NOW);
+    const { ws } = firstSheet(buildContestSchedule(withLunch));
     const lunch = rowWhere(ws, 'Lunch');
     expect(lunch).toBeGreaterThan(0);
     expect(ws['A' + lunch].w).toBe('10:50 AM'); // right after Bravo's 10:00–10:50 show

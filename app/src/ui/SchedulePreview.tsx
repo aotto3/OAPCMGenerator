@@ -1,25 +1,19 @@
 import { useRef, useState } from 'react';
-import {
-  computeContestDay,
-  fmtTime,
-  parseTime,
-  scheduleEventKey,
-  setRowStart,
-  type ScheduleEvent,
-} from '../model/schedule';
-import { validateSchedule } from '../model/scheduleValidation';
-import { addBreak, removeBreak, setArrival, updateBreak, withDetails, type Contest } from '../model/contest';
+import { fmtTime, parseTime, type ScheduleEvent } from '../model/schedule';
+import { applyScheduleEdit, scheduleRows, type ScheduleEdit } from '../model/scheduleEdit';
+import type { Contest } from '../model/contest';
 import { Section } from './sections/Section';
 
 /**
  * Live contest-day schedule preview (v12 updateSchedulePreview). The pure engine
- * does the math; this component owns the presentation — the school color palette
- * and the empty state — which the engine deliberately does not.
+ * does the math; this component owns the presentation (the school color palette
+ * and the empty state), which the engine deliberately does not.
  *
  * With an `onChange` it is also a light editor (PRD #179 / #192): every row's
- * start time is click-to-edit (anchor rows route to their field; downstream rows
- * store a blank nudge that just moves them), and "+ break" inserts a deliberate,
- * labeled break row that can be renamed / resized / moved / removed. Without
+ * start time is click-to-edit, and "+ break" inserts a labeled break row that can
+ * be renamed / resized / moved / removed. What each edit MEANS (which field a
+ * row's time writes, nudges, break re-anchoring) belongs to scheduleEdit.ts
+ * (RFC #264); this component only renders its rows and dispatches edits. Without
  * `onChange` (the read-only Setup mirror) it just renders.
  */
 
@@ -48,60 +42,29 @@ export function SchedulePreview({
   contest: Contest;
   onChange?: (next: Contest) => void;
 }) {
-  // The whole day: for a same-day rehearsal contest this includes the CM-arrival
-  // and rehearsal rows ahead of the contest timeline (PRD #179).
-  const events = computeContestDay(contest);
-  // Advisory only — flags mark rows in the preview and list plain-language
-  // reasons below. They never block generation and are never in the document.
-  const flags = validateSchedule(events);
-  const flagged = new Set(flags.map((f) => f.index));
+  // The whole day (for a same-day rehearsal contest this includes the CM-arrival
+  // and rehearsal rows, PRD #179) with validation flags and per-row edit
+  // capabilities. Flags are advisory only: they mark rows and list plain-language
+  // reasons below, never block generation, and are never in the document.
+  const rows = scheduleRows(contest);
+  const allFlags = rows.flatMap((r) => r.flags);
   const editable = !!onChange;
+
+  /** Dispatches one edit; an edit that changes nothing is not saved. */
+  const apply = (edit: ScheduleEdit) => {
+    if (!onChange) return;
+    const next = applyScheduleEdit(contest, edit);
+    if (next !== contest) onChange(next);
+  };
 
   // Click-to-edit start times: which row's time input is currently open, and a
   // flag so Escape closes it without committing the typed value.
   const [editing, setEditing] = useState<number | null>(null);
   const cancelRef = useRef(false);
 
-  // The anchorable rows in day order — moving a break re-anchors it to the
-  // previous/next of these (breaks and arrival/rehearsal rows are not anchors).
-  const anchorKeys = events.map(scheduleEventKey).filter((k): k is string => k != null);
-  const moveTarget = (current: string, dir: -1 | 1): string | null => {
-    const j = anchorKeys.indexOf(current) + dir;
-    return j >= 0 && j < anchorKeys.length ? anchorKeys[j] : null;
-  };
-
-  // How a row's start edit is applied. Anchor rows write their own field (the
-  // whole day/block moves); downstream rows store a nudge before them. Rows with
-  // no editor (breaks, and — for now — arrival/rehearsals) return null.
-  const startCommit = (ev: ScheduleEvent, i: number): ((mins: number) => Contest) | null => {
-    if (!onChange) return null;
-    switch (ev.type) {
-      case 'show':
-        return ev.colorIdx === 0
-          ? (mins) => withDetails(contest, { firstShowTime: fmtTime(mins) })
-          : (mins) => setRowStart(contest, events, i, mins);
-      case 'rehearsal':
-        // First rehearsal is the anchor (its start-time field); the rest nudge.
-        return ev.colorIdx === 0
-          ? (mins) => withDetails(contest, { rehearsalStartTime1: fmtTime(mins) })
-          : (mins) => setRowStart(contest, events, i, mins);
-      case 'dm':
-        return (mins) => withDetails(contest, { directorsMeetingTime: fmtTime(mins) });
-      case 'arrival':
-        return (mins) => setArrival(contest, mins);
-      case 'trans':
-      case 'admin':
-      case 'crit':
-      case 'awards':
-        return (mins) => setRowStart(contest, events, i, mins);
-      default:
-        return null; // break rows are edited via their own controls
-    }
-  };
-
   return (
     <Section title="🗓️ Contest Day Schedule Preview" badge="Live">
-      {events.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="muted schedule-empty">Enter a First Show / Setup Time to see schedule preview.</p>
       ) : (
         <>
@@ -116,18 +79,15 @@ export function SchedulePreview({
               </tr>
             </thead>
             <tbody>
-              {events.map((ev, i) => {
-                const anchor = scheduleEventKey(ev);
-                const gap =
-                  ev.type === 'break' && ev.overrideId
-                    ? contest.scheduleOverrides.gaps.find((g) => g.id === ev.overrideId)
-                    : undefined;
-                const isBreak = editable && !!gap;
-                const commitStart = startCommit(ev, i);
+              {rows.map((row, i) => {
+                const ev = row.event;
+                const flagged = row.flags.length > 0;
+                const canEditStart = editable && row.canEditStart;
+                const isBreak = editable && row.isBreak;
                 return (
-                  <tr key={i} className={flagged.has(i) ? 'is-flagged' : undefined} style={{ background: rowColor(ev) }}>
+                  <tr key={i} className={flagged ? 'is-flagged' : undefined} style={{ background: rowColor(ev) }}>
                     <td>
-                      {commitStart && editing === i ? (
+                      {canEditStart && editing === i ? (
                         <input
                           className="schedule-start-input"
                           autoFocus
@@ -146,10 +106,10 @@ export function SchedulePreview({
                             setEditing(null);
                             if (cancelled) return;
                             const mins = parseTime(e.target.value);
-                            if (mins != null && mins !== ev.start) onChange!(commitStart(mins));
+                            if (mins != null) apply({ kind: 'setStart', row: i, minutes: mins });
                           }}
                         />
-                      ) : commitStart ? (
+                      ) : canEditStart ? (
                         <button
                           type="button"
                           className="schedule-time-btn"
@@ -169,12 +129,12 @@ export function SchedulePreview({
                           className="schedule-break-label"
                           value={ev.label}
                           aria-label="Break label"
-                          onChange={(e) => onChange!(updateBreak(contest, gap!.id, { label: e.target.value }))}
+                          onChange={(e) => apply({ kind: 'renameBreak', row: i, label: e.target.value })}
                         />
                       ) : (
                         <>
                           {ev.label}
-                          {flagged.has(i) ? ' ⚠️' : ''}
+                          {flagged ? ' ⚠️' : ''}
                         </>
                       )}
                     </td>
@@ -186,10 +146,9 @@ export function SchedulePreview({
                             min={1}
                             value={ev.dur}
                             aria-label="Break minutes"
-                            onChange={(e) => {
-                              const m = parseInt(e.target.value, 10);
-                              if (m >= 1) onChange!(updateBreak(contest, gap!.id, { minutes: m }));
-                            }}
+                            onChange={(e) =>
+                              apply({ kind: 'resizeBreak', row: i, minutes: parseInt(e.target.value, 10) })
+                            }
                           />{' '}
                           min
                         </span>
@@ -207,8 +166,8 @@ export function SchedulePreview({
                               type="button"
                               className="btn-util"
                               title="Move break earlier"
-                              disabled={!moveTarget(gap!.anchor, -1)}
-                              onClick={() => onChange!(updateBreak(contest, gap!.id, { anchor: moveTarget(gap!.anchor, -1)! }))}
+                              disabled={!row.canMoveUp}
+                              onClick={() => apply({ kind: 'moveBreak', row: i, direction: -1 })}
                             >
                               ↑
                             </button>
@@ -216,8 +175,8 @@ export function SchedulePreview({
                               type="button"
                               className="btn-util"
                               title="Move break later"
-                              disabled={!moveTarget(gap!.anchor, 1)}
-                              onClick={() => onChange!(updateBreak(contest, gap!.id, { anchor: moveTarget(gap!.anchor, 1)! }))}
+                              disabled={!row.canMoveDown}
+                              onClick={() => apply({ kind: 'moveBreak', row: i, direction: 1 })}
                             >
                               ↓
                             </button>
@@ -225,17 +184,19 @@ export function SchedulePreview({
                               type="button"
                               className="btn-util"
                               title="Remove this break"
-                              onClick={() => onChange!(removeBreak(contest, gap!.id))}
+                              onClick={() => apply({ kind: 'removeBreak', row: i })}
                             >
                               ✕
                             </button>
                           </>
-                        ) : anchor ? (
+                        ) : row.canAddBreakAfter ? (
                           <button
                             type="button"
                             className="btn-util"
                             title="Insert a break after this row"
-                            onClick={() => onChange!(addBreak(contest, anchor, DEFAULT_BREAK_MINUTES, 'Break'))}
+                            onClick={() =>
+                              apply({ kind: 'addBreak', afterRow: i, minutes: DEFAULT_BREAK_MINUTES, label: 'Break' })
+                            }
                           >
                             + break
                           </button>
@@ -247,10 +208,10 @@ export function SchedulePreview({
               })}
             </tbody>
           </table>
-          {flags.length > 0 && (
+          {allFlags.length > 0 && (
             <ul className="schedule-flags">
-              {flags.map((f, i) => (
-                <li key={i}>⚠️ {f.message}</li>
+              {allFlags.map((message, i) => (
+                <li key={i}>⚠️ {message}</li>
               ))}
             </ul>
           )}

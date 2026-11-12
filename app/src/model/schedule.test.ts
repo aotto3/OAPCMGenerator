@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addBreak,
-  updateBreak,
-  removeBreak,
-  setArrival,
   createContest,
   setNumSchools,
   withDetails,
   withSchool,
+  withScheduleOverrides,
   type Contest,
   type CritiqueFormat,
 } from './contest';
@@ -18,11 +15,16 @@ import {
   isSameDayRehearsal,
   parseTime,
   scheduleEventKey,
-  setRowStart,
   type ScheduleEvent,
 } from './schedule';
 
 const NOW = '2026-07-05T12:00:00.000Z';
+
+/** Test fixture: stores one inserted gap directly (schedule edits live in scheduleEdit.ts). */
+function withGap(c: Contest, anchor: string, minutes: number, label: string, now?: string): Contest {
+  const id = `gap-${c.scheduleOverrides.gaps.length + 1}`;
+  return withScheduleOverrides(c, { gaps: [...c.scheduleOverrides.gaps, { id, anchor, minutes, label }] }, now);
+}
 
 /** Deterministic contest: named schools 1..n in performance order, timings set. */
 function makeContest(
@@ -362,7 +364,7 @@ describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
   const base = computeSchedule(c);
 
   it('inserts a break after its anchor and ripples every later row forward', () => {
-    const out = computeSchedule(addBreak(c, 'show:0', 20, 'Lunch')); // reads contest.scheduleOverrides
+    const out = computeSchedule(withGap(c, 'show:0', 20, 'Lunch')); // reads contest.scheduleOverrides
     // The break sits immediately after the first show, at that show's end.
     expect(out).toHaveLength(base.length + 1);
     expect(out[0]).toEqual(base[0]); // anchor + everything before it is untouched
@@ -375,25 +377,25 @@ describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
   });
 
   it('an unlabeled gap is a blank nudge — it shifts later rows but draws no row (#192)', () => {
-    const out = computeSchedule(addBreak(c, 'show:0', 10, ''));
+    const out = computeSchedule(withGap(c, 'show:0', 10, ''));
     expect(out.some((e) => e.type === 'break')).toBe(false); // no phantom row
     expect(out).toHaveLength(base.length);
     expect(out[1].start).toBe(base[1].start + 10); // everything after show:0 shifted
   });
 
   it('a labeled gap still draws a visible break row', () => {
-    const out = computeSchedule(addBreak(c, 'show:0', 10, 'Lunch'));
+    const out = computeSchedule(withGap(c, 'show:0', 10, 'Lunch'));
     expect(out.find((e) => e.type === 'break')!.label).toBe('Lunch');
     expect(out).toHaveLength(base.length + 1);
   });
 
   it('ignores an orphaned anchor rather than throwing', () => {
-    expect(computeSchedule(addBreak(c, 'show:99', 20, 'X'))).toEqual(base);
+    expect(computeSchedule(withGap(c, 'show:99', 20, 'X'))).toEqual(base);
   });
 
   it('applies multiple gaps cumulatively', () => {
-    let g = addBreak(c, 'show:0', 10, 'A');
-    g = addBreak(g, 'awards', 5, 'B');
+    let g = withGap(c, 'show:0', 10, 'A');
+    g = withGap(g, 'awards', 5, 'B');
     const out = computeSchedule(g);
     expect(out.filter((e) => e.type === 'break')).toHaveLength(2);
     expect(out).toHaveLength(base.length + 2);
@@ -401,56 +403,5 @@ describe('computeSchedule — inserted-break overrides (PRD #179)', () => {
 
   it('honors an explicitly injected overrides argument over the contest field', () => {
     expect(computeSchedule(c, { gaps: [] })).toEqual(base);
-  });
-
-  it('re-anchoring a break (updateBreak) moves it to follow the new row', () => {
-    let g = addBreak(c, 'show:0', 20, 'Lunch');
-    g = updateBreak(g, g.scheduleOverrides.gaps[0].id, { anchor: 'show:1' });
-    const out = computeSchedule(g);
-    const bi = out.findIndex((e) => e.type === 'break');
-    expect(scheduleEventKey(out[bi - 1])).toBe('show:1'); // now sits right after the 2nd show
-  });
-});
-
-describe('break edits keep the CM-arrival override (#263)', () => {
-  const ARRIVAL = 6 * 60 + 30;
-  const withArrival = (): Contest => {
-    const c = withDetails(makeContest('after_all', 3, { firstShow: '1:00 PM', dm: '12:30 PM' }), {
-      contestDate: '2026-03-21',
-      rehearsalDate1: '2026-03-21',
-      rehearsalDate2: '',
-      rehearsalStartTime1: '8:00 AM',
-      rehearsalLengthMinutes: 45,
-    });
-    return setArrival(c, ARRIVAL);
-  };
-
-  it('adding a break keeps the arrival', () => {
-    expect(addBreak(withArrival(), 'show:0', 15, 'Lunch').scheduleOverrides.arrival).toBe(ARRIVAL);
-  });
-
-  it('resizing, moving and removing a break keep the arrival', () => {
-    const c = addBreak(withArrival(), 'show:0', 15, 'Lunch');
-    const id = c.scheduleOverrides.gaps[0].id;
-    expect(updateBreak(c, id, { minutes: 30 }).scheduleOverrides.arrival).toBe(ARRIVAL);
-    expect(updateBreak(c, id, { anchor: 'show:1' }).scheduleOverrides.arrival).toBe(ARRIVAL);
-    expect(removeBreak(c, id).scheduleOverrides.arrival).toBe(ARRIVAL);
-  });
-
-  it('nudging a downstream row with setRowStart keeps the arrival', () => {
-    const c = withArrival();
-    const day = computeContestDay(c);
-    const i = day.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
-    let out = setRowStart(c, day, i, day[i].start + 20); // adds a nudge
-    expect(out.scheduleOverrides.arrival).toBe(ARRIVAL);
-    const day2 = computeContestDay(out);
-    const i2 = day2.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
-    out = setRowStart(out, day2, i2, day2[i2].start + 10); // resizes it
-    expect(out.scheduleOverrides.arrival).toBe(ARRIVAL);
-    const day3 = computeContestDay(out);
-    const i3 = day3.findIndex((e) => e.type === 'show' && e.colorIdx === 1);
-    out = setRowStart(out, day3, i3, day[i].start); // removes it
-    expect(out.scheduleOverrides.gaps).toHaveLength(0);
-    expect(out.scheduleOverrides.arrival).toBe(ARRIVAL);
   });
 });

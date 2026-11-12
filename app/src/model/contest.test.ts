@@ -5,7 +5,6 @@ import {
   BUILT_IN_COMPLIANCE_ITEMS,
   BUILT_IN_READINESS_ITEMS,
   READINESS_PHASES,
-  addBreak,
   addReadinessItem,
   removeReadinessItem,
   setReadinessStatus,
@@ -106,8 +105,15 @@ import {
   type Contest,
   type RosterMember,
   type ParsedCompany,
+  withScheduleOverrides,
 } from './contest';
 import { drawOrder, type Rng } from './draw';
+
+/** Test fixture: stores one inserted gap directly (schedule edits live in scheduleEdit.ts). */
+function withGap(c: Contest, anchor: string, minutes: number, label: string, now?: string): Contest {
+  const id = `gap-${c.scheduleOverrides.gaps.length + 1}`;
+  return withScheduleOverrides(c, { gaps: [...c.scheduleOverrides.gaps, { id, anchor, minutes, label }] }, now);
+}
 
 const NOW = '2026-07-05T12:00:00.000Z';
 const LATER = '2026-07-06T00:00:00.000Z';
@@ -1351,7 +1357,7 @@ describe('schedule overrides — inserted breaks (PRD #179)', () => {
   });
 
   it('breaks survive a serialize/parse round-trip', () => {
-    const c = addBreak(createContest({ id: 'c', now: NOW }), 'show:2', 20, 'Meal');
+    const c = withGap(createContest({ id: 'c', now: NOW }), 'show:2', 20, 'Meal');
     expect(parseContest(serializeContest(c)).scheduleOverrides).toEqual(c.scheduleOverrides);
   });
 
@@ -1363,20 +1369,20 @@ describe('schedule overrides — inserted breaks (PRD #179)', () => {
   });
 
   it('duplicate and advance clear inserted breaks (per-occurrence)', () => {
-    const c = addBreak(contest({ contestLevel: 'District' }), 'show:0', 15, 'Lunch');
+    const c = withGap(contest({ contestLevel: 'District' }), 'show:0', 15, 'Lunch');
     expect(c.scheduleOverrides.gaps).toHaveLength(1);
     expect(duplicateContest(c).scheduleOverrides).toEqual({ gaps: [] });
     expect(advanceContest(c)?.scheduleOverrides).toEqual({ gaps: [] });
   });
 
   it('CLEAN-SLATE: changing the school count clears breaks; keeping it keeps them', () => {
-    const c = addBreak(setNumSchools(contest(), 4), 'show:0', 15, 'Lunch');
+    const c = withGap(setNumSchools(contest(), 4), 'show:0', 15, 'Lunch');
     expect(setNumSchools(c, 5).scheduleOverrides.gaps).toHaveLength(0); // count changed → wiped
     expect(setNumSchools(c, 4).scheduleOverrides.gaps).toHaveLength(1); // unchanged → kept
   });
 
   it('CLEAN-SLATE: flipping the critique format clears breaks; other detail edits keep them', () => {
-    const c = addBreak(contest(), 'show:0', 15, 'Lunch'); // default format is after_all
+    const c = withGap(contest(), 'show:0', 15, 'Lunch'); // default format is after_all
     expect(withDetails(c, { critiqueFormat: 'after_each' }).scheduleOverrides.gaps).toHaveLength(0);
     expect(withDetails(c, { critiqueFormat: 'after_all' }).scheduleOverrides.gaps).toHaveLength(1); // same → kept
     expect(withDetails(c, { numJudges: 1 }).scheduleOverrides.gaps).toHaveLength(1); // judges → kept
