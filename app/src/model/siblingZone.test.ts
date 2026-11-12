@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addBreak,
   addComplianceItem,
   addCustomPreferenceList,
   addReadinessItem,
@@ -12,7 +11,6 @@ import {
   defaultSpeechwire,
   runDraw,
   setAdjudicatorMilestone,
-  setArrival,
   setBestCrew,
   setComplianceStatus,
   setCritiqueAssignment,
@@ -29,9 +27,16 @@ import {
   withTitleOverride,
   type Contest,
   type ContestLevel,
+  withScheduleOverrides,
 } from './contest';
 import { computeSchedule } from './schedule';
 import { createSiblingZone, findSiblingZones, siblingZoneNumber } from './siblingZone';
+
+/** Test fixture: stores one inserted gap directly (schedule edits live in scheduleEdit.ts). */
+function withGap(c: Contest, anchor: string, minutes: number, label: string, now?: string): Contest {
+  const id = `gap-${c.scheduleOverrides.gaps.length + 1}`;
+  return withScheduleOverrides(c, { gaps: [...c.scheduleOverrides.gaps, { id, anchor, minutes, label }] }, now);
+}
 
 const NOW = '2026-07-05T12:00:00.000Z';
 const LATER = '2026-07-06T00:00:00.000Z';
@@ -88,8 +93,8 @@ function fullZone(zoneNumber: string): Contest {
   c = setComplianceStatus(c, 0, 'custom-c', 'received', NOW);
   c = addReadinessItem(c, { id: 'custom-r', label: 'Book risers', phase: 'planning' }, NOW);
   c = setReadinessStatus(c, 'custom-r', 'done', NOW);
-  c = addBreak(c, 'show:1', 30, 'Lunch', NOW);
-  c = setArrival(c, 480, NOW);
+  c = withGap(c, 'show:1', 30, 'Lunch', NOW);
+  c = withScheduleOverrides(c, { arrival: 480 }, NOW);
   c = setCritiqueAssignment(c, [0, 1, 0, 1, 0, 1, 0, 1], NOW);
   c = runDraw(c, [1, 2, 3, 4, 5, 6, 7, 8], NOW);
   c = setBestCrew(c, 0, NOW);
@@ -275,7 +280,7 @@ describe('createSiblingZone', () => {
   });
 
   it('keeps a break whose show does not exist yet and leaves the schedule untouched by it', () => {
-    const source = addBreak(
+    const source = withGap(
       withDetails(fullZone('1'), { directorsMeetingTime: '10:00 AM', firstShowTime: '11:00 AM' }, NOW),
       'show:7',
       25,

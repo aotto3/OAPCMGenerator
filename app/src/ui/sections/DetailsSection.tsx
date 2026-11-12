@@ -14,8 +14,10 @@ import {
   type Contest,
   type ContestDetails,
   type CritiqueFormat,
+  type ScheduleRestructure,
   type SectionCompletion,
 } from '../../model/contest';
+import { scheduleImpactOf } from '../../model/scheduleEdit';
 import { Section } from './Section';
 import { CopyButton, Divider, SelectField, TextField, TimeField } from './fields';
 
@@ -42,15 +44,17 @@ export function DetailsSection({
   const edit = (patch: Partial<ContestDetails>) => onChange(withDetails(contest, patch));
   const [showPassword, setShowPassword] = useState(false);
 
-  // Changing the school count or critique format restructures the timeline, so
-  // the engine clears any manual schedule breaks (PRD #179). Warn first when the
-  // CM actually has breaks to lose, so the wipe is never a surprise.
-  const breakCount = contest.scheduleOverrides.gaps.length;
-  const confirmClear = () =>
-    breakCount === 0 ||
-    window.confirm(
-      `This will clear your ${breakCount} manual schedule break${breakCount === 1 ? '' : 's'}. Continue?`,
+  // Some changes restructure the timeline and clear manual schedule edits; the
+  // schedule-edit module says which (PRD #179, RFC #264). Warn first when the CM
+  // actually has breaks to lose, so the wipe is never a surprise.
+  const confirmClear = (change: ScheduleRestructure) => {
+    const { clearsOverrides, breakCount } = scheduleImpactOf(contest, change);
+    return (
+      !clearsOverrides ||
+      breakCount === 0 ||
+      window.confirm(`This will clear your ${breakCount} manual schedule break${breakCount === 1 ? '' : 's'}. Continue?`)
     );
+  };
 
   const n = numSchools(contest);
   const day1 = rehearsalDay1Count(contest);
@@ -93,7 +97,7 @@ export function DetailsSection({
                   name="critique_format"
                   checked={details.critiqueFormat === format}
                   onChange={() => {
-                    if (details.critiqueFormat !== format && !confirmClear()) return;
+                    if (!confirmClear({ critiqueFormat: format })) return;
                     edit({ critiqueFormat: format });
                   }}
                 />
@@ -114,7 +118,7 @@ export function DetailsSection({
           value={n}
           options={SCHOOL_OPTIONS}
           onChange={(v) => {
-            if (v !== n && !confirmClear()) return;
+            if (!confirmClear({ numSchools: v })) return;
             onChange(setNumSchools(contest, v));
           }}
         />

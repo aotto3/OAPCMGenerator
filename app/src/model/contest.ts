@@ -1271,17 +1271,15 @@ export function withSpeechwire(contest: Contest, patch: Partial<SpeechwireCreden
 }
 
 /* ────────────────────────── schedule overrides ──────────────────────────
- * PRD #179. Immutable updaters over the inserted-gap list. `anchor` is a stable
- * row key (schedule.ts scheduleEventKey); the engine ignores an orphaned anchor,
- * so these never need to validate against a computed timeline.
- *
- * Every change to `scheduleOverrides` goes through nextScheduleOverrides (one
- * writer that keeps the fields it is not changing, so a new override field can
- * never be dropped by a gap edit again, #263), and the "which edits restructure
- * the timeline and clear overrides" rule lives only in
- * scheduleChangeClearsOverrides. Both are used by scheduleEdit.ts (RFC #264),
- * which owns the meaning of a schedule edit; the updaters below remain until
- * slice C2 (#266) moves the UI onto that module.
+ * PRD #179. Every schedule edit (breaks, nudges, the CM-arrival override) lives
+ * in scheduleEdit.ts (RFC #264), which owns what an edit means. This file keeps
+ * only the two pieces the model itself needs:
+ *   • nextScheduleOverrides, the single writer for `scheduleOverrides` (it keeps
+ *     the fields it is not changing, so a new override field can never be
+ *     dropped by a gap edit again, #263);
+ *   • scheduleChangeClearsOverrides, the one "which edits restructure the
+ *     timeline and clear overrides" rule, used by withDetails, setNumSchools and
+ *     scheduleEdit.scheduleImpactOf.
  */
 
 /** A change that may restructure the timeline: a details patch and/or a new school count. */
@@ -1330,57 +1328,6 @@ export function withScheduleOverrides(
   now?: string,
 ): Contest {
   return { ...touch(contest, now), scheduleOverrides: nextScheduleOverrides(contest.scheduleOverrides, change) };
-}
-
-/**
- * Inserts a break/gap after the row identified by `anchor`. `minutes` is its
- * length and `label` its name ('' ⇒ a plain drag-gap). Appends with a fresh id.
- */
-export function addBreak(
-  contest: Contest,
-  anchor: string,
-  minutes: number,
-  label: string,
-  now?: string,
-): Contest {
-  const gap: InsertedGap = { id: crypto.randomUUID(), anchor, minutes, label };
-  return withScheduleOverrides(contest, { gaps: [...contest.scheduleOverrides.gaps, gap] }, now);
-}
-
-/**
- * Sets (or clears) the absolute CM-arrival time for a same-day rehearsal day
- * (PRD #192). `null` reverts to the derived value (one hour before rehearsals).
- */
-export function setArrival(contest: Contest, minutes: number | null, now?: string): Contest {
-  return withScheduleOverrides(contest, { arrival: minutes ?? undefined }, now);
-}
-
-/** Removes the inserted gap with the given id. Unknown id ⇒ no-op (returns as-is). */
-export function removeBreak(contest: Contest, id: string, now?: string): Contest {
-  const gaps = contest.scheduleOverrides.gaps.filter((g) => g.id !== id);
-  if (gaps.length === contest.scheduleOverrides.gaps.length) return contest;
-  return withScheduleOverrides(contest, { gaps }, now);
-}
-
-/**
- * Patches one inserted gap by id — its `label` (rename), `minutes` (resize), or
- * `anchor` (move it after a different row). Unknown id ⇒ no-op. The engine
- * re-derives the timeline, so a moved/resized break ripples automatically.
- */
-export function updateBreak(
-  contest: Contest,
-  id: string,
-  patch: Partial<Pick<InsertedGap, 'anchor' | 'minutes' | 'label'>>,
-  now?: string,
-): Contest {
-  let changed = false;
-  const gaps = contest.scheduleOverrides.gaps.map((g) => {
-    if (g.id !== id) return g;
-    changed = true;
-    return { ...g, ...patch };
-  });
-  if (!changed) return contest;
-  return withScheduleOverrides(contest, { gaps }, now);
 }
 
 export function withAdjudicator(

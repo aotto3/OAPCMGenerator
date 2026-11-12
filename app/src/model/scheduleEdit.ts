@@ -6,7 +6,7 @@
  *   • anchor rows write their own field (first show → firstShowTime, first
  *     rehearsal → rehearsalStartTime1, directors' meeting →
  *     directorsMeetingTime), the CM-arrival row writes the arrival override,
- *     and every other row stores a nudge before it (schedule.ts setRowStart);
+ *     and every other row stores a nudge before it (nudgeRowStart below);
  *   • labeled breaks are added after an anchorable row, renamed, resized,
  *     moved one anchor up or down in day order, and removed.
  *
@@ -21,17 +21,14 @@
  */
 
 import {
-  addBreak,
-  removeBreak,
   scheduleChangeClearsOverrides,
-  updateBreak,
   withDetails,
   withScheduleOverrides,
   type Contest,
   type InsertedGap,
   type ScheduleRestructure,
 } from './contest';
-import { computeContestDay, fmtTime, scheduleEventKey, setRowStart, type ScheduleEvent } from './schedule';
+import { computeContestDay, fmtTime, scheduleEventKey, type ScheduleEvent } from './schedule';
 import { validateSchedule } from './scheduleValidation';
 
 export interface ScheduleRow {
@@ -58,6 +55,78 @@ export type ScheduleEdit =
   | { kind: 'moveBreak'; row: number; direction: -1 | 1 }
   | { kind: 'removeBreak'; row: number }
   | { kind: 'resetArrival' };
+
+/* ── gap primitives (internal). `anchor` is a stable row key (scheduleEventKey);
+ * the engine ignores an orphaned anchor, so these never validate against a
+ * computed timeline. Each writes through withScheduleOverrides, which keeps the
+ * fields it is not changing (the CM-arrival override survives, #263). ── */
+
+/** Inserts a gap after the row keyed `anchor`. `label` '' ⇒ an unlabeled nudge. */
+function addGap(contest: Contest, anchor: string, minutes: number, label: string, now?: string): Contest {
+  const gap: InsertedGap = { id: crypto.randomUUID(), anchor, minutes, label };
+  return withScheduleOverrides(contest, { gaps: [...contest.scheduleOverrides.gaps, gap] }, now);
+}
+
+/** Removes the gap with the given id. Unknown id ⇒ the contest as-is. */
+function removeGap(contest: Contest, id: string, now?: string): Contest {
+  const gaps = contest.scheduleOverrides.gaps.filter((g) => g.id !== id);
+  if (gaps.length === contest.scheduleOverrides.gaps.length) return contest;
+  return withScheduleOverrides(contest, { gaps }, now);
+}
+
+/** Patches one gap's label, length or anchor by id. Unknown id ⇒ the contest as-is. */
+function updateGap(
+  contest: Contest,
+  id: string,
+  patch: Partial<Pick<InsertedGap, 'anchor' | 'minutes' | 'label'>>,
+  now?: string,
+): Contest {
+  let changed = false;
+  const gaps = contest.scheduleOverrides.gaps.map((g) => {
+    if (g.id !== id) return g;
+    changed = true;
+    return { ...g, ...patch };
+  });
+  if (!changed) return contest;
+  return withScheduleOverrides(contest, { gaps }, now);
+}
+
+/**
+ * Moves a downstream row to start at `newStart` by adjusting the gap directly
+ * before it (PRD #179 / #192), so the row simply moves with no phantom break row:
+ *   • directly below a LABELED break, resize that break (removing it when its
+ *     length reaches zero);
+ *   • otherwise create, resize or remove the one unlabeled nudge anchored to the
+ *     predecessor.
+ * It never moves a row earlier than back-to-back with what precedes it (a
+ * negative delta with no gap to shrink is a no-op).
+ */
+function nudgeRowStart(
+  contest: Contest,
+  events: ScheduleEvent[],
+  index: number,
+  newStart: number,
+  now?: string,
+): Contest {
+  const target = events[index];
+  const prev = events[index - 1];
+  if (!target || !prev) return contest;
+  const delta = newStart - target.start;
+  if (delta === 0) return contest;
+  if (prev.type === 'break' && prev.overrideId) {
+    const minutes = prev.dur + delta;
+    return minutes <= 0 ? removeGap(contest, prev.overrideId, now) : updateGap(contest, prev.overrideId, { minutes }, now);
+  }
+  const anchor = scheduleEventKey(prev);
+  if (anchor == null) return contest;
+  const nudge = contest.scheduleOverrides.gaps.find((g) => g.anchor === anchor && g.label === '');
+  if (nudge) {
+    const minutes = nudge.minutes + delta;
+    return minutes <= 0 ? removeGap(contest, nudge.id, now) : updateGap(contest, nudge.id, { minutes }, now);
+  }
+  if (delta <= 0) return contest;
+  return addGap(contest, anchor, delta, '', now);
+}
 
 /** The stored gap behind a labeled break row, or undefined for any other row. */
 function breakGap(contest: Contest, ev: ScheduleEvent | undefined): InsertedGap | undefined {
@@ -101,12 +170,12 @@ function setStart(contest: Contest, events: ScheduleEvent[], row: number, minute
     case 'show':
       return ev.colorIdx === 0
         ? withDetails(contest, { firstShowTime: fmtTime(minutes) }, now)
-        : setRowStart(contest, events, row, minutes, now);
+        : nudgeRowStart(contest, events, row, minutes, now);
     case 'rehearsal':
       // The first rehearsal is the anchor (its start-time field); the rest nudge.
       return ev.colorIdx === 0
         ? withDetails(contest, { rehearsalStartTime1: fmtTime(minutes) }, now)
-        : setRowStart(contest, events, row, minutes, now);
+        : nudgeRowStart(contest, events, row, minutes, now);
     case 'dm':
       return withDetails(contest, { directorsMeetingTime: fmtTime(minutes) }, now);
     case 'arrival':
@@ -115,7 +184,7 @@ function setStart(contest: Contest, events: ScheduleEvent[], row: number, minute
     case 'admin':
     case 'crit':
     case 'awards':
-      return setRowStart(contest, events, row, minutes, now);
+      return nudgeRowStart(contest, events, row, minutes, now);
     default:
       return contest; // break rows are edited through their own controls
   }
@@ -135,25 +204,25 @@ export function applyScheduleEdit(contest: Contest, edit: ScheduleEdit, now?: st
       const ev = events[edit.afterRow];
       const anchor = ev ? scheduleEventKey(ev) : null;
       if (anchor == null || !(edit.minutes >= 1)) return contest;
-      return addBreak(contest, anchor, edit.minutes, edit.label, now);
+      return addGap(contest, anchor, edit.minutes, edit.label, now);
     }
     case 'renameBreak': {
       const gap = breakGap(contest, events[edit.row]);
-      return gap ? updateBreak(contest, gap.id, { label: edit.label }, now) : contest;
+      return gap ? updateGap(contest, gap.id, { label: edit.label }, now) : contest;
     }
     case 'resizeBreak': {
       const gap = breakGap(contest, events[edit.row]);
       if (!gap || !(edit.minutes >= 1)) return contest;
-      return updateBreak(contest, gap.id, { minutes: edit.minutes }, now);
+      return updateGap(contest, gap.id, { minutes: edit.minutes }, now);
     }
     case 'moveBreak': {
       const gap = breakGap(contest, events[edit.row]);
       const anchor = gap ? moveTarget(events, gap.anchor, edit.direction) : null;
-      return gap && anchor ? updateBreak(contest, gap.id, { anchor }, now) : contest;
+      return gap && anchor ? updateGap(contest, gap.id, { anchor }, now) : contest;
     }
     case 'removeBreak': {
       const gap = breakGap(contest, events[edit.row]);
-      return gap ? removeBreak(contest, gap.id, now) : contest;
+      return gap ? removeGap(contest, gap.id, now) : contest;
     }
     default:
       return contest;

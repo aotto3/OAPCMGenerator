@@ -19,9 +19,6 @@
  */
 
 import {
-  addBreak,
-  removeBreak,
-  updateBreak,
   schoolsInPerformanceOrder,
   type Contest,
   type ScheduleOverrides,
@@ -130,7 +127,7 @@ export function fmtTime(mins: number | null): string {
 /**
  * A stable key for the computed row a manual gap anchors to (PRD #179 / #192).
  * Shows/transitions/rehearsals key by their position, the singleton admin rows by
- * name. The CM-arrival row (its own override, setArrival) and inserted break rows
+ * name. The CM-arrival row (its own override, set via scheduleEdit.ts) and inserted break rows
  * return null and can't be anchored to. The UI reuses this to record the anchor
  * when adding a break, so the two can never compute the key differently.
  */
@@ -339,49 +336,4 @@ export function computeContestDay(
   const contestEvents = computeSchedule(contest, overrides);
   if (contestEvents.length === 0 || !isSameDayRehearsal(contest)) return contestEvents;
   return [...sameDayRehearsalBlock(contest, overrides), ...contestEvents];
-}
-
-/**
- * Moves a computed row to start at `newStart` by adjusting the gap directly
- * before it (PRD #179 / #192) — the pin-free "just change the time of a row." A
- * time edit stores an UNLABELED nudge, so the row simply moves (blank space), no
- * phantom break row:
- *   • if the row directly above is a LABELED break, resize it (its length is what
- *     positions this row) — removing it when the new length reaches zero;
- *   • otherwise create/resize the unlabeled nudge anchored to the predecessor.
- * It never moves a row EARLIER than back-to-back with what precedes it (a
- * negative delta with no gap to shrink is a no-op), so a time edit can't create a
- * backward overlap. `events` is the timeline the row came from (computeContestDay).
- * Out-of-range / first-row / non-anchorable-predecessor ⇒ the contest is returned
- * unchanged.
- */
-export function setRowStart(
-  contest: Contest,
-  events: ScheduleEvent[],
-  index: number,
-  newStart: number,
-  now?: string,
-): Contest {
-  const target = events[index];
-  const prev = events[index - 1];
-  if (!target || !prev) return contest;
-  const delta = newStart - target.start;
-  if (delta === 0) return contest;
-  // Directly below a labeled break: that break's length positions this row.
-  if (prev.type === 'break' && prev.overrideId) {
-    const minutes = prev.dur + delta;
-    return minutes <= 0
-      ? removeBreak(contest, prev.overrideId, now)
-      : updateBreak(contest, prev.overrideId, { minutes }, now);
-  }
-  const anchor = scheduleEventKey(prev);
-  if (anchor == null) return contest;
-  // Adjust the one unlabeled nudge for this anchor (there is at most one).
-  const nudge = contest.scheduleOverrides.gaps.find((g) => g.anchor === anchor && g.label === '');
-  if (nudge) {
-    const minutes = nudge.minutes + delta;
-    return minutes <= 0 ? removeBreak(contest, nudge.id, now) : updateBreak(contest, nudge.id, { minutes }, now);
-  }
-  if (delta <= 0) return contest; // no nudge to shrink — can't go earlier than natural
-  return addBreak(contest, anchor, delta, '', now); // '' ⇒ unlabeled nudge (blank space)
 }
