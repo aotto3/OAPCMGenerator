@@ -39,12 +39,13 @@ export interface QuestionnaireLimiters {
   perEmail: RateLimiter;
 }
 
-export function defaultQuestionnaireLimiters(): QuestionnaireLimiters {
+/** The production limits, timed by the given clock (epoch ms). */
+export function defaultQuestionnaireLimiters(now: () => number): QuestionnaireLimiters {
   return {
     // Generous per IP: behind the proxy chain several judges may share one address.
-    perIp: createRateLimiter({ limit: 60, windowMs: 10 * 60 * 1000 }),
+    perIp: createRateLimiter({ limit: 60, windowMs: 10 * 60 * 1000, now }),
     // Lookups and submits share it; a judge fixing answers a few times stays well under.
-    perEmail: createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000 }),
+    perEmail: createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000, now }),
   };
 }
 
@@ -56,6 +57,8 @@ export interface QuestionnaireRoutesDeps {
   mailSender: MailSender;
   /** The account's sign-in email: the notice's fallback recipient. */
   ownerEmail: (ownerId: string) => Promise<string | undefined>;
+  /** Injected clock; every timestamp this router stamps or compares comes from it. */
+  now: () => Date;
   /** Link token generator; defaults to 144 random bits, base64url. */
   newToken?: () => string;
 }
@@ -67,7 +70,7 @@ function bodyOf(req: Request): Record<string, unknown> {
 }
 
 export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router {
-  const { repo, resolveUser, limiters } = deps;
+  const { repo, resolveUser, limiters, now } = deps;
   const newToken = deps.newToken ?? defaultNewToken;
   const router = Router();
 
@@ -83,7 +86,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
     let token = await repo.getToken(user.id);
     if (!token) {
       token = newToken();
-      await repo.setToken(user.id, token, new Date().toISOString());
+      await repo.setToken(user.id, token, now().toISOString());
     }
     res.json({ token });
   });
@@ -92,7 +95,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
     const user = await requireUser(req, res);
     if (!user) return;
     const token = newToken();
-    await repo.setToken(user.id, token, new Date().toISOString());
+    await repo.setToken(user.id, token, now().toISOString());
     res.json({ token });
   });
 
@@ -109,7 +112,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
       res.status(400).json({ error: 'Roster too large' });
       return;
     }
-    await repo.putRoster(user.id, text, new Date().toISOString());
+    await repo.putRoster(user.id, text, now().toISOString());
     res.status(204).end();
   });
 
@@ -205,7 +208,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
 
   router.post('/public/submit', async (req, res) => {
     // A bot that fills the honeypot is told it succeeded and nothing is stored.
-    const match = await matchJudge(req, res, () => void res.json({ submittedAt: new Date().toISOString() }));
+    const match = await matchJudge(req, res, () => void res.json({ submittedAt: now().toISOString() }));
     if (!match) return;
     const answers = parseAnswers(
       bodyOf(req).answers,
@@ -216,7 +219,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
       return;
     }
     const previous = await repo.getSubmission(match.owner, match.email);
-    const submittedAt = new Date().toISOString();
+    const submittedAt = now().toISOString();
     await repo.putSubmission(match.owner, match.email, submittedAt, JSON.stringify(answers));
     await notifyCms(match, answers, previous !== undefined);
     res.json({ submittedAt });

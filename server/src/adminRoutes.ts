@@ -48,6 +48,8 @@ export interface AdminRoutesDeps {
   resolveUser: ResolveUser;
   /** Lowercased admin email allowlist (see env.adminEmails). */
   adminEmails: ReadonlySet<string>;
+  /** Injected clock; every timestamp this router stamps or compares comes from it. */
+  now: () => Date;
 }
 
 /** Parses ?limit / ?offset, leaving them unset (log defaults apply) when absent/invalid. */
@@ -87,10 +89,10 @@ function feedFilter(req: Request): EventFilter {
  * [1, 365]). `to` is now; `from` is that many days back; bucket granularity is
  * implied by the length (daily for short windows, weekly for long).
  */
-function parseWindow(req: Request): AnalyticsWindow {
+function parseWindow(req: Request, nowMs: number): AnalyticsWindow {
   const raw = Math.trunc(Number(req.query.window));
   const days = Number.isFinite(raw) && raw >= 1 ? Math.min(raw, MAX_WINDOW_DAYS) : DEFAULT_WINDOW_DAYS;
-  const toMs = Date.now();
+  const toMs = nowMs;
   return {
     from: new Date(toMs - days * DAY_MS).toISOString(),
     to: new Date(toMs).toISOString(),
@@ -99,11 +101,11 @@ function parseWindow(req: Request): AnalyticsWindow {
 }
 
 export function createAdminRoutes(deps: AdminRoutesDeps): Router {
-  const { repo, eventLog, userDirectory, authAdmin, resolveUser, adminEmails } = deps;
+  const { repo, eventLog, userDirectory, authAdmin, resolveUser, adminEmails, now } = deps;
   const router = Router();
 
   // Per-target-email limiter for the resend action (in-memory; one API process).
-  const resendLimiter = createRateLimiter({ limit: RESEND_LIMIT, windowMs: RESEND_WINDOW_MS });
+  const resendLimiter = createRateLimiter({ limit: RESEND_LIMIT, windowMs: RESEND_WINDOW_MS, now: () => now().getTime() });
 
   /**
    * Wraps a handler with the admin gate. Resolves the session; if there is none
@@ -145,7 +147,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         repo.countAll(),
         eventLog.countEvents({ type: DOCUMENTS_GENERATED_EVENT }),
       ]);
-      const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+      const cutoff = now().getTime() - ACTIVE_WINDOW_MS;
       const activeThisWeek = users.filter(
         (u) => u.lastSeenAt !== undefined && new Date(u.lastSeenAt).getTime() >= cutoff,
       ).length;
@@ -194,7 +196,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   router.get(
     '/analytics',
     adminOnly(async (req, res) => {
-      const window = parseWindow(req);
+      const window = parseWindow(req, now().getTime());
       const [events, users] = await Promise.all([
         eventLog.listEvents({ from: window.from, to: window.to }),
         userDirectory.listUsers(),
@@ -209,7 +211,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   router.get(
     '/errors',
     adminOnly(async (req, res) => {
-      const window = parseWindow(req);
+      const window = parseWindow(req, now().getTime());
       const events = await eventLog.listEvents({
         type: TELEMETRY_EVENTS.clientError,
         from: window.from,
@@ -230,12 +232,12 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      const from = new Date(Date.now() - RECENT_EVENT_WINDOW_DAYS * DAY_MS).toISOString();
+      const from = new Date(now().getTime() - RECENT_EVENT_WINDOW_DAYS * DAY_MS).toISOString();
       const [contests, events] = await Promise.all([
         repo.listByOwner(id),
         eventLog.listEvents({ userId: id, from }),
       ]);
-      const syncHealth = computeSyncHealth({ contests, events, now: new Date().toISOString() });
+      const syncHealth = computeSyncHealth({ contests, events, now: now().toISOString() });
       res.json({ user, syncHealth });
     }),
   );
@@ -262,7 +264,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       // fail the support action the admin already performed.
       try {
         await eventLog.recordEvent({
-          occurredAt: new Date().toISOString(),
+          occurredAt: now().toISOString(),
           userId: admin.id,
           userEmail: admin.email,
           type: ADMIN_EVENTS.signInLinkResent,

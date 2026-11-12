@@ -28,6 +28,8 @@ export interface ContestRoutesDeps {
   repo: ContestRepo;
   resolveUser: ResolveUser;
   eventLog: EventLog;
+  /** Injected clock; every timestamp this router stamps or compares comes from it. */
+  now: () => Date;
 }
 
 interface ContestBody {
@@ -58,7 +60,7 @@ function readBody(body: unknown, expectedId: string): ContestBody {
 }
 
 export function createContestRoutes(deps: ContestRoutesDeps): Router {
-  const { repo, resolveUser, eventLog } = deps;
+  const { repo, resolveUser, eventLog, now: clock } = deps;
   const router = Router();
 
   /**
@@ -134,7 +136,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
         res.status(409).json({ error: 'A contest with this id already exists' });
         return;
       }
-      const now = new Date().toISOString();
+      const now = clock().toISOString();
       await repo.insert({ id, ownerId: user.id, name, updatedAt, payload, createdAt: now });
       await recordEvent({
         occurredAt: now,
@@ -160,7 +162,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
         return;
       }
       await recordEvent({
-        occurredAt: new Date().toISOString(),
+        occurredAt: clock().toISOString(),
         userId: user.id,
         userEmail: user.email,
         type: CONTEST_EVENTS.updated,
@@ -185,7 +187,7 @@ export function createContestRoutes(deps: ContestRoutesDeps): Router {
       }
       await repo.remove(user.id, id);
       await recordEvent({
-        occurredAt: new Date().toISOString(),
+        occurredAt: clock().toISOString(),
         userId: user.id,
         userEmail: user.email,
         type: CONTEST_EVENTS.deleted,

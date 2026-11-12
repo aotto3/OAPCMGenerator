@@ -34,6 +34,11 @@ export interface AppDeps {
   /** Lowercased admin email allowlist; empty means the admin API is dark. */
   adminEmails: ReadonlySet<string>;
   resolveUser: ResolveUser;
+  /**
+   * The clock. Every route reads time from it, never from the system clock, so
+   * tests control it. Production passes `() => new Date()`.
+   */
+  now: () => Date;
   /** Judge questionnaire link tokens + published rosters (PRD #252). */
   questionnaireRepo: QuestionnaireRepo;
   /** Sends transactional mail (the questionnaire CM notice). Tests pass a fake. */
@@ -86,12 +91,12 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(
     '/api/contests',
-    createContestRoutes({ repo: deps.repo, eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
+    createContestRoutes({ repo: deps.repo, eventLog: deps.eventLog, resolveUser: deps.resolveUser, now: deps.now }),
   );
 
   app.use(
     '/api/telemetry',
-    createTelemetryRoutes({ eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
+    createTelemetryRoutes({ eventLog: deps.eventLog, resolveUser: deps.resolveUser, now: deps.now }),
   );
 
   app.use(
@@ -99,9 +104,10 @@ export function createApp(deps: AppDeps): Express {
     createQuestionnaireRoutes({
       repo: deps.questionnaireRepo,
       resolveUser: deps.resolveUser,
-      limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(),
+      limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(() => deps.now().getTime()),
       mailSender: deps.mailSender,
       ownerEmail: async (ownerId) => (await deps.userDirectory.getUser(ownerId))?.email,
+      now: deps.now,
     }),
   );
 
@@ -114,6 +120,7 @@ export function createApp(deps: AppDeps): Express {
       authAdmin: deps.authAdmin,
       resolveUser: deps.resolveUser,
       adminEmails: deps.adminEmails,
+      now: deps.now,
     }),
   );
 
