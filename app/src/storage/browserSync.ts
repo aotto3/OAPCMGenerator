@@ -49,20 +49,20 @@ export function startBrowserSync(): () => void {
   // Keep the judge questionnaire's roster current (PRD #252): republished when
   // sync settles and the roster changed. Off the edit path, best-effort.
   const questionnaire = createQuestionnaireClient();
-  const loadContests = () => library.readAll();
   const stopRoster = startRosterPublisher({
     subscribe: (listener) => active.subscribe(listener),
-    loadContests,
+    loadContests: () => library.readAll(),
     publish: (roster) => questionnaire.publishRoster(roster),
     today: () => localToday(),
   });
-  // And bring judges' questionnaire answers into the contests. A changed contest
-  // is saved like an edit, so it syncs to the account's other devices.
+  // And bring judges' questionnaire answers into the contests, through the
+  // library's transform, so an open workspace gets them via its session. A
+  // changed contest is saved like an edit, so it syncs to the other devices.
   const stopSubmissions = startSubmissionSync({
     subscribe: (listener) => active.subscribe(listener),
     fetchSubmissions: () => questionnaire.listSubmissions(),
-    loadContests,
-    saveContest: (contest) => library.save(contest),
+    contestIds: async () => (await library.list()).map((summary) => summary.id),
+    transform: (id, fn) => library.transform(id, fn, { by: 'submissions' }),
     now: () => new Date().toISOString(),
   });
 

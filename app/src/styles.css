@@ -231,6 +231,14 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .workspace { max-width: 1120px; margin: 0 auto; padding: var(--space-5) var(--space-4) 64px; }
 .workspace-header { margin-bottom: var(--space-3); }
 .workspace-header-top { display: flex; align-items: center; gap: var(--space-3); }
+/* "Updated from another device" (RFC #276): a newer copy swapped into the open contest. */
+.update-notice {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3);
+  background: var(--c-bg-blue); border: 1px solid var(--c-blue-border);
+  border-radius: var(--radius-md); color: var(--c-text); font-size: var(--fs-sm);
+}
+.update-notice .btn-ghost { padding: 0 var(--space-2); }
 
 /* Click-to-edit contest title (PRD #143). The heading and its edit input share
    the same box metrics so swapping between them doesn't shift the layout. */

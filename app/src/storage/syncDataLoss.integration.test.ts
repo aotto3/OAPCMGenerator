@@ -7,7 +7,7 @@
 // The globals (IDBRequest and friends) for idb; each test still gets its own factory.
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContestLibrary, type ContestLibrary } from './contestLibrary';
 import { createSyncEngine, type SyncEngine } from './syncEngine';
 import { createLibrarySyncStore } from './syncStore';
@@ -148,16 +148,17 @@ describe('sync data-loss reproductions (#263)', () => {
     expect(server.records.has(contest.id)).toBe(false);
   });
 
-  // Bug confirmed by this test. Fixed by package A slice A2 (#278): open-contest
-  // sessions swap in the newer copy and show "Updated from another device".
-  // Flip to `it` when that lands.
-  it.fails('a pull of the open contest is not overwritten by the next autosave', async () => {
+  // Bug confirmed by this test, fixed by package A slice A2 (#278): the
+  // workspace edits through an open-contest session, which a pull swaps to the
+  // newer copy ("Updated from another device"), so the next save keeps it.
+  it('a pull of the open contest is not overwritten by the next autosave', async () => {
     const server = fakeServer();
     const contest = sampleContest();
     await library.save(contest);
 
-    // The Workspace loads the contest into memory and holds it.
-    const open = (await library.read(contest.id))!;
+    // The Workspace opens the contest and holds its live copy.
+    const open = library.open(contest.id);
+    await vi.waitFor(() => expect(open.getState().status).toBe('ready'));
 
     // Another device renames the host school; this device pulls it into IndexedDB.
     const remote = withIdentity(contest, { hostSchoolName: 'Remote Edit HS' }, T2);
@@ -167,13 +168,16 @@ describe('sync data-loss reproductions (#263)', () => {
     await scheduler.drain();
     expect((await library.read(contest.id))?.identity.hostSchoolName).toBe('Remote Edit HS');
 
-    // The CM keeps typing in the stale in-memory copy; useAutosave saves it.
-    await library.save(withDetails(open, { contestDate: '2026-03-14' }, T3));
+    // The CM keeps typing in the workspace; the session saves it.
+    open.update((c) => withDetails(c, { contestDate: '2026-03-14' }, T3));
+    await open.close();
     await scheduler.drain();
     session.dispose();
 
     const stored = (await library.read(contest.id))!;
     expect(stored.details.contestDate).toBe('2026-03-14');
     expect(stored.identity.hostSchoolName).toBe('Remote Edit HS');
+    // And the edit reached the server.
+    expect(server.records.get(contest.id)?.updatedAt).toBe(stored.updatedAt);
   });
 });

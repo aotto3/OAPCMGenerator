@@ -1199,7 +1199,7 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
 /* ────────────────────────── update helpers ──────────────────────────
  * All edits go through these: they are immutable and bump updatedAt, which
  * is also what arms autosave (a brand-new contest with updatedAt ===
- * createdAt is an unsaved draft — see storage/useAutosave.ts).
+ * createdAt is an unsaved draft; see the session in storage/contestLibrary.ts).
  */
 
 function touch(contest: Contest, now?: string): Contest {

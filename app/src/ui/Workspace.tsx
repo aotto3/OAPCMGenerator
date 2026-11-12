@@ -8,10 +8,7 @@ import {
   type Contest,
 } from '../model/contest';
 import { EditableContestTitle } from './EditableContestTitle';
-import { contestLibrary } from '../storage/browserLibrary';
-import { applySubmissions } from '../questionnaire/submission';
-import { latestSubmissions, onSubmissionsChanged } from '../questionnaire/submissionSync';
-import { useAutosave } from '../storage/useAutosave';
+import { useOpenContest } from './contestHooks';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { ReadinessPage } from './ReadinessPage';
 import { ReadinessSummary } from './ReadinessSummary';
@@ -29,8 +26,9 @@ import {
  * Contest workspace — the v12 data-entry sections, now grouped into content-swapped
  * panes driven by the sidebar (PRD #127). Pattern to keep: state lives in one
  * `Contest` value, every change goes through the model's update helpers (sections
- * receive the contest and hand back the next one), and useAutosave persists it —
- * components never talk to IndexedDB directly. The current pane is ordinary
+ * receive the contest and hand back the next one), and the open-contest session
+ * (useOpenContest) persists it; components never talk to IndexedDB directly. A
+ * newer copy from another device swaps in through the session with a notice. The current pane is ordinary
  * component state (router-ready, but no URL routing in v1); switching panes only
  * unmounts/mounts modules, so autosave keeps unsaved work safe across a switch.
  */
@@ -50,8 +48,8 @@ export function Workspace({
   /** Open another saved contest (e.g. the other zone). */
   onOpenContest: (id: string) => void;
 }) {
-  const [contest, setContest] = useState<Contest>();
-  const [missing, setMissing] = useState(false);
+  const isDraft = !!(draft && draft.id === contestId);
+  const open = useOpenContest(contestId, isDraft ? draft : undefined);
   // Global expand/collapse-all signal broadcast to every mounted Section via
   // context. Content-swap makes this per-pane for free: only the current pane's
   // sections are mounted, so a broadcast reaches just them.
@@ -60,34 +58,12 @@ export function Workspace({
     setOpenSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
   // The current destination: the Readiness hub or one of the panes. A fresh draft
   // lands on Setup (start typing); a saved contest lands on Readiness (status).
-  const isDraft = !!(draft && draft.id === contestId);
   const [view, setView] = useState<PaneId>(() => landingPane(isDraft));
   // Mobile: the off-canvas sidebar drawer's open state (the desktop rail ignores it).
   const [drawerOpen, setDrawerOpen] = useState(false);
   // A module anchor to scroll to once its pane's content mounts — set when a
   // readiness item's jump fires (switch to the canonical pane, then scroll).
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (draft && draft.id === contestId) {
-      setContest(draft);
-      return;
-    }
-    void contestLibrary().read(contestId).then((c) => (c ? setContest(c) : setMissing(true)));
-  }, [contestId, draft]);
-
-  // Judge questionnaire answers (PRD #252) that arrive while this contest is open
-  // go into the in-memory copy too, so the next autosave keeps them instead of
-  // overwriting the background save. Applying is idempotent: a no-op returns the
-  // same object and React skips the update.
-  useEffect(() => {
-    const apply = () =>
-      setContest((c) => (c ? applySubmissions(c, latestSubmissions(), new Date().toISOString()) : c));
-    apply();
-    return onSubmissionsChanged(apply);
-  }, [contest?.id]);
-
-  useAutosave(contest);
 
   // After a jump, wait for the target pane's anchors to mount, then smooth-scroll
   // to the module. Skipped on the Readiness hub (no module anchors there). A
@@ -105,7 +81,7 @@ export function Workspace({
     );
   }, [view, pendingScroll]);
 
-  if (missing) {
+  if (open.status === 'missing') {
     return (
       <main className="page">
         <p>Contest not found.</p>
@@ -113,7 +89,18 @@ export function Workspace({
       </main>
     );
   }
-  if (!contest) return <main className="page"><p className="muted">Loading…</p></main>;
+  if (open.status === 'removed') {
+    return (
+      <main className="page">
+        <p>This contest was deleted on another device.</p>
+        <button className="btn-ghost" onClick={onBack}>← Back to dashboard</button>
+      </main>
+    );
+  }
+  if (open.status !== 'ready') return <main className="page"><p className="muted">Loading…</p></main>;
+
+  const contest = open.contest;
+  const setContest = open.set;
 
   /** Navigate to a pane from the sidebar (a plain switch, no pending scroll). */
   const selectPane = (pane: PaneId) => {
@@ -154,9 +141,17 @@ export function Workspace({
             title={effectiveContestTitle(contest)}
             override={contest.titleOverride}
             autoName={contestDisplayName(contest.identity)}
-            onChange={(v) => setContest(withTitleOverride(contest, v))}
+            onChange={(v) => open.update((c) => withTitleOverride(c, v))}
           />
           <p className="subtitle">Every change saves automatically.</p>
+          {open.notice && (
+            <div className="update-notice" role="status">
+              <span>Updated from another device</span>
+              <button type="button" className="btn-ghost" aria-label="Dismiss" onClick={open.dismissNotice}>
+                ✕
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="workspace-shell">
