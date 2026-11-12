@@ -16,6 +16,7 @@ import { IdentitySection } from './sections/IdentitySection';
 import { JudgePreferencesSection } from './sections/JudgePreferencesSection';
 import { PlaysSection } from './sections/PlaysSection';
 import { ResultsSection } from './sections/ResultsSection';
+import { TabulationSection } from './sections/TabulationSection';
 import { SchoolsSection } from './sections/SchoolsSection';
 import { moduleAnchorId, paneModules, type ModuleId, type PaneId } from './paneRegistry';
 
@@ -112,6 +113,8 @@ function renderModule(
       return <SchedulePreview contest={contest} onChange={readOnly ? undefined : onChange} />;
     case 'critique':
       return <CritiqueSection contest={contest} onChange={onChange} />;
+    case 'tabulation':
+      return <TabulationSection contest={contest} onChange={onChange} />;
     case 'results':
       return <ResultsSection contest={contest} onChange={onChange} onAdvance={onOpenSaved} />;
     case 'generate':
