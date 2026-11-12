@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createContest, withAdjudicator, type Contest } from '../model/contest';
+import { createContest, type Contest } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import type { SyncStatus } from '../storage/syncEngine';
 import { blankAnswers, type JudgeSubmission } from './submission';
 import { startSubmissionSync } from './submissionSync';
@@ -7,7 +8,7 @@ import { startSubmissionSync } from './submissionSync';
 const NOW = '2026-11-01T12:00:00.000Z';
 
 const judged = (id: string): Contest =>
-  withAdjudicator(createContest({ id, now: NOW }), 0, { name: 'Jane', email: 'jane@x.org' }, NOW);
+  setJudge(createContest({ id, now: NOW }), 0, { name: 'Jane', email: 'jane@x.org' }, NOW);
 
 const SUB: JudgeSubmission = {
   email: 'jane@x.org',

@@ -8,8 +8,9 @@
  * and never touches name, email, or the contracting dates. Re-applying the same
  * submission is a no-op (the stamp already equals it), so devices converge.
  */
-import { withAdjudicator, type Contest } from '../model/contest';
-import { normalizeEmail, type RosterContest } from './roster';
+import type { Contest } from '../model/contest';
+import { activeJudgeSlots, normalizeEmail, setJudge } from '../model/judgePanel';
+import type { RosterContest } from './roster';
 
 export interface ContestAnswers {
   hotelBefore: boolean;
@@ -62,11 +63,11 @@ export function applySubmission(contest: Contest, submission: JudgeSubmission, n
   if (!perContest) return contest;
   const email = normalizeEmail(submission.email);
   let next = contest;
-  contest.adjudicators.slice(0, contest.details.numJudges).forEach((judge, i) => {
+  activeJudgeSlots(contest).forEach(({ index: i, judge }) => {
     if (normalizeEmail(judge.email) !== email) return;
     if (submission.submittedAt <= judge.questionnaireUpdatedAt) return;
     const a = submission.answers;
-    next = withAdjudicator(
+    next = setJudge(
       next,
       i,
       {

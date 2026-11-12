@@ -13,7 +13,8 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx-js-style';
-import { setNumSchools, withAdjudicator, withDetails, withIdentity, withScheduleOverrides, withTitleOverride, type Contest } from '../model/contest';
+import { setNumSchools, withDetails, withIdentity, withScheduleOverrides, withTitleOverride, type Contest } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildContestSchedule } from './contestSchedule';
@@ -239,7 +240,7 @@ describe('Adjudicator Info Sheet — content', () => {
   });
 
   it("includes each judge's email, cell number and bio", () => {
-    let c = withAdjudicator(fixtureContest(), 0, { bio: 'Directs at Austin High.' }, FIXTURE_NOW);
+    let c = setJudge(fixtureContest(), 0, { bio: 'Directs at Austin High.' }, FIXTURE_NOW);
     const texts = cellTexts(firstSheet(buildAdjudicatorInfo(c)).ws);
     expect(texts).toContain('Email');
     expect(texts).toContain('Cell');
@@ -247,7 +248,7 @@ describe('Adjudicator Info Sheet — content', () => {
     expect(texts).toContain('512-555-0101');
     expect(texts).toContain('critic@example.org');
     expect(texts).toContain('Bio: Directs at Austin High.');
-    c = withAdjudicator(c, 0, { bio: '' }, FIXTURE_NOW);
+    c = setJudge(c, 0, { bio: '' }, FIXTURE_NOW);
     expect(cellTexts(firstSheet(buildAdjudicatorInfo(c)).ws).some((t) => t.startsWith('Bio:'))).toBe(false);
   });
 

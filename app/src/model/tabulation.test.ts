@@ -10,12 +10,12 @@ import {
   setTabulationConfirmed,
   setTabulationNotRanked,
   setTabulationRank,
-  withAdjudicator,
   withDetails,
   withIdentity,
   withSchool,
   type Contest,
 } from './contest';
+import { setJudge } from './judgePanel';
 import {
   cellIssueMessage,
   fillResultsFromTabulation,
@@ -36,9 +36,9 @@ function contest(): Contest {
   ['School 1', 'School 2', 'School 3'].forEach((name, i) => {
     c = withSchool(c, i, { name, playTitle: 'Play Name', performanceOrder: i + 1 }, NOW);
   });
-  c = withAdjudicator(c, 0, { name: 'John Doe' }, NOW);
-  c = withAdjudicator(c, 1, { name: 'Karen Hager' }, NOW);
-  c = withAdjudicator(c, 2, { name: 'Smith Wesley' }, NOW);
+  c = setJudge(c, 0, { name: 'John Doe' }, NOW);
+  c = setJudge(c, 1, { name: 'Karen Hager' }, NOW);
+  c = setJudge(c, 2, { name: 'Smith Wesley' }, NOW);
   return c;
 }
 
@@ -155,7 +155,7 @@ describe('tabulationView: rows and judges', () => {
 
   it('names the judge columns from the Judges section, Judge 1 first (Acting Judge)', () => {
     expect(tabulationView(contest()).judgeNames).toEqual(['John Doe', 'Karen Hager', 'Smith Wesley']);
-    const c = withAdjudicator(contest(), 1, { name: '  ' }, NOW);
+    const c = setJudge(contest(), 1, { name: '  ' }, NOW);
     expect(tabulationView(c).judgeNames).toEqual(['John Doe', 'Judge 2', 'Smith Wesley']);
   });
 

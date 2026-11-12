@@ -18,7 +18,6 @@ import {
   setAlternate,
   setBestCrew,
   setOutstandingTechnician,
-  withAdjudicator,
   withCmInfo,
   withDetails,
   withDirector,
@@ -27,6 +26,7 @@ import {
   withSchool,
   type Contest,
 } from '../../model/contest';
+import { setJudge } from '../../model/judgePanel';
 
 /** Fixed creation timestamp — keeps createdAt/updatedAt out of the golden's way. */
 export const FIXTURE_NOW = '2026-07-05T12:00:00.000Z';
@@ -80,20 +80,20 @@ export function fixtureContest(): Contest {
     { name: 'Prof. John Critic', mailingAddress: '200 Oak Ave, Dallas, TX 75201', email: 'critic@example.org' },
     { name: 'Ms. Mary Adjudicator', mailingAddress: '300 Elm Blvd, San Antonio, TX 78205' },
   ];
-  judges.forEach((j, i) => (c = withAdjudicator(c, i, j, FIXTURE_NOW)));
+  judges.forEach((j, i) => (c = setJudge(c, i, j, FIXTURE_NOW)));
   // Contracting milestones (PRD #67) with a deliberate mix so the Adjudicator
   // Info Sheet golden exercises both renderings: judge 1 all done (distinct
   // dates), judge 2 partly done, judge 3 all pending.
-  c = withAdjudicator(
+  c = setJudge(
     c,
     0,
     { ttaoContractDate: '2026-02-15', paymentPaperworkSentDate: '2026-03-01', paymentPaperworkReturnedDate: '2026-03-10' },
     FIXTURE_NOW,
   );
-  c = withAdjudicator(c, 1, { ttaoContractDate: '2026-02-20', paymentPaperworkSentDate: '2026-03-05' }, FIXTURE_NOW);
+  c = setJudge(c, 1, { ttaoContractDate: '2026-02-20', paymentPaperworkSentDate: '2026-03-05' }, FIXTURE_NOW);
   // Judge needs (PRD #252) so the Info Sheet golden exercises specific hotel
   // nights, the fly request, and CM-only notes.
-  c = withAdjudicator(
+  c = setJudge(
     c,
     1,
     {
@@ -181,8 +181,8 @@ export function fixtureContestWithCompany(): Contest {
   let c = fixtureContest();
 
   // Bios: two adjudicators + the CM; judge 3 deliberately left blank.
-  c = withAdjudicator(c, 0, { bio: 'Dr. Jane Judge has directed competitive theatre for 20 years.' }, FIXTURE_NOW);
-  c = withAdjudicator(c, 1, { bio: 'Prof. John Critic teaches dramatic literature at State University.' }, FIXTURE_NOW);
+  c = setJudge(c, 0, { bio: 'Dr. Jane Judge has directed competitive theatre for 20 years.' }, FIXTURE_NOW);
+  c = setJudge(c, 1, { bio: 'Prof. John Critic teaches dramatic literature at State University.' }, FIXTURE_NOW);
   c = withCmInfo(c, { bio: 'Allen Otto is a longtime UIL contest manager and theatre educator.' }, FIXTURE_NOW);
 
   // Bravo HS — a full play with two directors and a complete roster.

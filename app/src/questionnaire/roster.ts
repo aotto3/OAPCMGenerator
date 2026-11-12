@@ -9,7 +9,8 @@
  *
  * Pure: `today` (YYYY-MM-DD) is injected, never read from the clock.
  */
-import { effectiveContestTitle, type Contest } from '../model/contest';
+import { activeJudges, effectiveContestTitle, type Contest } from '../model/contest';
+import { normalizeEmail } from '../model/judgePanel';
 
 export interface RosterContest {
   id: string;
@@ -34,9 +35,8 @@ export interface JudgeRoster {
   judges: RosterJudge[];
 }
 
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
+/** Moved to the judge panel (RFC #267); re-exported for questionnaire callers. */
+export { normalizeEmail };
 
 /** Upcoming = not archived and dated today or later, or not dated yet. */
 function isUpcoming(contest: Contest, today: string): boolean {
@@ -62,7 +62,7 @@ export function buildJudgeRoster(contests: Contest[], today: string): JudgeRoste
   const judges = new Map<string, RosterJudge>();
 
   for (const contest of upcoming) {
-    for (const judge of contest.adjudicators.slice(0, contest.details.numJudges)) {
+    for (const judge of activeJudges(contest)) {
       const email = normalizeEmail(judge.email);
       if (email === '') continue;
       const entry = judges.get(email) ?? { email, name: '', contestIds: [] };

@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import {
   createContest,
-  withAdjudicator,
   withCmInfo,
   withDetails,
   withDirector,
@@ -12,6 +11,7 @@ import {
   withSchool,
   type Contest,
 } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import { buildDirectorLetter } from './letter';
 import { diffArchives, expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 
@@ -65,7 +65,7 @@ function fixtureContest(): Contest {
     { name: 'Prof. John Critic', mailingAddress: '200 Oak Ave, Dallas, TX 75201' },
     { name: 'Ms. Mary Adjudicator', mailingAddress: '300 Elm Blvd, San Antonio, TX 78205' },
   ];
-  judges.forEach((j, i) => (c = withAdjudicator(c, i, j, NOW)));
+  judges.forEach((j, i) => (c = setJudge(c, i, j, NOW)));
 
   const names = ['Alpha HS', 'Bravo HS', 'Charlie HS', 'Delta HS', 'Echo HS', 'Foxtrot HS'];
   // "Romeo & Juliet" exercises XML escaping through the performance-order table.

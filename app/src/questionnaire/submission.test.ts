@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createContest, withAdjudicator, withDetails, type Contest } from '../model/contest';
+import { createContest, withDetails, type Contest } from '../model/contest';
+import { setJudge } from '../model/judgePanel';
 import type { RosterContest } from './roster';
 import {
   applySubmission,
@@ -17,7 +18,7 @@ const LATER = '2026-11-20T12:00:00.000Z';
 function contest(id: string): Contest {
   let c = createContest({ id, now: NOW });
   c = withDetails(c, { numJudges: 2 }, NOW);
-  c = withAdjudicator(
+  c = setJudge(
     c,
     0,
     {
@@ -29,7 +30,7 @@ function contest(id: string): Contest {
     },
     NOW,
   );
-  return withAdjudicator(c, 1, { name: 'Sam Lee', email: 'sam@x.org', mailingAddress: 'Sam address' }, NOW);
+  return setJudge(c, 1, { name: 'Sam Lee', email: 'sam@x.org', mailingAddress: 'Sam address' }, NOW);
 }
 
 function submission(submittedAt: string, patch: Partial<JudgeSubmission['answers']> = {}): JudgeSubmission {
@@ -93,7 +94,7 @@ describe('applySubmission', () => {
   });
 
   it('turns the hotel need off when no nights are chosen', () => {
-    let c = withAdjudicator(contest('c1'), 0, { needsHotel: true, hotelNights: { before: true, after: true } }, NOW);
+    let c = setJudge(contest('c1'), 0, { needsHotel: true, hotelNights: { before: true, after: true } }, NOW);
     c = applySubmission(
       c,
       submission('2026-11-10T00:00:00.000Z', {

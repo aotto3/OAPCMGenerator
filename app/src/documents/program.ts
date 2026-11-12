@@ -17,6 +17,7 @@
  */
 
 import {
+  activeJudges,
   contestTitleLong,
   schoolsInPerformanceOrder,
   type Contest,
@@ -69,8 +70,7 @@ function bioEntry(name: string, bio: string): string[] {
  * Returns [] when there is nothing to show, so the caller omits the whole page.
  */
 function biosPage(contest: Contest): string[] {
-  const active = contest.adjudicators.slice(0, contest.details.numJudges);
-  const judgeBios = active.filter((j) => j.bio.trim() !== '');
+  const judgeBios = activeJudges(contest).filter((j) => j.bio.trim() !== '');
   const cmHasBio = contest.cmInfo.bio.trim() !== '';
   if (judgeBios.length === 0 && !cmHasBio) return [];
 

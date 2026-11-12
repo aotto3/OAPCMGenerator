@@ -5,7 +5,6 @@ import {
   createContest,
   setNumSchools,
   setTabulationRank,
-  withAdjudicator,
   withCmInfo,
   withDetails,
   withIdentity,
@@ -13,6 +12,7 @@ import {
   type Contest,
   type ContestIdentity,
 } from './contest';
+import { setJudge } from './judgePanel';
 import {
   tabulationHeader,
   tabulationHeaderLines,
@@ -36,7 +36,7 @@ function sample(): Contest {
   ['School 1', 'School 2', 'School 3'].forEach((name, i) => {
     c = withSchool(c, i, { name, playTitle: 'Play Name', performanceOrder: i + 1 }, NOW);
   });
-  ['John Doe', 'Karen Hager', 'Smith Wesley'].forEach((name, j) => (c = withAdjudicator(c, j, { name }, NOW)));
+  ['John Doe', 'Karen Hager', 'Smith Wesley'].forEach((name, j) => (c = setJudge(c, j, { name }, NOW)));
   const ranks = [
     ['2', '3', '1'],
     ['3', '1', '3'],
