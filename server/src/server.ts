@@ -9,6 +9,7 @@ import { createApp } from './app';
 import { auth } from './auth';
 import { createContestRepo } from './contestRepo';
 import { createEventLog } from './eventLog';
+import { createQuestionnaireRepo } from './questionnaireRepo';
 import { createUserDirectory } from './userDirectory';
 import { getPool, migrate } from './db';
 import { adminEmails, port, requireEnv } from './env';
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
     repo: createContestRepo(pool),
     eventLog: createEventLog(pool),
     userDirectory: createUserDirectory(pool),
+    questionnaireRepo: createQuestionnaireRepo(pool),
     // The one account-acting seam: wrap Better Auth's magic-link send. Wired here
     // (the one place holding real auth); the admin routes only see the interface.
     authAdmin: {

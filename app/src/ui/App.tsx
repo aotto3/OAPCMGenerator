@@ -12,6 +12,8 @@ import { ThemeToggle } from './ThemeToggle';
 import { UpdatePrompt } from './UpdatePrompt';
 import { useSync } from './useSync';
 import { Workspace } from './Workspace';
+import { QuestionnairePage } from '../questionnaire/QuestionnairePage';
+import { questionnaireTokenFromPath } from '../questionnaire/questionnaireClient';
 
 /**
  * Dashboard-first flow: contest list → contest workspace → back.
@@ -60,6 +62,33 @@ function ContestFlow() {
  * the storage layer, off the typing path.
  */
 export function App() {
+  // The public judge questionnaire (/q/<token>, PRD #252) needs no sign-in and
+  // none of the account app, so it branches off before the auth gate. The path
+  // never changes within a page load, so this is a stable branch.
+  const questionnaireToken = questionnaireTokenFromPath(window.location.pathname);
+  if (questionnaireToken) {
+    return (
+      <>
+        <QuestionnairePage token={questionnaireToken} />
+        <AppFooter />
+      </>
+    );
+  }
+  return <AccountApp />;
+}
+
+function AppFooter() {
+  return (
+    <footer className="app-footer">
+      <span>© 2026 Allen Otto · OAP Contest Manager</span>
+      <span aria-hidden="true" className="app-footer-sep">·</span>
+      <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms</a>
+      <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
+    </footer>
+  );
+}
+
+function AccountApp() {
   const { data: session, isPending } = useSession();
   const syncStatus = useSync(!!session);
   // Admin gate: probe the server once signed in. Non-admins get a 404 → false,
@@ -108,12 +137,7 @@ export function App() {
       {content}
       {/* Ownership/attribution notice — shown in every state (loading, sign-in,
           app). Links to the hosted Terms and Privacy pages (app/public/). */}
-      <footer className="app-footer">
-        <span>© 2026 Allen Otto · OAP Contest Manager</span>
-        <span aria-hidden="true" className="app-footer-sep">·</span>
-        <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms</a>
-        <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a>
-      </footer>
+      <AppFooter />
       {/* Registers the service worker (once, stable across auth state) and
           surfaces new deploys via a subtle update banner. */}
       <UpdatePrompt />

@@ -11,6 +11,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
+import { createQuestionnaireRepo } from '../src/questionnaireRepo';
 import { createEventLog } from '../src/eventLog';
 import { createInMemoryUserDirectory } from '../src/userDirectory';
 import { MAX_DETAIL_BYTES } from '../src/telemetryRoutes';
@@ -24,6 +25,7 @@ async function buildApp() {
   const eventLog = createEventLog(pool);
   const app = createApp({
     repo: createContestRepo(pool),
+    questionnaireRepo: createQuestionnaireRepo(pool),
     eventLog,
     userDirectory: createInMemoryUserDirectory([]),
     authAdmin: { sendSignInLink: async () => {} },
