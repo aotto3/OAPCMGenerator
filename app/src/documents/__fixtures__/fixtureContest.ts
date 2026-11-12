@@ -91,6 +91,19 @@ export function fixtureContest(): Contest {
     FIXTURE_NOW,
   );
   c = withAdjudicator(c, 1, { ttaoContractDate: '2026-02-20', paymentPaperworkSentDate: '2026-03-05' }, FIXTURE_NOW);
+  // Judge needs (PRD #252) so the Info Sheet golden exercises specific hotel
+  // nights, the fly request, and CM-only notes.
+  c = withAdjudicator(
+    c,
+    1,
+    {
+      needsHotel: true,
+      hotelNights: { before: true, after: true },
+      requestingFlight: true,
+      judgeNotes: 'Flying in from El Paso; needs airport pickup.',
+    },
+    FIXTURE_NOW,
+  );
 
   const names = ['Alpha HS', 'Bravo HS', 'Charlie HS', 'Delta HS', 'Echo HS', 'Foxtrot HS'];
   // "Romeo & Juliet" exercises XML escaping through every school table.

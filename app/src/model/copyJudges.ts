@@ -7,12 +7,13 @@ import type { Adjudicator, Contest, ContestLevel } from './contest';
 
 /**
  * True when a judge slot holds anything worth protecting. hotelNights is left out:
- * it defaults to 1 and only means something once needsHotel is set.
+ * it only means something once needsHotel is set.
  */
 function hasJudgeData(judge: Adjudicator): boolean {
   return (
     judge.needsPower ||
     judge.needsHotel ||
+    judge.requestingFlight ||
     [
       judge.name,
       judge.mailingAddress,
@@ -20,6 +21,7 @@ function hasJudgeData(judge: Adjudicator): boolean {
       judge.cellPhone,
       judge.dietary,
       judge.bio,
+      judge.judgeNotes,
       judge.ttaoContractDate,
       judge.paymentPaperworkSentDate,
       judge.paymentPaperworkReturnedDate,
