@@ -1,6 +1,6 @@
 /**
  * The email a CM gets when a judge submits the questionnaire (PRD #252, #256).
- * Pure: builds one message per recipient from the submission; sending is a seam.
+ * Pure: builds one message per recipient from the submission; `Mailer` sends it.
  *
  * Recipients are the distinct CM emails of the contests the judge answered for;
  * each CM sees the general answers plus only the contests that list them, so a
@@ -9,16 +9,7 @@
  * Reply-To is the judge, so the CM can answer them directly.
  */
 import { normalizeEmail, type RosterContest, type SubmissionAnswers } from './judgeRoster';
-
-export interface OutgoingMail {
-  to: string;
-  replyTo?: string;
-  subject: string;
-  text: string;
-  html: string;
-}
-
-export type MailSender = (mail: OutgoingMail) => Promise<void>;
+import type { OutgoingMail } from './mailer';
 
 export interface SubmissionNoticeInput {
   judgeName: string;

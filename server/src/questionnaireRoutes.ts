@@ -25,7 +25,8 @@ import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { findJudge, normalizeEmail, parseAnswers, parseRoster, type JudgeLookup } from './judgeRoster';
 import type { QuestionnaireRepo } from './questionnaireRepo';
-import { buildSubmissionNotices, type MailSender } from './questionnaireEmail';
+import { buildSubmissionNotices } from './questionnaireEmail';
+import type { Mailer } from './mailer';
 import { createRateLimiter, type RateLimiter } from './rateLimiter';
 import { resolveUserOrNull, type ResolveUser } from './requestAuth';
 
@@ -54,7 +55,7 @@ export interface QuestionnaireRoutesDeps {
   resolveUser: ResolveUser;
   limiters: QuestionnaireLimiters;
   /** Sends the CM notice on submit. A failure is logged, never surfaced to the judge. */
-  mailSender: MailSender;
+  mailer: Mailer;
   /** The account's sign-in email: the notice's fallback recipient. */
   ownerEmail: (ownerId: string) => Promise<string | undefined>;
   /** Injected clock; every timestamp this router stamps or compares comes from it. */
@@ -187,7 +188,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
       });
       for (const mail of mails) {
         try {
-          await deps.mailSender(mail);
+          await deps.mailer.send(mail);
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error('Questionnaire notice failed to send (ignored)', err);
