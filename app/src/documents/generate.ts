@@ -23,7 +23,7 @@ import {
   withoutJudgePreferences,
   type Contest,
 } from '../model/contest';
-import { DOCUMENT_REGISTRY, type DocumentResult } from './registry';
+import { DOCUMENT_REGISTRY, isDocumentSelected, type DocumentResult } from './registry';
 
 export interface GenerateProgress {
   /** Human label of the item currently being built, e.g. "Awards Script". */
@@ -83,7 +83,7 @@ export async function buildContestArchive(
   { onProgress, now }: BuildOptions = {},
 ): Promise<ContestArchive> {
   const folderName = contestDisplayName(contest.identity);
-  const selected = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]);
+  const selected = DOCUMENT_REGISTRY.filter((doc) => isDocumentSelected(doc, contest));
 
   const zip = new JSZip();
   const folder = zip.folder(folderName);

@@ -22,7 +22,7 @@ import {
   withSpeechwire,
   type Contest,
 } from '../model/contest';
-import { DOCUMENT_REGISTRY } from './registry';
+import { DOCUMENT_REGISTRY, isDocumentAvailable } from './registry';
 import { buildContestArchive, normalizeResult } from './generate';
 
 const NOW = '2026-07-05T12:00:00.000Z';
@@ -56,8 +56,10 @@ describe('DOCUMENT_REGISTRY', () => {
     // The adjudicator PDF cost is ~(numJudges × schools) pages, so 1 judge / 1
     // school keeps it a handful of pages instead of the fixture's 113. The full
     // 113-page build is covered once, against the golden hash, in the slice-9 suite.
+    // Documents that need data this contest lacks (Panel Tabulation needs a full
+    // 3-judge ballot) are never built for it; their own suites cover them.
     const small = withDetails(setNumSchools(contest(), 1), { numJudges: 1 });
-    for (const doc of DOCUMENT_REGISTRY) {
+    for (const doc of DOCUMENT_REGISTRY.filter((d) => isDocumentAvailable(d, small))) {
       // build may be sync (placeholder) or async (real .docx/.xlsx/.pdf) and may
       // return bare bytes or {bytes, warnings}; normalizeResult handles all.
       const { bytes } = normalizeResult(await doc.build(small));
@@ -159,7 +161,7 @@ describe('judge preferences stay out of documents (PRD #202)', () => {
     c = addCustomPreferenceList(c, `${MARKER} List`);
     c = addVetoedJudge(c, { kind: 'custom', id: c.judgePreferences.customLists[0].id }, `${VETO_MARKER} Custom`);
     c = setJudgeUnavailable(c, `${MARKER} Judge`, true);
-    for (const doc of DOCUMENT_REGISTRY) {
+    for (const doc of DOCUMENT_REGISTRY.filter((d) => isDocumentAvailable(d, c))) {
       const { bytes } = normalizeResult(await doc.build(c));
       // .docx/.xlsx are ZIPs (signature "PK"); search each part. PDFs search as raw bytes.
       const texts =

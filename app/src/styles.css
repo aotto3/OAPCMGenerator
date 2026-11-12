@@ -467,6 +467,8 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); cursor: pointer;
 }
 .doc-check-item.checked { background: var(--c-success-bg); border-color: var(--c-success-border); }
+.doc-check-item.unavailable { color: var(--c-muted); cursor: not-allowed; }
+.doc-check-hint { font-style: italic; }
 
 .email-list-box textarea {
   width: 100%; min-height: 64px; font: inherit; padding: var(--space-2);
@@ -1180,6 +1182,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .tab-status { margin-top: var(--space-2); }
 .tab-status p { margin: 4px 0; }
 .tab-status-error { color: var(--c-red); font-size: var(--fs-sm); }
+.tab-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 .tab-results-title { margin: var(--space-3) 0 0; font-size: var(--fs-base); color: var(--c-blue); }
 .tab-place { font-weight: 700; }
 .tab-tie { color: var(--c-red); font-weight: 600; }

@@ -1,5 +1,5 @@
 import { setAllDocuments, setDocumentSelected, type Contest } from '../../model/contest';
-import { DOCUMENT_REGISTRY } from '../../documents/registry';
+import { DOCUMENT_REGISTRY, isDocumentAvailable, isDocumentSelected } from '../../documents/registry';
 
 /**
  * Document checklist — the "which documents to generate" picker. Rendered bare
@@ -13,7 +13,7 @@ export function DocumentsChecklist({
   contest: Contest;
   onChange: (next: Contest) => void;
 }) {
-  const selectedCount = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]).length;
+  const selectedCount = DOCUMENT_REGISTRY.filter((doc) => isDocumentSelected(doc, contest)).length;
 
   return (
     <>
@@ -29,19 +29,27 @@ export function DocumentsChecklist({
         </span>
       </div>
       <div className="doc-check-grid">
-        {DOCUMENT_REGISTRY.map((doc) => (
-          <label
-            key={doc.id}
-            className={contest.documents[doc.id] ? 'doc-check-item checked' : 'doc-check-item'}
-          >
-            <input
-              type="checkbox"
-              checked={contest.documents[doc.id]}
-              onChange={(e) => onChange(setDocumentSelected(contest, doc.id, e.target.checked))}
-            />
-            {doc.label}
-          </label>
-        ))}
+        {DOCUMENT_REGISTRY.map((doc) => {
+          // An unavailable document (e.g. Panel Tabulation before every rank is
+          // in) shows unchecked and disabled, with the reason beside it.
+          const available = isDocumentAvailable(doc, contest);
+          const checked = isDocumentSelected(doc, contest);
+          const className = ['doc-check-item', checked && 'checked', !available && 'unavailable']
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <label key={doc.id} className={className}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!available}
+                onChange={(e) => onChange(setDocumentSelected(contest, doc.id, e.target.checked))}
+              />
+              {doc.label}
+              {!available && doc.unavailableHint && <span className="doc-check-hint">({doc.unavailableHint})</span>}
+            </label>
+          );
+        })}
       </div>
     </>
   );
