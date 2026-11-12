@@ -10,7 +10,7 @@ import {
 } from '../../model/contest';
 import { CopyJudgesControl } from './CopyJudgesControl';
 import { Section } from './Section';
-import { SelectField, TextAreaField, TextField } from './fields';
+import { TextAreaField, TextField } from './fields';
 
 export function AdjudicatorsSection({
   contest,
@@ -61,78 +61,93 @@ function JudgeFields({
   edit: (patch: Partial<Adjudicator>) => void;
   setMilestone: (key: AdjudicatorMilestoneKey, done: boolean) => void;
 }) {
-  const label = `Judge ${index + 1}`;
+  const headingId = `judge-${index + 1}-heading`;
   return (
-    <div className="judge-block">
-      <div className="field-grid">
-        <TextField
-          label={`${label} — Full Name`}
-          placeholder="First Last"
-          value={judge.name}
-          onChange={(v) => edit({ name: v })}
-        />
-        <TextField
-          label={`${label} — Mailing Address`}
-          placeholder="123 Main St, City TX 00000"
-          value={judge.mailingAddress}
-          onChange={(v) => edit({ mailingAddress: v })}
-        />
-        <TextField
-          label={`${label} — Email`}
-          type="email"
-          placeholder="judge@example.com"
-          value={judge.email}
-          onChange={(v) => edit({ email: v })}
-        />
-        <TextField
-          label={`${label} — Cell Number`}
-          type="tel"
-          placeholder="555-555-5555"
-          value={judge.cellPhone}
-          onChange={(v) => edit({ cellPhone: v })}
-        />
-      </div>
-      <div className="judge-extras">
-        <label className="check-option">
-          <input
-            type="checkbox"
-            checked={judge.needsPower}
-            onChange={(e) => edit({ needsPower: e.target.checked })}
+    <section className="judge-block" aria-labelledby={headingId}>
+      <h3 id={headingId} className="judge-title">
+        Judge {index + 1}
+      </h3>
+      <div className="judge-grid">
+        <div className="jg-name">
+          <TextField label="Full Name" placeholder="First Last" value={judge.name} onChange={(v) => edit({ name: v })} />
+        </div>
+        <div className="jg-addr">
+          <TextField
+            label="Mailing Address"
+            placeholder="123 Main St, City TX 00000"
+            value={judge.mailingAddress}
+            onChange={(v) => edit({ mailingAddress: v })}
           />
-          ⚡ Needs power at table
-        </label>
-        <label className="check-option">
-          <input
-            type="checkbox"
-            checked={judge.needsHotel}
-            onChange={(e) => edit({ needsHotel: e.target.checked })}
+        </div>
+        <div className="jg-email">
+          <TextField
+            label="Email"
+            type="email"
+            placeholder="judge@example.com"
+            value={judge.email}
+            onChange={(v) => edit({ email: v })}
           />
-          🏨 Needs a hotel
-        </label>
-        {judge.needsHotel && (
-          <SelectField
-            label="Hotel Nights"
-            value={judge.hotelNights}
-            options={HOTEL_NIGHTS_OPTIONS}
-            optionLabel={(nights) => `${nights} night${nights === 1 ? '' : 's'}`}
-            onChange={(v) => edit({ hotelNights: v })}
+        </div>
+        <div className="jg-cell">
+          <TextField
+            label="Cell Number"
+            type="tel"
+            placeholder="555-555-5555"
+            value={judge.cellPhone}
+            onChange={(v) => edit({ cellPhone: v })}
           />
-        )}
-        <TextField
-          label="Dietary / Other Requests"
-          placeholder="e.g. vegetarian, no shellfish"
-          value={judge.dietary}
-          onChange={(v) => edit({ dietary: v })}
-        />
-        <TextAreaField
-          label="Bio (optional — printed on the Audience Program)"
-          wide
-          placeholder="A short adjudicator bio for the printed program. Leave blank to omit."
-          value={judge.bio}
-          onChange={(v) => edit({ bio: v })}
-        />
-      </div>
-      <div className="judge-milestones">
+        </div>
+        <div className="jg-diet">
+          <TextField
+            label="Dietary / Other Requests"
+            placeholder="e.g. vegetarian, no shellfish"
+            value={judge.dietary}
+            onChange={(v) => edit({ dietary: v })}
+          />
+        </div>
+        <div className="jg-needs">
+          <label className="check-option">
+            <input
+              type="checkbox"
+              checked={judge.needsPower}
+              onChange={(e) => edit({ needsPower: e.target.checked })}
+            />
+            ⚡ Needs power at table
+          </label>
+          <div className="judge-hotel">
+            <label className="check-option">
+              <input
+                type="checkbox"
+                checked={judge.needsHotel}
+                onChange={(e) => edit({ needsHotel: e.target.checked })}
+              />
+              🏨 Needs a hotel
+            </label>
+            {judge.needsHotel && (
+              <select
+                className="judge-hotel-nights"
+                aria-label="Hotel nights"
+                value={String(judge.hotelNights)}
+                onChange={(e) => edit({ hotelNights: Number(e.target.value) })}
+              >
+                {HOTEL_NIGHTS_OPTIONS.map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n} night{n === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+        <div className="jg-bio">
+          <TextAreaField
+            label="Bio (optional, printed on the Audience Program)"
+            placeholder="A short adjudicator bio for the printed program. Leave blank to omit."
+            value={judge.bio}
+            onChange={(v) => edit({ bio: v })}
+          />
+        </div>
+        <div className="jg-check judge-milestones">
         <span className="milestone-heading">Contracting checklist</span>
         {adjudicatorMilestoneStatus(judge).map((m) => (
           <div key={m.key} className="milestone-row">
@@ -156,7 +171,8 @@ function JudgeFields({
             )}
           </div>
         ))}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
