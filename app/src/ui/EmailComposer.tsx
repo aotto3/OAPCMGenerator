@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { allJudgeEmails, type Contest } from '../model/contest';
+import { allDirectorEmails, allJudgeEmails, type Contest } from '../model/contest';
 import {
   advancingEmail,
   EMAIL_TEMPLATES,
@@ -15,8 +15,8 @@ import { Section } from './sections/Section';
  * toggled advancing-schools picker fill an editable subject/body from the pure
  * emailTemplates module; the CM tweaks the text and copies it into their mail
  * client. Separate from the address-list boxes (EmailListBox) — this composes
- * the message itself. Judge Reminder and Advancing Schools also show a To: line;
- * the other templates (including Judge Needs, which goes to the host) do not.
+ * the message itself. Every template but Judge Needs also shows a To: line;
+ * Judge Needs goes to the host, whose address the contest does not hold.
  *
  * All wording lives in the pure templates; this component only holds the
  * currently-shown draft, the picker's checked set, and the resolved "To:" list.
@@ -57,11 +57,14 @@ export function EmailComposer({ contest }: { contest: Contest }) {
     const draft = EMAIL_TEMPLATES[id](contest);
     setSubject(draft.subject);
     setBody(draft.body);
-    // Judge Reminder goes to the active judges (PRD #227); no other one-click
-    // template has a fixed recipient list.
+    // Judge Reminder goes to the active judges (PRD #227); the three director
+    // notices go to every school's directors. Judge Needs (to the host) has no list.
     if (id === 'judges') {
       setToList(allJudgeEmails(contest));
       setToEmptyText('No judge emails found. Add them in the Judges section.');
+    } else if (id === 'announcement' || id === 'deadline' || id === 'daybefore') {
+      setToList(allDirectorEmails(contest));
+      setToEmptyText('No director emails found. Add them in the Schools section.');
     } else {
       setToList(null);
     }
