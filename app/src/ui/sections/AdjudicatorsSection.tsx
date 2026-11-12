@@ -30,8 +30,8 @@ export function AdjudicatorsSection({
     <Section title="⚖️ Judges" badge="After Contracting" completion={completion} defaultOpen={defaultOpen}>
       <p className="note-box">
         Mailing addresses are shared with directors for script submission. Include full address with
-        city and ZIP. Emails stay private to you: they are never printed in a document. The contracting checklist tracks paperwork — it never counts toward section
-        completion.
+        city and ZIP. Emails and cell numbers stay with you: they appear only on the Adjudicator Info Sheet, never in a
+        document for directors. The contracting checklist tracks paperwork and never counts toward section completion.
       </p>
       {active.map((judge, i) => (
         <JudgeFields

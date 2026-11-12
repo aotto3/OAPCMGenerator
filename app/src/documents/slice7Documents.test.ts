@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx-js-style';
-import { addBreak, setNumSchools, withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
+import { addBreak, setNumSchools, withAdjudicator, withDetails, withIdentity, withTitleOverride, type Contest } from '../model/contest';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import { expectArchiveMatchesGolden, normalizeArchive } from './goldenFile';
 import { buildContestSchedule } from './contestSchedule';
@@ -230,6 +230,19 @@ describe('Adjudicator Info Sheet — content', () => {
     expect(texts).toContain('Dr. Jane Judge');
     expect(texts).toContain('100 Main St, Austin, TX 78701');
     expect(texts).toContain('Ms. Mary Adjudicator'); // 3rd judge present
+  });
+
+  it("includes each judge's email, cell number and bio", () => {
+    let c = withAdjudicator(fixtureContest(), 0, { bio: 'Directs at Austin High.' }, FIXTURE_NOW);
+    const texts = cellTexts(firstSheet(buildAdjudicatorInfo(c)).ws);
+    expect(texts).toContain('Email');
+    expect(texts).toContain('Cell');
+    expect(texts).toContain('jane.judge@example.org');
+    expect(texts).toContain('512-555-0101');
+    expect(texts).toContain('critic@example.org');
+    expect(texts).toContain('Bio: Directs at Austin High.');
+    c = withAdjudicator(c, 0, { bio: '' }, FIXTURE_NOW);
+    expect(cellTexts(firstSheet(buildAdjudicatorInfo(c)).ws).some((t) => t.startsWith('Bio:'))).toBe(false);
   });
 
   it('shows TBA placeholders for an unnamed judge and reflects the critique format', () => {

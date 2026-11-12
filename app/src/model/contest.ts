@@ -118,10 +118,10 @@ export interface Adjudicator {
   mailingAddress: string;
   /**
    * CM-only (PRD #227): feeds the All-Judges Email List and the Judge Reminder
-   * To: line. No document builder reads it, so it never reaches directors.
+   * To: line. Only the CM's Adjudicator Info Sheet prints it; nothing for directors does.
    */
   email: string;
-  /** CM-only cell number for contest-day contact; no document builder reads it. */
+  /** CM-only cell number for contest-day contact; printed only on the Adjudicator Info Sheet. */
   cellPhone: string;
   needsPower: boolean;
   needsHotel: boolean;

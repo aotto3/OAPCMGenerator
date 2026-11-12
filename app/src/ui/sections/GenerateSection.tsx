@@ -3,6 +3,8 @@ import { contestDisplayName, generationWarnings, type Contest } from '../../mode
 import { DOCUMENT_REGISTRY, isDocumentSelected } from '../../documents/registry';
 import {
   buildContestArchive,
+  buildSingleDocument,
+  triggerSingleDocumentDownload,
   triggerZipDownload,
   type DocumentWarning,
 } from '../../documents/generate';
@@ -60,6 +62,18 @@ export function GenerateSection({
     setBusy(true);
     setWarnings([]);
     try {
+      // One document: download the file itself, no ZIP to open.
+      if (selectedCount === 1) {
+        setStatus({ kind: 'info', text: '📄 Building document…' });
+        const single = await buildSingleDocument(contest);
+        if (single) {
+          triggerSingleDocumentDownload(single);
+          reportDocumentsGenerated(contest.id, contestDisplayName(contest.identity));
+          setStatus({ kind: 'success', text: `✅ Done! Downloaded ${single.filename}.` });
+          setWarnings(single.warnings);
+          return;
+        }
+      }
       const archive = await buildContestArchive(contest, {
         onProgress: ({ label, current, total }) =>
           setStatus({ kind: 'info', text: `📄 Building ${label}… (${current}/${total})` }),
@@ -87,8 +101,9 @@ export function GenerateSection({
       <DocumentsChecklist contest={contest} onChange={onChange} />
       <Divider>Download</Divider>
       <p className="muted">
-        Builds a ZIP of the selected documents plus a portable contest file (a backup you can
-        re-import on any machine, without judge preferences). {selectedCount} document{selectedCount !== 1 ? 's' : ''} selected.
+        {selectedCount === 1
+          ? 'One document selected: it downloads on its own, without a ZIP.'
+          : `Builds a ZIP of the selected documents plus a portable contest file (a backup you can re-import on any machine, without judge preferences). ${selectedCount} documents selected.`}
       </p>
       <div className="generate-row">
         <button type="button" className="btn-primary" onClick={handleGenerate} disabled={busy}>

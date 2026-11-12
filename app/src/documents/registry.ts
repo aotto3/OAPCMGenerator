@@ -161,3 +161,17 @@ export function isDocumentAvailable(doc: DocumentDefinition, contest: Contest): 
 export function isDocumentSelected(doc: DocumentDefinition, contest: Contest): boolean {
   return isDocumentAvailable(doc, contest) && (contest.documents[doc.id] ?? doc.defaultSelected);
 }
+
+/**
+ * How the Generate Documents checklist groups the registry, in season order
+ * (matching the Readiness phases). Display only: the ZIP keeps registry order.
+ * Every document appears in exactly one group (locked by a test).
+ */
+export const DOCUMENT_GROUPS: readonly { id: string; label: string; documents: readonly DocumentId[] }[] = [
+  { id: 'planning', label: 'Planning & Setup', documents: ['checklist', 'fall_agenda', 'host_checklist'] },
+  { id: 'directors', label: 'Directors & Schools', documents: ['letter', 'contacts', 'pre_rehearsal_meeting'] },
+  { id: 'schedules', label: 'Schedules', documents: ['rehearsal', 'schedule'] },
+  { id: 'judges', label: 'Judges', documents: ['adjudicator', 'adj_packets'] },
+  { id: 'contest_day', label: 'Contest Day', documents: ['directors_meeting', 'timer', 'program', 'awards'] },
+  { id: 'results', label: 'Results', documents: ['panel_tabulation', 'advancing_letter'] },
+];

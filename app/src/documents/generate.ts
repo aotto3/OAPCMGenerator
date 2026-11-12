@@ -114,6 +114,49 @@ export async function buildContestArchive(
   return { bytes, folderName, documentCount: selected.length, warnings };
 }
 
+export interface SingleDocument {
+  bytes: Uint8Array;
+  /** The document's own filename, exactly as it would appear inside the ZIP. */
+  filename: string;
+  /** UI label, for status lines and warnings. */
+  label: string;
+  warnings: DocumentWarning[];
+}
+
+/**
+ * When exactly one document is selected, builds just that document so it can be
+ * downloaded on its own, skipping the ZIP (and the contest file that rides in it).
+ * Null for any other selection size, where the ZIP is the download.
+ */
+export async function buildSingleDocument(
+  contest: Contest,
+  { now }: Pick<BuildOptions, 'now'> = {},
+): Promise<SingleDocument | null> {
+  const selected = DOCUMENT_REGISTRY.filter((doc) => isDocumentSelected(doc, contest));
+  if (selected.length !== 1) return null;
+  const doc = selected[0];
+  const { bytes, warnings } = normalizeResult(await doc.build(contest, { now }));
+  return {
+    bytes,
+    filename: doc.filename,
+    label: doc.label,
+    warnings: warnings.length > 0 ? [{ document: doc.label, messages: warnings }] : [],
+  };
+}
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pdf: 'application/pdf',
+};
+
+/** Saves one built document under its own filename (browser only). */
+export function triggerSingleDocumentDownload(doc: SingleDocument): void {
+  const ext = doc.filename.split('.').pop()?.toLowerCase() ?? '';
+  const blob = new Blob([doc.bytes as BlobPart], { type: MIME_BY_EXTENSION[ext] ?? 'application/octet-stream' });
+  triggerDownload(blob, doc.filename);
+}
+
 /**
  * Saves ZIP bytes to disk as "<folderName>.zip" (browser only). Kept out of
  * buildContestArchive so the packaging logic stays DOM-free and testable.
