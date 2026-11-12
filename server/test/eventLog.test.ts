@@ -15,6 +15,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
+import { createQuestionnaireRepo } from '../src/questionnaireRepo';
 import { createEventLog, type EventInput, type EventLog } from '../src/eventLog';
 import { createInMemoryUserDirectory } from '../src/userDirectory';
 import { migrate, type Pool } from '../src/db';
@@ -32,6 +33,7 @@ async function buildApp(overrideLog?: EventLog) {
   const eventLog = overrideLog ?? createEventLog(pool);
   const app = createApp({
     repo: createContestRepo(pool),
+    questionnaireRepo: createQuestionnaireRepo(pool),
     eventLog,
     userDirectory: createInMemoryUserDirectory([]),
     authAdmin: { sendSignInLink: async () => {} },

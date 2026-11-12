@@ -11,6 +11,12 @@ import { createAdminRoutes } from './adminRoutes';
 import { createContestRoutes } from './contestRoutes';
 import type { ResolveUser } from './requestAuth';
 import { createTelemetryRoutes } from './telemetryRoutes';
+import {
+  createQuestionnaireRoutes,
+  defaultQuestionnaireLimiters,
+  type QuestionnaireLimiters,
+} from './questionnaireRoutes';
+import type { QuestionnaireRepo } from './questionnaireRepo';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
@@ -27,6 +33,10 @@ export interface AppDeps {
   /** Lowercased admin email allowlist; empty means the admin API is dark. */
   adminEmails: ReadonlySet<string>;
   resolveUser: ResolveUser;
+  /** Judge questionnaire link tokens + published rosters (PRD #252). */
+  questionnaireRepo: QuestionnaireRepo;
+  /** Public questionnaire rate limits; tests pass tight ones. Defaults per questionnaireRoutes. */
+  questionnaireLimiters?: QuestionnaireLimiters;
   /** Allowed browser origin for CORS (the deployed frontend). Omitted in tests. */
   corsOrigin?: string;
   /**
@@ -79,6 +89,15 @@ export function createApp(deps: AppDeps): Express {
   app.use(
     '/api/telemetry',
     createTelemetryRoutes({ eventLog: deps.eventLog, resolveUser: deps.resolveUser }),
+  );
+
+  app.use(
+    '/api/questionnaire',
+    createQuestionnaireRoutes({
+      repo: deps.questionnaireRepo,
+      resolveUser: deps.resolveUser,
+      limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(),
+    }),
   );
 
   app.use(

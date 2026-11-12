@@ -8,6 +8,7 @@ import {
   type SectionCompletion,
 } from '../../model/contest';
 import { CopyJudgesControl } from './CopyJudgesControl';
+import { QuestionnaireLinkControl } from './QuestionnaireLinkControl';
 import { Section } from './Section';
 import { TextAreaField, TextField } from './fields';
 
@@ -32,6 +33,7 @@ export function AdjudicatorsSection({
         city and ZIP. Emails and cell numbers stay with you: they appear only on the Adjudicator Info Sheet, never in a
         document for directors. The contracting checklist tracks paperwork and never counts toward section completion.
       </p>
+      <QuestionnaireLinkControl />
       {active.map((judge, i) => (
         <JudgeFields
           key={i}
@@ -86,6 +88,9 @@ function JudgeFields({
             value={judge.email}
             onChange={(v) => edit({ email: v })}
           />
+          {judge.name.trim() !== '' && judge.email.trim() === '' && (
+            <p className="hint email-hint">Add an email so this judge can use the questionnaire.</p>
+          )}
         </div>
         <div className="jg-cell">
           <TextField

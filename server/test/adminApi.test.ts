@@ -17,6 +17,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
+import { createQuestionnaireRepo } from '../src/questionnaireRepo';
 import { createEventLog } from '../src/eventLog';
 import { createInMemoryUserDirectory, type UserRecord } from '../src/userDirectory';
 import { migrate, type Pool } from '../src/db';
@@ -40,6 +41,7 @@ async function buildApp(admins: ReadonlySet<string> = new Set(['admin@example.te
   const sentLinks: string[] = [];
   const app = createApp({
     repo: createContestRepo(pool),
+    questionnaireRepo: createQuestionnaireRepo(pool),
     eventLog: createEventLog(pool),
     userDirectory: createInMemoryUserDirectory(USERS),
     authAdmin: {
