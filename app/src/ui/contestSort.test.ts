@@ -7,7 +7,7 @@ import {
   sortContests,
   type SortPref,
 } from './contestSort';
-import type { ContestSummary } from '../storage/contestStore';
+import type { ContestSummary } from '../storage/contestLibrary';
 
 /** A summary with sensible defaults; override only what a case cares about. */
 function s(partial: Partial<ContestSummary> & { id: string }): ContestSummary {

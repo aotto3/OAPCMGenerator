@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Contest } from '../model/contest';
-import { saveContest } from '../storage/contestStore';
+import { contestLibrary } from '../storage/browserLibrary';
 import { requestPersistentStorage } from '../storage/persist';
 import { AdminPanel } from '../admin/AdminPanel';
 import { useIsAdmin } from '../admin/useIsAdmin';
@@ -30,7 +30,7 @@ function ContestFlow() {
   const [open, setOpen] = useState<{ id: string; draft?: Contest } | null>(null);
 
   async function openSaved(contest: Contest) {
-    await saveContest(contest);
+    await contestLibrary().add(contest);
     setOpen({ id: contest.id });
   }
 

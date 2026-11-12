@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { Contest } from '../../model/contest';
 import { createSiblingZone, findSiblingZones, siblingZoneNumber } from '../../model/siblingZone';
-import { getContest, listContests, onContestPulled, type ContestSummary } from '../../storage/contestStore';
+import { contestLibrary } from '../../storage/browserLibrary';
+import type { ContestSummary } from '../../storage/contestLibrary';
+import { useContestAction, useContestList } from '../contestHooks';
 import { contestSummaryMeta } from './contestSummaryMeta';
 
 /**
@@ -21,22 +23,16 @@ export function CreateSiblingZoneControl({
   onOpenSaved: (contest: Contest) => void | Promise<void>;
   onOpenContest: (id: string) => void;
 }) {
-  const [contests, setContests] = useState<ContestSummary[]>([]);
+  // Live, so a pull landing while this section is open can add a match.
+  const contests = useContestList() ?? [];
+  const { run, busy, error } = useContestAction();
   const [warning, setWarning] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // A pull landing while this section is open can add a match, so refresh on it.
+  // A failure ends the warning dialog; the error explains what didn't happen.
   useEffect(() => {
-    let active = true;
-    const refresh = () => void listContests().then((list) => active && setContests(list));
-    refresh();
-    const off = onContestPulled(refresh);
-    return () => {
-      active = false;
-      off();
-    };
-  }, []);
+    if (error) setWarning(false);
+  }, [error]);
 
   // An identity edit can change which zone the warning is about, so it goes away.
   useEffect(() => {
@@ -47,19 +43,10 @@ export function CreateSiblingZoneControl({
   if (zone === null) return null;
   const matches = findSiblingZones(contest, contests);
 
-  // Runs one store operation at a time, reporting a failure rather than leaving the
-  // CM unsure whether anything happened.
-  async function guarded(failure: string, work: () => Promise<void>) {
-    setBusy(true);
-    setError(null);
-    try {
-      await work();
-    } catch (err) {
-      setWarning(false);
-      setError(`${failure}: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setBusy(false);
-    }
+  // One library operation at a time; a failure is reported, not swallowed.
+  function guarded(failure: string, work: () => Promise<void>) {
+    setNotice(null);
+    run(failure, work);
   }
 
   async function createNow() {
@@ -68,21 +55,19 @@ export function CreateSiblingZoneControl({
   }
 
   function create() {
-    void guarded(`Couldn't create Zone ${zone}`, async () => {
+    guarded(`Couldn't create Zone ${zone}`, async () => {
       // Read fresh, so a match that arrived since the list loaded still warns.
-      const fresh = await listContests();
-      setContests(fresh);
+      const fresh = await contestLibrary().list();
       if (findSiblingZones(contest, fresh).length > 0) setWarning(true);
       else await createNow();
     });
   }
 
   function open(target: ContestSummary) {
-    void guarded(`Couldn't open "${target.name}"`, async () => {
-      if (await getContest(target.id)) return onOpenContest(target.id);
+    guarded(`Couldn't open "${target.name}"`, async () => {
+      if (await contestLibrary().read(target.id)) return onOpenContest(target.id);
       setWarning(false);
-      setError(`"${target.name}" no longer exists.`);
-      setContests(await listContests());
+      setNotice(`"${target.name}" no longer exists.`);
     });
   }
 
@@ -123,7 +108,7 @@ export function CreateSiblingZoneControl({
               type="button"
               className="btn-secondary"
               disabled={busy}
-              onClick={() => void guarded(`Couldn't create Zone ${zone}`, createNow)}
+              onClick={() => guarded(`Couldn't create Zone ${zone}`, createNow)}
             >
               Create anyway
             </button>
@@ -148,9 +133,9 @@ export function CreateSiblingZoneControl({
           </div>
         </>
       )}
-      {error && (
+      {(error ?? notice) && (
         <p className="import-error" role="alert">
-          {error}
+          {error ?? notice}
         </p>
       )}
     </div>

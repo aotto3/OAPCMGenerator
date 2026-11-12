@@ -7,13 +7,9 @@ import {
   judgeCopyTargets,
   type JudgeCopyImpact,
 } from '../../model/copyJudges';
-import {
-  getContest,
-  listContests,
-  onContestPulled,
-  saveContest,
-  type ContestSummary,
-} from '../../storage/contestStore';
+import { contestLibrary } from '../../storage/browserLibrary';
+import type { ContestSummary } from '../../storage/contestLibrary';
+import { useContestAction, useContestList } from '../contestHooks';
 import { contestSummaryMeta } from './contestSummaryMeta';
 
 /** "A", "A and B", "A, B, and C". */
@@ -32,26 +28,20 @@ type Step =
  * "Copy Judges to Other Zone" (PRD #220). Rendered by AdjudicatorsSection on Zone
  * contests only. The copy rules live in model/copyJudges.ts; this owns the flow:
  * pick a target, confirm if the copy would lose anything, then save the target
- * through the normal store path so it syncs. The source is the live contest prop,
+ * through the library's transform (read fresh and write in one step) so it syncs. The source is the live contest prop,
  * so edits still waiting on autosave are included.
  */
 export function CopyJudgesControl({ contest }: { contest: Contest }) {
-  const [contests, setContests] = useState<ContestSummary[] | null>(null);
+  // Live, so a pull landing while this section is open can add a target.
+  const contests = useContestList();
+  const { run, busy, error } = useContestAction();
   const [step, setStep] = useState<Step>({ kind: 'closed' });
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
-  // A pull landing while this section is open can add a target, so refresh on it.
+  // A storage failure ends the flow; the error explains what didn't happen.
   useEffect(() => {
-    let active = true;
-    const refresh = () => void listContests().then((list) => active && setContests(list));
-    refresh();
-    const off = onContestPulled(refresh);
-    return () => {
-      active = false;
-      off();
-    };
-  }, []);
+    if (error) setStep({ kind: 'closed' });
+  }, [error]);
 
   // A later edit to these judges makes "Copied to..." misleading, so it goes away.
   useEffect(() => {
@@ -65,40 +55,27 @@ export function CopyJudgesControl({ contest }: { contest: Contest }) {
   function missingTarget(target: ContestSummary) {
     setStep({ kind: 'closed' });
     setMessage({ text: `"${target.name}" no longer exists, so nothing was copied.`, error: true });
-    void listContests().then(setContests);
   }
 
-  // Runs one store operation at a time, reporting a storage failure instead of
-  // leaving the CM unsure whether the copy happened.
-  async function guarded(target: ContestSummary, work: () => Promise<void>) {
-    setBusy(true);
+  // One library operation at a time; a failure is reported, not swallowed.
+  function guarded(target: ContestSummary, work: () => Promise<void>) {
     setMessage(null);
-    try {
-      await work();
-    } catch (err) {
-      setStep({ kind: 'closed' });
-      setMessage({
-        text: `Couldn't copy to "${target.name}": ${err instanceof Error ? err.message : String(err)}`,
-        error: true,
-      });
-    } finally {
-      setBusy(false);
-    }
+    run(`Couldn't copy to "${target.name}"`, work);
   }
 
   async function writeCopy(target: ContestSummary) {
-    // Read fresh, so nothing that changed since the list loaded gets overwritten.
-    const fresh = await getContest(target.id);
-    if (!fresh) return missingTarget(target);
-    await saveContest(copyJudges(contest, fresh, new Date().toISOString()));
+    // Transform reads fresh, so nothing that changed since the list loaded gets overwritten.
+    const done = await contestLibrary().transform(target.id, (fresh) =>
+      copyJudges(contest, fresh, new Date().toISOString()),
+    );
+    if (!done) return missingTarget(target);
     setStep({ kind: 'closed' });
     setMessage({ text: `Copied judges to ${target.name}.`, error: false });
-    setContests(await listContests());
   }
 
   function pick(target: ContestSummary) {
-    void guarded(target, async () => {
-      const fresh = await getContest(target.id);
+    guarded(target, async () => {
+      const fresh = await contestLibrary().read(target.id);
       if (!fresh) return missingTarget(target);
       const impact = judgeCopyImpact(contest, fresh);
       if (impact.needsConfirmation) {
@@ -120,7 +97,6 @@ export function CopyJudgesControl({ contest }: { contest: Contest }) {
             onClick={() => {
               setMessage(null);
               setStep({ kind: 'picking' });
-              void listContests().then(setContests);
             }}
           >
             Copy Judges to Other Zone
@@ -184,7 +160,7 @@ export function CopyJudgesControl({ contest }: { contest: Contest }) {
               type="button"
               className="btn-primary"
               disabled={busy}
-              onClick={() => void guarded(step.target, () => writeCopy(step.target))}
+              onClick={() => guarded(step.target, () => writeCopy(step.target))}
             >
               Copy and replace
             </button>
@@ -195,6 +171,11 @@ export function CopyJudgesControl({ contest }: { contest: Contest }) {
         </div>
       )}
 
+      {error && (
+        <p className="import-error" role="alert">
+          {error}
+        </p>
+      )}
       {message && (
         <p className={message.error ? 'import-error' : 'hint'} role={message.error ? 'alert' : 'status'}>
           {message.text}

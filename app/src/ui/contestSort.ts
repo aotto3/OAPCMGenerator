@@ -11,7 +11,7 @@
  * this module stays pure and unit-testable without a browser.
  */
 import { CLASSIFICATIONS, CONTEST_LEVELS } from '../model/contest';
-import type { ContestSummary } from '../storage/contestStore';
+import type { ContestSummary } from '../storage/contestLibrary';
 
 export type SortKey = 'date' | 'lastEdited' | 'name' | 'level' | 'classification' | 'year';
 export type SortDirection = 'asc' | 'desc';

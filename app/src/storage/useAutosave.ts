@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { Contest } from '../model/contest';
-import { saveContest } from './contestStore';
+import { contestLibrary } from './browserLibrary';
 
 const DEBOUNCE_MS = 300;
 
@@ -26,7 +26,7 @@ export function useAutosave(contest: Contest | undefined): void {
     pending.current = contest;
     const timer = setTimeout(() => {
       pending.current = undefined;
-      void saveContest(contest);
+      void contestLibrary().save(contest);
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [contest]);
@@ -35,7 +35,7 @@ export function useAutosave(contest: Contest | undefined): void {
   useEffect(() => {
     const flush = () => {
       if (pending.current) {
-        void saveContest(pending.current);
+        void contestLibrary().save(pending.current);
         pending.current = undefined;
       }
     };
