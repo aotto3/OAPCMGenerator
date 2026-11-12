@@ -19,7 +19,7 @@ import { createApp, type AppDeps } from '../src/app';
 import { createContestRepo } from '../src/contestRepo';
 import { migrate, type Pool } from '../src/db';
 import { createEventLog } from '../src/eventLog';
-import type { OutgoingMail } from '../src/questionnaireEmail';
+import type { OutgoingMail } from '../src/mailer';
 import { createQuestionnaireRepo } from '../src/questionnaireRepo';
 import { createRateLimiter } from '../src/rateLimiter';
 import { createInMemoryUserDirectory } from '../src/userDirectory';
@@ -110,9 +110,11 @@ export async function buildTestApp(
     },
     now: () => clock.now,
     questionnaireRepo: createQuestionnaireRepo(pool),
-    mailSender: async (mail) => {
-      if (harness.mailFails) throw new Error('MailerSend is down');
-      sentMail.push(mail);
+    mailer: {
+      send: async (mail) => {
+        if (harness.mailFails) throw new Error('MailerSend is down');
+        sentMail.push(mail);
+      },
     },
     questionnaireLimiters: options.limits && {
       perIp: createRateLimiter({ limit: options.limits.perIp, windowMs: 1000, now: nowMs }),

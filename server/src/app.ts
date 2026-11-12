@@ -17,7 +17,7 @@ import {
   type QuestionnaireLimiters,
 } from './questionnaireRoutes';
 import type { QuestionnaireRepo } from './questionnaireRepo';
-import type { MailSender } from './questionnaireEmail';
+import type { Mailer } from './mailer';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
 import type { UserDirectory } from './userDirectory';
@@ -41,8 +41,8 @@ export interface AppDeps {
   now: () => Date;
   /** Judge questionnaire link tokens + published rosters (PRD #252). */
   questionnaireRepo: QuestionnaireRepo;
-  /** Sends transactional mail (the questionnaire CM notice). Tests pass a fake. */
-  mailSender: MailSender;
+  /** The one mail sender (the questionnaire CM notice here). Tests pass a recording fake. */
+  mailer: Mailer;
   /** Public questionnaire rate limits; tests pass tight ones. Defaults per questionnaireRoutes. */
   questionnaireLimiters?: QuestionnaireLimiters;
   /** Allowed browser origin for CORS (the deployed frontend). Omitted in tests. */
@@ -105,7 +105,7 @@ export function createApp(deps: AppDeps): Express {
       repo: deps.questionnaireRepo,
       resolveUser: deps.resolveUser,
       limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(() => deps.now().getTime()),
-      mailSender: deps.mailSender,
+      mailer: deps.mailer,
       ownerEmail: async (ownerId) => (await deps.userDirectory.getUser(ownerId))?.email,
       now: deps.now,
     }),

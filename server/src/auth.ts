@@ -13,10 +13,11 @@
 import { betterAuth } from 'better-auth';
 import { magicLink } from 'better-auth/plugins';
 import { getPool } from './db';
-import { makeMagicLinkSender } from './email';
 import { optionalEnv, requireEnv } from './env';
+import { magicLinkMail, mailerFromEnv } from './mailer';
 
-const magicLinkSender = makeMagicLinkSender();
+/** The one mail sender; server.ts hands the same instance to the app. */
+export const mailer = mailerFromEnv();
 
 const serverUrl = requireEnv('SERVER_URL');
 // App and API are served from ONE origin in production: a small reverse proxy on
@@ -44,7 +45,7 @@ export const auth = betterAuth({
       clientSecret: optionalEnv('GOOGLE_CLIENT_SECRET'),
     },
   },
-  plugins: [magicLink({ sendMagicLink: ({ email, url }) => magicLinkSender({ email, url }) })],
+  plugins: [magicLink({ sendMagicLink: ({ email, url }) => mailer.send(magicLinkMail({ email, url })) })],
   advanced: {
     defaultCookieAttributes: { sameSite: 'lax', secure: secureCookies },
   },

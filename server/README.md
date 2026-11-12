@@ -31,7 +31,7 @@ src/
   adminRoutes.ts   Admin API (stats/users/feed/drill-down); 404-gated by ADMIN_EMAILS
   app.ts           App factory (DI: repo + eventLog + userDirectory + resolveUser + auth mount)
   auth.ts          Better Auth instance (Google + magic link + MailerSend)
-  email.ts         MailerSend magic-link sender (logs link in dev if no API key)
+  mailer.ts        The one MailerSend sender + magic-link template (logs mail in dev if no API key)
   server.ts        Production entrypoint — wires real Postgres + Better Auth
 db/
   contests.sql     Per-account contest storage (Better Auth owns its own tables)
