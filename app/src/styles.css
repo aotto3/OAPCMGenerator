@@ -360,18 +360,58 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   font-size: var(--fs-sm); font-weight: 400; white-space: nowrap;
 }
 
-.judge-block, .school-block, .play-block, .company-block {
+.school-block, .play-block, .company-block {
   border-top: 1px dashed var(--c-border); padding-top: var(--space-3); margin-top: var(--space-3);
+}
+/* Judges: a solid, heavier rule and a title per judge, then one compact grid. */
+.judge-block {
+  border-top: 2px solid color-mix(in srgb, var(--c-muted) 55%, transparent);
+  padding-top: var(--space-3); margin-top: var(--space-4);
+  /* Breakpoints follow the section's own width, which the workspace sidebar narrows. */
+  container-type: inline-size;
+}
+.judge-title {
+  margin: 0 0 var(--space-2); font-size: var(--fs-sm); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--c-blue);
+}
+.judge-grid {
+  display: grid; gap: var(--space-2) var(--space-3);
+  grid-template-columns: 1fr;
+  grid-template-areas: "name" "addr" "email" "cell" "diet" "needs" "bio" "check";
+}
+.judge-grid > div { min-width: 0; }
+.jg-name { grid-area: name; } .jg-addr { grid-area: addr; } .jg-email { grid-area: email; }
+.jg-cell { grid-area: cell; } .jg-diet { grid-area: diet; } .jg-needs { grid-area: needs; }
+.jg-bio { grid-area: bio; } .jg-check { grid-area: check; }
+.jg-bio .field textarea { min-height: 3.6em; }
+.jg-needs { display: flex; flex-direction: column; justify-content: flex-end; gap: var(--space-2); padding-bottom: 6px; }
+.judge-hotel { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.judge-hotel-nights {
+  font: inherit; font-size: var(--fs-sm); padding: 2px 6px;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
+}
+@container (min-width: 560px) {
+  .judge-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "name addr" "email cell" "diet needs" "bio check";
+  }
+}
+@container (min-width: 820px) {
+  .judge-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-areas:
+      "name addr addr cell"
+      "email diet diet needs"
+      "bio bio check check";
+  }
 }
 .company-block:first-of-type { border-top: none; padding-top: 0; margin-top: var(--space-2); }
 .judge-block:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
 .school-block h3 { margin: 0 0 var(--space-2); font-size: 0.95rem; }
-.judge-extras {
-  display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin-top: var(--space-3);
-}
 .judge-milestones {
-  display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin-top: var(--space-3);
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
 }
+.judge-milestones .milestone-row { min-height: 26px; }
 .milestone-heading {
   font-size: var(--fs-sm); font-weight: 600; color: var(--c-muted); flex-basis: 100%;
 }
