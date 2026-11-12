@@ -30,6 +30,8 @@ import { buildChecklist } from './checklist';
 import { buildProgram } from './program';
 import { buildAdjudicatorPacketsPdf } from './adjPackets';
 import { loadAdjudicatorTemplates } from './pdfAssets';
+import { buildPanelTabulationPdf } from './panelTabulation';
+import { tabulationReport } from '../model/tabulationReport';
 
 /**
  * Per-build context threaded from the generate pipeline. Optional so a plain
@@ -75,6 +77,14 @@ export interface DocumentDefinition {
   filename: string;
   /** Whether the checkbox is ticked by default (from DOCUMENT_TYPES). */
   defaultSelected: boolean;
+  /**
+   * Whether the document can be built from this contest right now. Absent means
+   * always. An unavailable document is shown unchecked and disabled with
+   * `unavailableHint`, and is never put in the ZIP, whatever its stored checkbox.
+   */
+  available?: (contest: Contest) => boolean;
+  /** Short reason shown next to an unavailable document, e.g. "enter all ranks first". */
+  unavailableHint?: string;
   build: DocumentBuilder;
 }
 
@@ -94,7 +104,10 @@ const buildAdjPackets: DocumentBuilder = async (contest) => {
  * document to the model's DOCUMENT_TYPES fails to compile until it is registered
  * here. Filenames match v12's generateAll() output names exactly.
  */
-const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilder }> = {
+const DOC_BUILDERS: Record<
+  DocumentId,
+  Pick<DocumentDefinition, 'filename' | 'build' | 'available' | 'unavailableHint'>
+> = {
   checklist: { filename: 'Year-Round Checklist.xlsx', build: buildChecklist },
   fall_agenda: { filename: 'Fall District Meeting Agenda.docx', build: buildFallAgenda },
   host_checklist: { filename: 'Host School Checklist.docx', build: buildHostChecklist },
@@ -116,6 +129,12 @@ const DOC_BUILDERS: Record<DocumentId, { filename: string; build: DocumentBuilde
   adj_packets: { filename: 'Adjudicator Packets.pdf', build: buildAdjPackets },
   timer: { filename: 'Timer Instructions and Form.docx', build: buildTimerDoc },
   program: { filename: 'Audience Program.docx', build: buildProgram },
+  panel_tabulation: {
+    filename: 'Panel Tabulation.pdf',
+    build: buildPanelTabulationPdf,
+    available: (contest) => tabulationReport(contest) !== null,
+    unavailableHint: 'enter all ranks first',
+  },
 };
 
 /**
@@ -126,6 +145,19 @@ export const DOCUMENT_REGISTRY: DocumentDefinition[] = DOCUMENT_TYPES.map((doc) 
   id: doc.id,
   label: doc.label,
   defaultSelected: doc.defaultSelected,
-  filename: DOC_BUILDERS[doc.id].filename,
-  build: DOC_BUILDERS[doc.id].build,
+  ...DOC_BUILDERS[doc.id],
 }));
+
+/** Whether a document can be built from this contest now (see DocumentDefinition.available). */
+export function isDocumentAvailable(doc: DocumentDefinition, contest: Contest): boolean {
+  return doc.available ? doc.available(contest) : true;
+}
+
+/**
+ * Whether a document goes in the ZIP: available, and checked. A contest saved
+ * before the document existed has no stored checkbox, so it falls back to the
+ * document's default.
+ */
+export function isDocumentSelected(doc: DocumentDefinition, contest: Contest): boolean {
+  return isDocumentAvailable(doc, contest) && (contest.documents[doc.id] ?? doc.defaultSelected);
+}

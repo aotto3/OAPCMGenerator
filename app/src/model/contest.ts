@@ -377,6 +377,9 @@ export const DOCUMENT_TYPES = [
   { id: 'timer', label: 'Timer Instructions + Form (.docx)', defaultSelected: false },
   // Opt-in like the adjudicator PDFs — only wanted once companies are entered (PRD #68).
   { id: 'program', label: 'Audience Program (.docx)', defaultSelected: false },
+  // Checked by default, but only offered once every judge's ranks are entered
+  // (the registry's availability check; PRD #236).
+  { id: 'panel_tabulation', label: 'Panel Tabulation (.pdf)', defaultSelected: true },
 ] as const;
 
 export type DocumentId = (typeof DOCUMENT_TYPES)[number]['id'];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { contestDisplayName, generationWarnings, type Contest } from '../../model/contest';
-import { DOCUMENT_REGISTRY } from '../../documents/registry';
+import { DOCUMENT_REGISTRY, isDocumentSelected } from '../../documents/registry';
 import {
   buildContestArchive,
   triggerZipDownload,
@@ -35,7 +35,7 @@ export function GenerateSection({
   const [warnings, setWarnings] = useState<DocumentWarning[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const selectedCount = DOCUMENT_REGISTRY.filter((doc) => contest.documents[doc.id]).length;
+  const selectedCount = DOCUMENT_REGISTRY.filter((doc) => isDocumentSelected(doc, contest)).length;
 
   async function handleGenerate() {
     // v12 blocks a download with no documents (the contest file alone isn't a
