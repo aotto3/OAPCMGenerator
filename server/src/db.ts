@@ -36,7 +36,7 @@ const here = dirname(fileURLToPath(import.meta.url));
  * error names the offending file.
  */
 export async function migrate(target: Pool): Promise<void> {
-  for (const file of ['contests.sql', 'events.sql', 'questionnaire.sql']) {
+  for (const file of ['contests.sql', 'contest_tombstones.sql', 'events.sql', 'questionnaire.sql']) {
     const sql = await readFile(join(here, '..', 'db', file), 'utf8');
     await target.query(sql);
   }

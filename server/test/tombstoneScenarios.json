@@ -1,0 +1,295 @@
+{
+  "_about": [
+    "Shared delete/edit cases for contest tombstones (RFC #276, slice #280).",
+    "One contest id, one owner. 'given' is the server state before the request: the stored contest's updatedAt and the owner's tombstone deletedAt (null = none).",
+    "'when.op': 'delete' = DELETE ?deletedAt=at; 'deleteLegacy' = DELETE without deletedAt; 'put'/'post' = a write whose body.updatedAt is 'at'.",
+    "'then': the HTTP status, a subset of the response body, and the resulting contest version and tombstone (null = none).",
+    "Asserted against the real routes in server/test/contestTombstones.test.ts; slice #281 asserts the same list against the app's in-memory fake server so the fake cannot drift. Newer action wins; ties go to the delete."
+  ],
+  "scenarios": [
+    {
+      "name": "delete with no contest and no tombstone records the tombstone",
+      "given": {
+        "contest": null,
+        "tombstone": null
+      },
+      "when": {
+        "op": "delete",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 204,
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "delete of an older contest removes it and records the tombstone",
+      "given": {
+        "contest": "2026-09-01T08:00:00.000Z",
+        "tombstone": null
+      },
+      "when": {
+        "op": "delete",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 204,
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "delete at the contest's exact version wins the tie",
+      "given": {
+        "contest": "2026-09-01T09:00:00.000Z",
+        "tombstone": null
+      },
+      "when": {
+        "op": "delete",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 204,
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "delete of a newer contest is refused with its version",
+      "given": {
+        "contest": "2026-09-01T10:00:00.000Z",
+        "tombstone": null
+      },
+      "when": {
+        "op": "delete",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 409,
+        "body": {
+          "updatedAt": "2026-09-01T10:00:00.000Z"
+        },
+        "contest": "2026-09-01T10:00:00.000Z",
+        "tombstone": null
+      }
+    },
+    {
+      "name": "a later delete moves the tombstone forward",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T08:00:00.000Z"
+      },
+      "when": {
+        "op": "delete",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 204,
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "an earlier delete keeps the later tombstone",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T10:00:00.000Z"
+      },
+      "when": {
+        "op": "delete",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 204,
+        "contest": null,
+        "tombstone": "2026-09-01T10:00:00.000Z"
+      }
+    },
+    {
+      "name": "legacy delete (no deletedAt) removes the contest without a tombstone",
+      "given": {
+        "contest": "2026-09-01T09:00:00.000Z",
+        "tombstone": null
+      },
+      "when": {
+        "op": "deleteLegacy"
+      },
+      "then": {
+        "status": 204,
+        "contest": null,
+        "tombstone": null
+      }
+    },
+    {
+      "name": "legacy delete of a missing contest is 404",
+      "given": {
+        "contest": null,
+        "tombstone": null
+      },
+      "when": {
+        "op": "deleteLegacy"
+      },
+      "then": {
+        "status": 404,
+        "contest": null,
+        "tombstone": null
+      }
+    },
+    {
+      "name": "legacy delete leaves an existing tombstone alone",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "deleteLegacy"
+      },
+      "then": {
+        "status": 404,
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "put of an existing contest with no tombstone succeeds",
+      "given": {
+        "contest": "2026-09-01T08:00:00.000Z",
+        "tombstone": null
+      },
+      "when": {
+        "op": "put",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 200,
+        "contest": "2026-09-01T09:00:00.000Z",
+        "tombstone": null
+      }
+    },
+    {
+      "name": "put older than the tombstone is gone",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "put",
+        "at": "2026-09-01T08:00:00.000Z"
+      },
+      "then": {
+        "status": 410,
+        "body": {
+          "deletedAt": "2026-09-01T09:00:00.000Z"
+        },
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "put at the tombstone's exact time is gone (tie goes to the delete)",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "put",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 410,
+        "body": {
+          "deletedAt": "2026-09-01T09:00:00.000Z"
+        },
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "put newer than the tombstone falls through to 404 (no row) and keeps the tombstone for the follow-up post",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "put",
+        "at": "2026-09-01T10:00:00.000Z"
+      },
+      "then": {
+        "status": 404,
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "post with no tombstone creates the contest",
+      "given": {
+        "contest": null,
+        "tombstone": null
+      },
+      "when": {
+        "op": "post",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 201,
+        "contest": "2026-09-01T09:00:00.000Z",
+        "tombstone": null
+      }
+    },
+    {
+      "name": "post older than the tombstone is gone",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "post",
+        "at": "2026-09-01T08:00:00.000Z"
+      },
+      "then": {
+        "status": 410,
+        "body": {
+          "deletedAt": "2026-09-01T09:00:00.000Z"
+        },
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "post at the tombstone's exact time is gone (tie goes to the delete)",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "post",
+        "at": "2026-09-01T09:00:00.000Z"
+      },
+      "then": {
+        "status": 410,
+        "body": {
+          "deletedAt": "2026-09-01T09:00:00.000Z"
+        },
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      }
+    },
+    {
+      "name": "post newer than the tombstone recreates the contest and clears the tombstone",
+      "given": {
+        "contest": null,
+        "tombstone": "2026-09-01T09:00:00.000Z"
+      },
+      "when": {
+        "op": "post",
+        "at": "2026-09-01T10:00:00.000Z"
+      },
+      "then": {
+        "status": 201,
+        "contest": "2026-09-01T10:00:00.000Z",
+        "tombstone": null
+      }
+    }
+  ]
+}

@@ -31,6 +31,25 @@ export interface ContestPatch {
   payload: string;
 }
 
+/** A durable record that the owner deleted a contest at `deletedAt` (ISO). */
+export interface Tombstone {
+  id: string;
+  deletedAt: string;
+}
+
+/**
+ * Outcome of a timestamped delete. `newer`: the stored row was edited after
+ * `deletedAt`, so nothing was deleted. `deleted`: the tombstone is in place and
+ * the row is gone; `name` is the removed row's name, or undefined when there was
+ * no owned row to remove.
+ */
+export type TimestampedDelete =
+  | { outcome: 'newer'; updatedAt: string }
+  | { outcome: 'deleted'; name: string | undefined };
+
+/** Milliseconds for an ISO timestamp; NaN when it does not parse. */
+const ms = (iso: string): number => Date.parse(iso);
+
 export interface ContestRepo {
   listByOwner(ownerId: string): Promise<ContestSummary[]>;
   getOwned(ownerId: string, id: string): Promise<ContestRecord | undefined>;
@@ -41,6 +60,19 @@ export interface ContestRepo {
   update(ownerId: string, id: string, patch: ContestPatch): Promise<boolean>;
   /** Returns false when no owned row matched. */
   remove(ownerId: string, id: string): Promise<boolean>;
+  /**
+   * Delete as of `deletedAt` (newer action wins, ties go to the delete): if the
+   * owned row was edited strictly after `deletedAt` nothing changes; otherwise
+   * the row is removed if present and the owner's tombstone is upserted,
+   * keeping the later of the stored and the given `deleted_at`.
+   */
+  removeAsOf(ownerId: string, id: string, deletedAt: string): Promise<TimestampedDelete>;
+  /** The owner's tombstones (any order). */
+  listTombstones(ownerId: string): Promise<Tombstone[]>;
+  /** The owner's tombstone time for this id, if any. */
+  getTombstone(ownerId: string, id: string): Promise<string | undefined>;
+  /** Drops the owner's tombstone for this id (a newer write superseded it). */
+  clearTombstone(ownerId: string, id: string): Promise<void>;
   /** Total contest count across all owners (admin stats). */
   countAll(): Promise<number>;
   /** Contest count per owner id (admin users table). Owners with none are absent. */
@@ -48,7 +80,7 @@ export interface ContestRepo {
 }
 
 export function createContestRepo(pool: Pool): ContestRepo {
-  return {
+  const repo: ContestRepo = {
     async listByOwner(ownerId) {
       const { rows } = await pool.query(
         `select id, name, updated_at from contests
@@ -100,6 +132,44 @@ export function createContestRepo(pool: Pool): ContestRepo {
       return (rowCount ?? 0) > 0;
     },
 
+    async removeAsOf(ownerId, id, deletedAt) {
+      const existing = await repo.getOwned(ownerId, id);
+      if (existing && ms(existing.updatedAt) > ms(deletedAt)) {
+        return { outcome: 'newer', updatedAt: existing.updatedAt };
+      }
+      if (existing) await repo.remove(ownerId, id);
+      const stored = await repo.getTombstone(ownerId, id);
+      if (stored === undefined || ms(deletedAt) > ms(stored)) {
+        await pool.query(
+          `insert into contest_tombstones (owner_id, id, deleted_at)
+           values ($1, $2, $3)
+           on conflict (owner_id, id) do update set deleted_at = excluded.deleted_at`,
+          [ownerId, id, deletedAt],
+        );
+      }
+      return { outcome: 'deleted', name: existing?.name };
+    },
+
+    async listTombstones(ownerId) {
+      const { rows } = await pool.query(
+        'select id, deleted_at from contest_tombstones where owner_id = $1',
+        [ownerId],
+      );
+      return rows.map((r) => ({ id: r.id, deletedAt: r.deleted_at }));
+    },
+
+    async getTombstone(ownerId, id) {
+      const { rows } = await pool.query(
+        'select deleted_at from contest_tombstones where owner_id = $1 and id = $2',
+        [ownerId, id],
+      );
+      return rows[0]?.deleted_at;
+    },
+
+    async clearTombstone(ownerId, id) {
+      await pool.query('delete from contest_tombstones where owner_id = $1 and id = $2', [ownerId, id]);
+    },
+
     async countAll() {
       const { rows } = await pool.query('select count(*)::int as n from contests');
       return rows[0]?.n ?? 0;
@@ -114,4 +184,5 @@ export function createContestRepo(pool: Pool): ContestRepo {
       return counts;
     },
   };
+  return repo;
 }
