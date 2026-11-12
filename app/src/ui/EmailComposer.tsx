@@ -3,6 +3,7 @@ import { allJudgeEmails, type Contest } from '../model/contest';
 import {
   advancingEmail,
   EMAIL_TEMPLATES,
+  gmailComposeUrl,
   tabulationEmail,
   type EmailTemplateId,
 } from '../documents/emailTemplates';
@@ -43,6 +44,14 @@ export function EmailComposer({ contest }: { contest: Contest }) {
   const [toList, setToList] = useState<string[] | null>(null);
   /** Shown in the To: line when the resolved list is empty. */
   const [toEmptyText, setToEmptyText] = useState('');
+  const [gmailBlocked, setGmailBlocked] = useState(false);
+
+  /** Opens the shown draft (as edited) in Gmail compose; To is filled when the draft has a recipient list. */
+  function openInGmail() {
+    const win = window.open(gmailComposeUrl({ to: toList ?? [], subject, body }), '_blank');
+    if (win) win.opener = null;
+    setGmailBlocked(!win);
+  }
 
   function loadTemplate(id: EmailTemplateId) {
     const draft = EMAIL_TEMPLATES[id](contest);
@@ -198,7 +207,21 @@ export function EmailComposer({ contest }: { contest: Contest }) {
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
-      <CopyButton getText={() => body} label="Copy Body" />
+      <div className="email-actions">
+        <CopyButton getText={() => body} label="Copy Body" />
+        <button
+          type="button"
+          className="btn-util email-gmail-btn"
+          disabled={!subject && !body}
+          title={subject || body ? undefined : 'Pick a template first'}
+          onClick={openInGmail}
+        >
+          ✉ Open in Gmail
+        </button>
+      </div>
+      {gmailBlocked && (
+        <p className="tab-status-error">The browser blocked the Gmail window. Allow pop-ups for this site and try again.</p>
+      )}
     </Section>
   );
 }
