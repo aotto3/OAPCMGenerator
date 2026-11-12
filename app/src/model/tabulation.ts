@@ -10,7 +10,7 @@
  * module parses and validates them at read time.
  */
 
-import { tabulationEntry, type Contest } from './contest';
+import { advancingPlaceCount, setAdvancing, setAlternate, tabulationEntry, type Contest } from './contest';
 import { tabulate } from './tabulator';
 
 /** Why a cell is not a usable rank. 'blank' is "not entered yet", the rest are mistakes. */
@@ -181,4 +181,53 @@ export function tabulationView(contest: Contest): TabulationView {
     missingRanks,
     results,
   };
+}
+
+/** What Fill Results would write: advancing schools in place order, then the alternate. */
+export interface TabulationFill {
+  /** School indices for places 1..N, N = advancingPlaceCount(level) (fewer if fewer schools ranked). */
+  advancing: number[];
+  /** School index for place N+1, or null when no school placed there. */
+  alternate: number | null;
+}
+
+/** The Results picks the tabulation implies, or null until every ballot is valid. */
+export function tabulationFill(contest: Contest): TabulationFill | null {
+  const view = tabulationView(contest);
+  if (!view.applicable || !view.results) return null;
+  const n = advancingPlaceCount(contest.identity.contestLevel);
+  const byPlace = [...view.results].sort((a, b) => a.place - b.place);
+  return {
+    advancing: byPlace.slice(0, n).map((r) => r.schoolIndex),
+    alternate: byPlace[n]?.schoolIndex ?? null,
+  };
+}
+
+/**
+ * True when Fill Results would replace picks the CM already made: Results has an
+ * advancing school or an alternate, and they differ from the tabulation's. The UI
+ * asks before filling in that case. Awards never count; Fill leaves them alone.
+ */
+export function fillWouldOverwrite(contest: Contest): boolean {
+  const fill = tabulationFill(contest);
+  const current = contest.results;
+  if (!fill || !current) return false;
+  if (current.advancing.length === 0 && current.alternate === null) return false;
+  const same =
+    current.alternate === fill.alternate &&
+    current.advancing.length === fill.advancing.length &&
+    current.advancing.every((i, k) => i === fill.advancing[k]);
+  return !same;
+}
+
+/**
+ * Writes the tabulation into Results: places 1..N to Advancing (rank order, which
+ * documents never show), place N+1 to Alternate. Individual awards and Best Crew
+ * are untouched. A one-time copy, not a link: later rank edits do not change
+ * Results until the CM fills again. No-op until every ballot is valid.
+ */
+export function fillResultsFromTabulation(contest: Contest, now?: string): Contest {
+  const fill = tabulationFill(contest);
+  if (!fill) return contest;
+  return setAlternate(setAdvancing(contest, fill.advancing, now), fill.alternate, now);
 }

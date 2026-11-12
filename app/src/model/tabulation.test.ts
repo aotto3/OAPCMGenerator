@@ -16,7 +16,15 @@ import {
   withSchool,
   type Contest,
 } from './contest';
-import { cellIssueMessage, tabulationView } from './tabulation';
+import {
+  cellIssueMessage,
+  fillResultsFromTabulation,
+  fillWouldOverwrite,
+  tabulationFill,
+  tabulationView,
+} from './tabulation';
+import { addAwardWinner, setAlternate, setBestCrew } from './contest';
+import { resolveResults } from './results';
 
 const NOW = '2026-11-12T12:00:00.000Z';
 
@@ -269,5 +277,100 @@ describe('tabulationView: results', () => {
       ]),
     );
     expect(v.results!.every((r) => r.tie && r.diagnostic === 'Tie broken by Acting Judge')).toBe(true);
+  });
+});
+
+/** Ranks for n schools where school i (form index) places i+1: everyone agrees. */
+function agreed(n: number): string[][] {
+  return Array.from({ length: n }, (_, i) => [String(i + 1), String(i + 1), String(i + 1)]);
+}
+
+function withSchools(n: number, level: Contest['identity']['contestLevel']): Contest {
+  let c = withIdentity(contest(), { contestLevel: level }, NOW);
+  c = setNumSchools(c, n, NOW);
+  for (let i = 0; i < n; i++) c = withSchool(c, i, { name: `S${i + 1}`, performanceOrder: i + 1 }, NOW);
+  return c;
+}
+
+describe('Fill Results from tabulation', () => {
+  it('fills places 1-3 to Advancing in place order and 4th to Alternate', () => {
+    // Reverse agreement: school 4 (index 3) first ... school 1 last.
+    const c = enter(withSchools(5, 'District'), agreed(5).reverse());
+    expect(tabulationFill(c)).toEqual({ advancing: [4, 3, 2], alternate: 1 });
+    const filled = fillResultsFromTabulation(c, NOW);
+    expect(filled.results!.advancing).toEqual([4, 3, 2]);
+    expect(filled.results!.alternate).toBe(1);
+  });
+
+  it('advances 2 at Region, with 3rd as Alternate', () => {
+    const c = enter(withSchools(4, 'Region'), agreed(4));
+    expect(tabulationFill(c)).toEqual({ advancing: [0, 1], alternate: 2 });
+  });
+
+  for (const level of ['Zone', 'District', 'BiDistrict', 'Area'] as const) {
+    it(`advances 3 at ${level}`, () => {
+      expect(tabulationFill(enter(withSchools(5, level), agreed(5)))?.advancing).toHaveLength(3);
+    });
+  }
+
+  it('leaves Alternate empty when no school places after the advancing ones', () => {
+    const c = enter(withSchools(3, 'District'), agreed(3));
+    expect(tabulationFill(c)).toEqual({ advancing: [0, 1, 2], alternate: null });
+    const filled = fillResultsFromTabulation(setAlternate(c, 0, NOW), NOW);
+    expect(filled.results!.alternate).toBeNull();
+  });
+
+  it('follows the tabulated places, not form order (user sample)', () => {
+    expect(tabulationFill(enter(contest(), SAMPLE))).toEqual({ advancing: [2, 0, 1], alternate: null });
+  });
+
+  it('leaves awards and Best Crew untouched', () => {
+    let c = enter(withSchools(4, 'District'), agreed(4));
+    c = addAwardWinner(c, 'bestPerformers', { studentName: 'Pat', schoolIndex: 3 }, NOW);
+    c = addAwardWinner(c, 'allStarCast', { studentName: 'Lee', schoolIndex: 0 }, NOW);
+    c = setBestCrew(c, 2, NOW);
+    const before = c.results!;
+    const after = fillResultsFromTabulation(c, NOW).results!;
+    expect({ ...after, advancing: before.advancing, alternate: before.alternate }).toEqual(before);
+  });
+
+  it('is a no-op until every ballot is valid', () => {
+    const c = enter(contest(), [['1', '2', '3'], ['2', '1', ''], ['3', '3', '2']]);
+    expect(tabulationFill(c)).toBeNull();
+    expect(fillResultsFromTabulation(c, NOW)).toBe(c);
+  });
+
+  it('keeps documents announcing the advancing schools unordered', () => {
+    const c = fillResultsFromTabulation(enter(withSchools(4, 'District'), agreed(4).reverse()), NOW);
+    expect(c.results!.advancing).toEqual([3, 2, 1]);
+    expect(resolveResults(c)!.advancing.map((a) => a.schoolName)).toEqual(['S2', 'S3', 'S4']);
+  });
+
+  it('is never blocked by the judges-confirmed flag', () => {
+    const c = setTabulationConfirmed(enter(withSchools(4, 'District'), agreed(4)), false, NOW);
+    expect(fillResultsFromTabulation(c, NOW).results!.advancing).toEqual([0, 1, 2]);
+  });
+});
+
+describe('fillWouldOverwrite', () => {
+  const ready = () => enter(withSchools(4, 'District'), agreed(4));
+
+  it('is false when Results has no advancing schools or alternate yet', () => {
+    expect(fillWouldOverwrite(ready())).toBe(false);
+    expect(fillWouldOverwrite(addAwardWinner(ready(), 'bestPerformers', { studentName: 'P', schoolIndex: 0 }, NOW))).toBe(false);
+  });
+
+  it('is false when Results already matches the tabulation', () => {
+    expect(fillWouldOverwrite(fillResultsFromTabulation(ready(), NOW))).toBe(false);
+  });
+
+  it('is true when advancing picks or the alternate differ', () => {
+    expect(fillWouldOverwrite(setAdvancing(ready(), [3], NOW))).toBe(true);
+    expect(fillWouldOverwrite(setAlternate(ready(), 0, NOW))).toBe(true);
+    expect(fillWouldOverwrite(setAdvancing(ready(), [2, 1, 0], NOW))).toBe(true);
+  });
+
+  it('is false while the ballots are incomplete', () => {
+    expect(fillWouldOverwrite(setAdvancing(contest(), [0], NOW))).toBe(false);
   });
 });

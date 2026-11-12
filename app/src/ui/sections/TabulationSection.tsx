@@ -1,6 +1,12 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
-import { setTabulationNotRanked, setTabulationRank, type Contest } from '../../model/contest';
-import { cellIssueMessage, tabulationView } from '../../model/tabulation';
+import { setTabulationConfirmed, setTabulationNotRanked, setTabulationRank, type Contest } from '../../model/contest';
+import {
+  cellIssueMessage,
+  fillResultsFromTabulation,
+  fillWouldOverwrite,
+  tabulationFill,
+  tabulationView,
+} from '../../model/tabulation';
 import { tabulationReport } from '../../model/tabulationReport';
 import { openTabulationPrintPage } from '../tabulationPrint';
 import { Section } from './Section';
@@ -23,6 +29,7 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
   const view = tabulationView(contest);
   const cells = useRef(new Map<string, HTMLInputElement>());
   const [popupBlocked, setPopupBlocked] = useState(false);
+  const [filledNote, setFilledNote] = useState<string | null>(null);
 
   if (!view.applicable) {
     return (
@@ -102,7 +109,10 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
                         aria-label={`${COLUMN_TITLES[j]} rank for ${row.label}`}
                         aria-invalid={showError || undefined}
                         onKeyDown={(e) => onCellKey(e, key)}
-                        onChange={(e) => onChange(setTabulationRank(contest, row.schoolIndex, j, e.target.value))}
+                        onChange={(e) => {
+                          setFilledNote(null);
+                          onChange(setTabulationRank(contest, row.schoolIndex, j, e.target.value));
+                        }}
                       />
                       {showError && <span className="tab-cell-error">{cellIssueMessage(issue, view.rankedCount)}</span>}
                     </td>
@@ -114,7 +124,10 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
                     tabIndex={-1}
                     checked={row.notRanked}
                     aria-label={`${row.label} not ranked`}
-                    onChange={(e) => onChange(setTabulationNotRanked(contest, row.schoolIndex, e.target.checked))}
+                    onChange={(e) => {
+                      setFilledNote(null);
+                      onChange(setTabulationNotRanked(contest, row.schoolIndex, e.target.checked));
+                    }}
                   />
                 </td>
               </tr>
@@ -178,7 +191,43 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
         </>
       )}
 
+      <label className="tab-confirm">
+        <input
+          type="checkbox"
+          checked={contest.tabulation.judgesConfirmed}
+          onChange={(e) => onChange(setTabulationConfirmed(contest, e.target.checked))}
+        />
+        Judges confirmed ranks
+        <span className="hint">The adjudicators checked the ranks above. Changing any rank clears this.</span>
+      </label>
+
       <div className="tab-actions">
+        <button
+          type="button"
+          className="btn-util"
+          disabled={!view.results}
+          title={view.results ? undefined : "Enter every judge's ranks first"}
+          onClick={() => {
+            const fill = tabulationFill(contest);
+            if (!fill) return;
+            if (
+              fillWouldOverwrite(contest) &&
+              !window.confirm(
+                'Results already has different advancing schools or an alternate.\n\nReplace them with the tabulation? Individual awards are not changed.',
+              )
+            ) {
+              return;
+            }
+            onChange(fillResultsFromTabulation(contest));
+            const name = (i: number) => view.rows.find((r) => r.schoolIndex === i)?.label ?? `School ${i + 1}`;
+            setFilledNote(
+              `Results filled: ${fill.advancing.map(name).join(', ')} advancing` +
+                (fill.alternate === null ? ', no alternate.' : `; alternate ${name(fill.alternate)}.`),
+            );
+          }}
+        >
+          ➡ Fill Results from tabulation
+        </button>
         <button
           type="button"
           className="btn-util"
@@ -197,6 +246,7 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
             : 'Available once every ballot is entered.'}
         </span>
       </div>
+      {filledNote && <p className="hint">{filledNote}</p>}
       {popupBlocked && (
         <p className="tab-status-error">The browser blocked the print window. Allow pop-ups for this site and try again.</p>
       )}
