@@ -100,3 +100,72 @@ export function findJudge(roster: JudgeRoster, email: string): JudgeLookup | nul
   if (contests.length === 0) return null;
   return { judgeName: judge.name, contests };
 }
+
+/* ── submissions ── */
+
+export interface ContestAnswers {
+  hotelBefore: boolean;
+  hotelAfter: boolean;
+  requestingFlight: boolean;
+}
+
+export interface SubmissionAnswers {
+  cellPhone: string;
+  mailingAddress: string;
+  dietary: string;
+  needsPower: boolean;
+  bio: string;
+  notes: string;
+  contests: Record<string, ContestAnswers>;
+}
+
+/** Per-field length caps for the free-text answers. */
+export const ANSWER_LIMITS = {
+  cellPhone: 40,
+  mailingAddress: 400,
+  dietary: 1000,
+  bio: 4000,
+  notes: 4000,
+} as const;
+
+/**
+ * Returns clean answers, or null when the input is malformed, a text answer is
+ * too long, or it answers for a contest the judge is not on. Unknown fields are
+ * dropped. Answering for only some of the judge's contests is allowed.
+ */
+export function parseAnswers(input: unknown, judgeContestIds: readonly string[]): SubmissionAnswers | null {
+  const raw = record(input);
+  if (!raw) return null;
+  const text: Partial<Record<keyof typeof ANSWER_LIMITS, string>> = {};
+  for (const [key, max] of Object.entries(ANSWER_LIMITS) as [keyof typeof ANSWER_LIMITS, number][]) {
+    const value = raw[key];
+    if (typeof value !== 'string' || value.length > max) return null;
+    text[key] = value;
+  }
+  if (typeof raw.needsPower !== 'boolean') return null;
+  const contestsRaw = record(raw.contests);
+  if (!contestsRaw) return null;
+  const contests: Record<string, ContestAnswers> = {};
+  for (const [id, value] of Object.entries(contestsRaw)) {
+    if (!judgeContestIds.includes(id)) return null;
+    const c = record(value);
+    if (
+      !c ||
+      typeof c.hotelBefore !== 'boolean' ||
+      typeof c.hotelAfter !== 'boolean' ||
+      typeof c.requestingFlight !== 'boolean'
+    ) {
+      return null;
+    }
+    contests[id] = { hotelBefore: c.hotelBefore, hotelAfter: c.hotelAfter, requestingFlight: c.requestingFlight };
+  }
+  return {
+    cellPhone: text.cellPhone!,
+    mailingAddress: text.mailingAddress!,
+    dietary: text.dietary!,
+    needsPower: raw.needsPower,
+    bio: text.bio!,
+    notes: text.notes!,
+    contests,
+  };
+}

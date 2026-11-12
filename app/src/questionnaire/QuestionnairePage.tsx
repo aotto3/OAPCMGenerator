@@ -1,18 +1,29 @@
 /**
  * The public judge questionnaire page (PRD #252), reached at /q/<token> with no
  * sign-in. The judge sees only an email box until their email matches a judge in
- * the CM's upcoming contests; then their contests appear, each with that contest's
- * CM contact line. No names or emails are on the page before a match.
- *
- * Slice #254 stops at the lookup; the questions themselves arrive in #255.
+ * the CM's upcoming contests; then the questionnaire opens: per-contest questions
+ * (hotel nights, flying; a back-to-back Zone pair is asked about as one) and
+ * general questions, pre-filled from their last submission. Submitting stores the
+ * answers for the CM's app to apply; the judge can come back and update them.
  */
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { fmtDate } from '../documents/format';
 import { createQuestionnaireClient, type JudgeLookup, type LookupResult } from './questionnaireClient';
+import type { RosterContest } from './roster';
+import {
+  blankAnswers,
+  groupContestIds,
+  groupContests,
+  readGroup,
+  writeGroup,
+  type ContestGroup,
+  type GroupAnswers,
+  type SubmissionAnswers,
+} from './submission';
 
 const client = createQuestionnaireClient();
 
-const MESSAGES: Record<Exclude<LookupResult['kind'], 'found'>, string> = {
+const LOOKUP_MESSAGES: Record<Exclude<LookupResult['kind'], 'found'>, string> = {
   not_found:
     "We couldn't find any upcoming contests for that email. Check for typos, or contact the contest manager who invited you.",
   rate_limited: 'Too many tries. Please wait a few minutes and try again.',
@@ -27,7 +38,7 @@ export function QuestionnairePage({ token }: { token: string }) {
   const [message, setMessage] = useState('');
   const [judge, setJudge] = useState<JudgeLookup | null>(null);
 
-  async function submit(e: FormEvent) {
+  async function lookup(e: FormEvent) {
     e.preventDefault();
     if (busy || email.trim() === '') return;
     setBusy(true);
@@ -35,7 +46,7 @@ export function QuestionnairePage({ token }: { token: string }) {
     const result = await client.lookup(token, email, website);
     setBusy(false);
     if (result.kind === 'found') setJudge(result.judge);
-    else setMessage(MESSAGES[result.kind]);
+    else setMessage(LOOKUP_MESSAGES[result.kind]);
   }
 
   return (
@@ -44,9 +55,9 @@ export function QuestionnairePage({ token }: { token: string }) {
         <h1>Adjudicator Questionnaire</h1>
       </header>
       {judge ? (
-        <JudgeContests judge={judge} />
+        <QuestionnaireForm token={token} email={email} website={website} judge={judge} />
       ) : (
-        <form className="questionnaire-lookup" onSubmit={(e) => void submit(e)} noValidate>
+        <form className="questionnaire-lookup" onSubmit={(e) => void lookup(e)} noValidate>
           <p>Enter the email address your contest manager has on file for you.</p>
           <label className="field">
             <span>Email</span>
@@ -84,25 +95,219 @@ export function QuestionnairePage({ token }: { token: string }) {
   );
 }
 
-function JudgeContests({ judge }: { judge: JudgeLookup }) {
+/** Starting answers: the last submission for contests still listed, blanks for the rest. */
+function initialAnswers(judge: JudgeLookup): SubmissionAnswers {
+  const ids = judge.contests.map((c) => c.id);
+  const blank = blankAnswers(ids);
+  const last = judge.lastSubmission;
+  if (!last) return blank;
+  return {
+    ...blank,
+    ...last,
+    contests: Object.fromEntries(ids.map((id) => [id, last.contests[id] ?? blank.contests[id]])),
+  };
+}
+
+const SUBMIT_MESSAGES = {
+  not_found: "We couldn't find your contests anymore. Please contact your contest manager.",
+  rate_limited: 'Too many tries. Please wait a few minutes and try again.',
+  invalid: 'Something in the form was too long or invalid. Please shorten long answers and try again.',
+  error: 'Something went wrong. Check your connection and try again.',
+} as const;
+
+function QuestionnaireForm({
+  token,
+  email,
+  website,
+  judge,
+}: {
+  token: string;
+  email: string;
+  website: string;
+  judge: JudgeLookup;
+}) {
+  const groups = groupContests(judge.contests);
+  const [answers, setAnswers] = useState<SubmissionAnswers>(() => initialAnswers(judge));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const set = (patch: Partial<SubmissionAnswers>) => setAnswers((a) => ({ ...a, ...patch }));
+  const setGroup = (group: ContestGroup, patch: Partial<GroupAnswers>) =>
+    setAnswers((a) => ({
+      ...a,
+      contests: { ...a.contests, ...writeGroup(group, { ...readGroup(group, a.contests), ...patch }) },
+    }));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setMessage('');
+    const result = await client.submit(token, email, website, answers);
+    setBusy(false);
+    if (result.kind === 'saved') {
+      setSaved(true);
+      window.scrollTo(0, 0);
+    } else {
+      setMessage(SUBMIT_MESSAGES[result.kind]);
+    }
+  }
+
+  if (saved) {
+    return (
+      <section className="questionnaire-done" role="status">
+        <h2>Thank you{judge.judgeName ? `, ${judge.judgeName}` : ''}!</h2>
+        <p>Your answers were sent to your contest manager.</p>
+        <p className="muted">You can come back to this link any time to update them.</p>
+        <button type="button" className="btn-ghost" onClick={() => setSaved(false)}>
+          Edit my answers
+        </button>
+      </section>
+    );
+  }
+
   return (
-    <section>
+    <form className="questionnaire-form" onSubmit={(e) => void submit(e)}>
       <p>
-        {judge.judgeName ? `Hi, ${judge.judgeName}. ` : ''}You're scheduled to adjudicate:
+        {judge.judgeName ? `Hi, ${judge.judgeName}. ` : ''}You're scheduled to adjudicate the contests below. Please
+        answer for each, then the general questions at the end.
       </p>
-      <ul className="questionnaire-contests">
-        {judge.contests.map((c) => (
-          <li key={c.id}>
-            <strong>{c.title}</strong>
-            <span>{[fmtDate(c.date) || 'Date to be announced', c.host].filter(Boolean).join(' · ')}</span>
-            <span className="hint">
-              Doesn't look right? Contact{' '}
-              {c.cmEmail ? <a href={`mailto:${c.cmEmail}`}>{c.cmEmail}</a> : 'the contest manager who invited you'}.
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="muted">The questions for these contests will appear here soon.</p>
-    </section>
+
+      {groups.map((group) => (
+        <ContestGroupCard
+          key={groupContestIds(group).join('+')}
+          group={group}
+          answers={readGroup(group, answers.contests)}
+          onChange={(patch) => setGroup(group, patch)}
+        />
+      ))}
+
+      <fieldset className="questionnaire-card">
+        <legend>About you</legend>
+        {judge.judgeName && (
+          <p className="hint">
+            Name on file: <strong>{judge.judgeName}</strong>. If it's wrong, contact your contest manager.
+          </p>
+        )}
+        <Field label="Cell number">
+          <input
+            type="tel"
+            autoComplete="tel"
+            maxLength={40}
+            value={answers.cellPhone}
+            onChange={(e) => set({ cellPhone: e.target.value })}
+          />
+        </Field>
+        <Field label="Mailing address (for scripts and/or your check)">
+          <textarea
+            autoComplete="street-address"
+            maxLength={400}
+            rows={2}
+            value={answers.mailingAddress}
+            onChange={(e) => set({ mailingAddress: e.target.value })}
+          />
+        </Field>
+        <Field label="Any dietary preferences or restrictions?">
+          <input maxLength={1000} value={answers.dietary} onChange={(e) => set({ dietary: e.target.value })} />
+        </Field>
+        <label className="check-option">
+          <input type="checkbox" checked={answers.needsPower} onChange={(e) => set({ needsPower: e.target.checked })} />
+          I'll need an electrical outlet for a computer at my judging table
+        </label>
+        <Field label="Short bio (optional; may be printed in the audience program)">
+          <textarea maxLength={4000} rows={4} value={answers.bio} onChange={(e) => set({ bio: e.target.value })} />
+        </Field>
+        <Field label="Anything else you'd like me to know to make your time with us as easy as it can be?">
+          <textarea maxLength={4000} rows={3} value={answers.notes} onChange={(e) => set({ notes: e.target.value })} />
+        </Field>
+      </fieldset>
+
+      <button type="submit" className="btn-primary" disabled={busy}>
+        {busy ? 'Sending…' : judge.lastSubmission ? 'Update my answers' : 'Send my answers'}
+      </button>
+      {message && (
+        <p className="questionnaire-message" role="alert">
+          {message}
+        </p>
+      )}
+    </form>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** "Wednesday, March 3, 2027" for the night of the day before/of `iso`; '' when undated. */
+function nightOf(iso: string, offsetDays: number): string {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return fmtDate(d.toISOString().slice(0, 10));
+}
+
+function withDate(label: string, date: string): string {
+  return date ? `${label} (${date})` : label;
+}
+
+function ContestLine({ contest, showTitle = true }: { contest: RosterContest; showTitle?: boolean }) {
+  return (
+    <div className="questionnaire-contest-line">
+      {showTitle && <strong>{contest.title}</strong>}
+      <span>{[fmtDate(contest.date) || 'Date to be announced', contest.host].filter(Boolean).join(' · ')}</span>
+      <span className="hint">
+        Doesn't look right? Contact{' '}
+        {contest.cmEmail ? <a href={`mailto:${contest.cmEmail}`}>{contest.cmEmail}</a> : 'the contest manager who invited you'}.
+      </span>
+    </div>
+  );
+}
+
+function ContestGroupCard({
+  group,
+  answers,
+  onChange,
+}: {
+  group: ContestGroup;
+  answers: GroupAnswers;
+  onChange: (patch: Partial<GroupAnswers>) => void;
+}) {
+  const first = group.kind === 'single' ? group.contest : group.first;
+  const last = group.kind === 'single' ? group.contest : group.second;
+  const nights: { key: 'before' | 'between' | 'after'; label: string }[] = [
+    { key: 'before', label: withDate('The night before', nightOf(first.date, -1)) },
+    ...(group.kind === 'zonePair'
+      ? [{ key: 'between' as const, label: withDate('The night between the two zones', nightOf(first.date, 0)) }]
+      : []),
+    { key: 'after', label: withDate('The night after', nightOf(last.date, 0)) },
+  ];
+  return (
+    <fieldset className="questionnaire-card">
+      <legend>{group.kind === 'zonePair' ? 'Zone contests (back to back)' : first.title}</legend>
+      <ContestLine contest={first} showTitle={group.kind === 'zonePair'} />
+      {group.kind === 'zonePair' && <ContestLine contest={group.second} />}
+      <p className="questionnaire-question">If you're coming from out of town, which nights will you need a hotel?</p>
+      {nights.map((n) => (
+        <label key={n.key} className="check-option">
+          <input type="checkbox" checked={answers[n.key]} onChange={(e) => onChange({ [n.key]: e.target.checked })} />
+          {n.label}
+        </label>
+      ))}
+      <p className="questionnaire-question">Are you requesting to fly to {group.kind === 'zonePair' ? 'these contests' : 'this contest'}?</p>
+      <label className="check-option">
+        <input
+          type="checkbox"
+          checked={answers.requestingFlight}
+          onChange={(e) => onChange({ requestingFlight: e.target.checked })}
+        />
+        Yes, I'd like to fly
+      </label>
+    </fieldset>
   );
 }

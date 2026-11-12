@@ -9,6 +9,8 @@ import {
 } from '../model/contest';
 import { EditableContestTitle } from './EditableContestTitle';
 import { getContest } from '../storage/contestStore';
+import { applySubmissions } from '../questionnaire/submission';
+import { latestSubmissions, onSubmissionsChanged } from '../questionnaire/submissionSync';
 import { useAutosave } from '../storage/useAutosave';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { ReadinessPage } from './ReadinessPage';
@@ -73,6 +75,17 @@ export function Workspace({
     }
     void getContest(contestId).then((c) => (c ? setContest(c) : setMissing(true)));
   }, [contestId, draft]);
+
+  // Judge questionnaire answers (PRD #252) that arrive while this contest is open
+  // go into the in-memory copy too, so the next autosave keeps them instead of
+  // overwriting the background save. Applying is idempotent: a no-op returns the
+  // same object and React skips the update.
+  useEffect(() => {
+    const apply = () =>
+      setContest((c) => (c ? applySubmissions(c, latestSubmissions(), new Date().toISOString()) : c));
+    apply();
+    return onSubmissionsChanged(apply);
+  }, [contest?.id]);
 
   useAutosave(contest);
 
