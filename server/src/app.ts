@@ -16,7 +16,8 @@ import {
   defaultQuestionnaireLimiters,
   type QuestionnaireLimiters,
 } from './questionnaireRoutes';
-import type { QuestionnaireRepo } from './questionnaireRepo';
+import type { QuestionnaireStore } from './questionnaireStore';
+import { createQuestionnaireService } from './questionnaire';
 import type { Mailer } from './mailer';
 import type { ContestRepo } from './contestRepo';
 import type { EventLog } from './eventLog';
@@ -39,8 +40,8 @@ export interface AppDeps {
    * tests control it. Production passes `() => new Date()`.
    */
   now: () => Date;
-  /** Judge questionnaire link tokens + published rosters (PRD #252). */
-  questionnaireRepo: QuestionnaireRepo;
+  /** Judge questionnaire link tokens, published rosters and submissions (PRD #252). */
+  questionnaireStore: QuestionnaireStore;
   /** The one mail sender (the questionnaire CM notice here). Tests pass a recording fake. */
   mailer: Mailer;
   /** Public questionnaire rate limits; tests pass tight ones. Defaults per questionnaireRoutes. */
@@ -102,11 +103,14 @@ export function createApp(deps: AppDeps): Express {
   app.use(
     '/api/questionnaire',
     createQuestionnaireRoutes({
-      repo: deps.questionnaireRepo,
+      questionnaire: createQuestionnaireService({
+        store: deps.questionnaireStore,
+        mailer: deps.mailer,
+        ownerEmail: async (ownerId) => (await deps.userDirectory.getUser(ownerId))?.email,
+        now: deps.now,
+      }),
       resolveUser: deps.resolveUser,
       limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(() => deps.now().getTime()),
-      mailer: deps.mailer,
-      ownerEmail: async (ownerId) => (await deps.userDirectory.getUser(ownerId))?.email,
       now: deps.now,
     }),
   );

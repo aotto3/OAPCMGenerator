@@ -31,14 +31,15 @@ export interface JudgeRoster {
 
 export const MAX_ROSTER_CONTESTS = 500;
 export const MAX_ROSTER_JUDGES = 5000;
-const MAX_FIELD_LENGTH = 320;
+/** Longest string any roster field may hold. */
+export const MAX_ROSTER_FIELD_LENGTH = 320;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 function str(value: unknown): string | null {
-  return typeof value === 'string' && value.length <= MAX_FIELD_LENGTH ? value : null;
+  return typeof value === 'string' && value.length <= MAX_ROSTER_FIELD_LENGTH ? value : null;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
