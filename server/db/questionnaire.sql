@@ -23,3 +23,14 @@ create table if not exists judge_rosters (
   roster     text not null,
   updated_at text not null
 );
+
+-- judge_submissions: each judge's current questionnaire answers, one row per
+-- (account, judge email); a resubmit replaces the row. The app pulls these and
+-- writes them into its contests; the server never touches contest payloads.
+create table if not exists judge_submissions (
+  owner_id     text not null,
+  email        text not null,
+  submitted_at text not null,
+  answers      text not null,
+  primary key (owner_id, email)
+);

@@ -7,6 +7,8 @@ import {
   type Contest,
   type SectionCompletion,
 } from '../../model/contest';
+import { fmtDateShort } from '../../documents/format';
+import { localToday } from '../../questionnaire/rosterPublisher';
 import { CopyJudgesControl } from './CopyJudgesControl';
 import { QuestionnaireLinkControl } from './QuestionnaireLinkControl';
 import { Section } from './Section';
@@ -68,6 +70,11 @@ function JudgeFields({
       <h3 id={headingId} className="judge-title">
         Judge {index + 1}
       </h3>
+      {judge.questionnaireUpdatedAt && (
+        <p className="questionnaire-badge">
+          Updated from questionnaire on {fmtDateShort(localToday(new Date(judge.questionnaireUpdatedAt)))}
+        </p>
+      )}
       <div className="judge-grid">
         <div className="jg-name">
           <TextField label="Full Name" placeholder="First Last" value={judge.name} onChange={(v) => edit({ name: v })} />

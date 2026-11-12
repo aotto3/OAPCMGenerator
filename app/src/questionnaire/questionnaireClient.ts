@@ -4,13 +4,23 @@
  * like the sync client; `fetchImpl` is injectable for tests.
  */
 import type { JudgeRoster, RosterContest } from './roster';
+import type { JudgeSubmission, SubmissionAnswers } from './submission';
 
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 
 export interface JudgeLookup {
   judgeName: string;
   contests: RosterContest[];
+  /** The judge's previous answers, to pre-fill the form; null on a first visit. */
+  lastSubmission: SubmissionAnswers | null;
 }
+
+export type SubmitResult =
+  | { kind: 'saved'; submittedAt: string }
+  | { kind: 'not_found' }
+  | { kind: 'rate_limited' }
+  | { kind: 'invalid' }
+  | { kind: 'error' };
 
 export type LookupResult =
   | { kind: 'found'; judge: JudgeLookup }
@@ -45,6 +55,25 @@ export function createQuestionnaireClient(fetchImpl: typeof fetch = (...a) => fe
     },
     async publishRoster(roster: JudgeRoster): Promise<void> {
       await call('/roster', { method: 'PUT', body: JSON.stringify({ roster }) });
+    },
+    async listSubmissions(): Promise<JudgeSubmission[]> {
+      return ((await (await call('/submissions')).json()) as { submissions: JudgeSubmission[] }).submissions;
+    },
+    /** Never throws: the public page only needs to know which message to show. */
+    async submit(token: string, email: string, website: string, answers: SubmissionAnswers): Promise<SubmitResult> {
+      try {
+        const res = await call('/public/submit', {
+          method: 'POST',
+          credentials: 'omit',
+          body: JSON.stringify({ token, email, website, answers }),
+        });
+        return { kind: 'saved', submittedAt: ((await res.json()) as { submittedAt: string }).submittedAt };
+      } catch (err) {
+        if (err instanceof QuestionnaireHttpError && err.status === 404) return { kind: 'not_found' };
+        if (err instanceof QuestionnaireHttpError && err.status === 429) return { kind: 'rate_limited' };
+        if (err instanceof QuestionnaireHttpError && err.status === 400) return { kind: 'invalid' };
+        return { kind: 'error' };
+      }
     },
     /** Never throws: the public page only needs to know which message to show. */
     async lookup(token: string, email: string, website: string): Promise<LookupResult> {

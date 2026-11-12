@@ -6,19 +6,23 @@
  *   POST /link/reset  replaces the token; the old link stops working at once
  *   PUT  /roster      replaces the account's published judge roster
  *
- * Public route (no session):
- *   POST /public/lookup  { token, email, website } -> the judge's contests
+ *   GET  /submissions  every judge's current answers, for the app to apply
+ *
+ * Public routes (no session):
+ *   POST /public/lookup  { token, email, website } -> the judge's contests and
+ *                        their last answers
+ *   POST /public/submit  { token, email, website, answers } -> stores the answers
  *
  * The public route is the only unauthenticated surface that reads account data,
  * so it gives nothing away: an unknown token, an unknown email, a filled honeypot
  * (`website`, hidden from people, filled by bots) and a malformed body all get the
- * same 404. Nothing (no judge names, no emails) is returned until an email
- * matches. Token and email travel in the body, never the URL, so they stay out of
+ * same 404 (a honeypot submit gets a fake success and is dropped). Nothing (no
+ * judge names, no emails) is returned until an email matches. Token and email travel in the body, never the URL, so they stay out of
  * access logs. Rate limits per IP and per email return 429.
  */
 import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { findJudge, normalizeEmail, parseRoster } from './judgeRoster';
+import { findJudge, normalizeEmail, parseAnswers, parseRoster, type JudgeLookup } from './judgeRoster';
 import type { QuestionnaireRepo } from './questionnaireRepo';
 import { createRateLimiter, type RateLimiter } from './rateLimiter';
 import { resolveUserOrNull, type ResolveUser } from './requestAuth';
@@ -37,7 +41,8 @@ export function defaultQuestionnaireLimiters(): QuestionnaireLimiters {
   return {
     // Generous per IP: behind the proxy chain several judges may share one address.
     perIp: createRateLimiter({ limit: 60, windowMs: 10 * 60 * 1000 }),
-    perEmail: createRateLimiter({ limit: 10, windowMs: 60 * 60 * 1000 }),
+    // Lookups and submits share it; a judge fixing answers a few times stays well under.
+    perEmail: createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000 }),
   };
 }
 
@@ -102,31 +107,81 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
     res.status(204).end();
   });
 
-  router.post('/public/lookup', async (req, res) => {
-    const notFound = () => res.status(404).json({ error: 'not_found' });
+  router.get('/submissions', async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const rows = await repo.listSubmissions(user.id);
+    res.json({
+      submissions: rows.map((r) => ({ email: r.email, submittedAt: r.submittedAt, answers: JSON.parse(r.answers) })),
+    });
+  });
+
+  /**
+   * The shared public preamble: rate limits, honeypot, and the token + email
+   * match. Answers the request itself (and returns null) on anything but a match.
+   */
+  async function matchJudge(
+    req: Request,
+    res: Response,
+    onHoneypot: () => void,
+  ): Promise<{ owner: string; email: string; judge: JudgeLookup } | null> {
+    const notFound = () => void res.status(404).json({ error: 'not_found' });
     if (!limiters.perIp.tryAcquire(req.ip ?? 'unknown')) {
       res.status(429).json({ error: 'rate_limited' });
-      return;
+      return null;
     }
     const { token, email, website } = bodyOf(req);
     // Honeypot: a person never sees the field; anything in it is a bot.
-    if (typeof website === 'string' && website.trim() !== '') return notFound();
+    if (typeof website === 'string' && website.trim() !== '') {
+      onHoneypot();
+      return null;
+    }
     if (typeof token !== 'string' || typeof email !== 'string' || token.length > 64 || email.length > 320) {
-      return notFound();
+      notFound();
+      return null;
     }
     const key = normalizeEmail(email);
-    if (key === '') return notFound();
+    if (key === '') {
+      notFound();
+      return null;
+    }
     if (!limiters.perEmail.tryAcquire(key)) {
       res.status(429).json({ error: 'rate_limited' });
-      return;
+      return null;
     }
-
     const owner = await repo.ownerForToken(token);
     const stored = owner ? await repo.getRoster(owner) : undefined;
     const roster = stored ? parseRoster(JSON.parse(stored)) : null;
-    const match = roster ? findJudge(roster, key) : null;
-    if (!match) return notFound();
-    res.json(match);
+    const judge = roster ? findJudge(roster, key) : null;
+    if (!owner || !judge) {
+      notFound();
+      return null;
+    }
+    return { owner, email: key, judge };
+  }
+
+  router.post('/public/lookup', async (req, res) => {
+    const match = await matchJudge(req, res, () => void res.status(404).json({ error: 'not_found' }));
+    if (!match) return;
+    const last = await repo.getSubmission(match.owner, match.email);
+    res.json({ ...match.judge, lastSubmission: last ? JSON.parse(last.answers) : null });
+  });
+
+  router.post('/public/submit', async (req, res) => {
+    // A bot that fills the honeypot is told it succeeded and nothing is stored.
+    const match = await matchJudge(req, res, () => void res.json({ submittedAt: new Date().toISOString() }));
+    if (!match) return;
+    const answers = parseAnswers(
+      bodyOf(req).answers,
+      match.judge.contests.map((c) => c.id),
+    );
+    if (!answers) {
+      res.status(400).json({ error: 'invalid_answers' });
+      return;
+    }
+    const submittedAt = new Date().toISOString();
+    await repo.putSubmission(match.owner, match.email, submittedAt, JSON.stringify(answers));
+    res.json({ submittedAt });
   });
 
   return router;
