@@ -23,6 +23,7 @@ import {
   withoutJudgePreferences,
   type Contest,
 } from '../model/contest';
+import { buildPanelTabulationPdf } from './panelTabulation';
 import { DOCUMENT_REGISTRY, isDocumentSelected, type DocumentResult } from './registry';
 
 export interface GenerateProgress {
@@ -134,7 +135,16 @@ export function triggerContestFileDownload(contest: Contest): void {
   triggerDownload(blob, contestFileName(contest.identity));
 }
 
-/** Shared anchor-click download (v12 behavior), used by both exports above. */
+/**
+ * Saves Panel Tabulation.pdf on its own (the tabulation's Email to UIL button
+ * downloads it to attach by hand, since an email link cannot carry a file).
+ */
+export async function triggerPanelTabulationDownload(contest: Contest): Promise<void> {
+  const bytes = await buildPanelTabulationPdf(contest);
+  triggerDownload(new Blob([bytes as BlobPart], { type: 'application/pdf' }), 'Panel Tabulation.pdf');
+}
+
+/** Shared anchor-click download (v12 behavior), used by the exports above. */
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
