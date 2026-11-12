@@ -30,6 +30,7 @@ async function buildApp() {
   const app = createApp({
     repo: createContestRepo(pool),
     questionnaireRepo: createQuestionnaireRepo(pool),
+    mailSender: async () => {},
     eventLog: createEventLog(pool),
     userDirectory: createInMemoryUserDirectory([]),
     authAdmin: { sendSignInLink: async () => {} },

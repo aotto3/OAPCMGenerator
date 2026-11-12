@@ -42,6 +42,7 @@ async function buildApp(admins: ReadonlySet<string> = new Set(['admin@example.te
   const app = createApp({
     repo: createContestRepo(pool),
     questionnaireRepo: createQuestionnaireRepo(pool),
+    mailSender: async () => {},
     eventLog: createEventLog(pool),
     userDirectory: createInMemoryUserDirectory(USERS),
     authAdmin: {

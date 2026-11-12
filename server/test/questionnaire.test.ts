@@ -17,10 +17,14 @@ import { createContestRepo } from '../src/contestRepo';
 import { createEventLog } from '../src/eventLog';
 import { createQuestionnaireRepo } from '../src/questionnaireRepo';
 import { createRateLimiter } from '../src/rateLimiter';
+import type { OutgoingMail } from '../src/questionnaireEmail';
 import { createInMemoryUserDirectory } from '../src/userDirectory';
 import { migrate, type Pool } from '../src/db';
 
 let clock = 0;
+/** Mail the fake sender received; `failMail` makes it throw. */
+let sent: OutgoingMail[] = [];
+let failMail = false;
 
 async function buildApp(limits = { perIp: 1000, perEmail: 1000 }) {
   const mem = newDb();
@@ -29,12 +33,18 @@ async function buildApp(limits = { perIp: 1000, perEmail: 1000 }) {
   return createApp({
     repo: createContestRepo(pool),
     questionnaireRepo: createQuestionnaireRepo(pool),
+    mailSender: async (mail) => {
+      if (failMail) throw new Error('MailerSend is down');
+      sent.push(mail);
+    },
     questionnaireLimiters: {
       perIp: createRateLimiter({ limit: limits.perIp, windowMs: 1000, now: () => clock }),
       perEmail: createRateLimiter({ limit: limits.perEmail, windowMs: 1000, now: () => clock }),
     },
     eventLog: createEventLog(pool),
-    userDirectory: createInMemoryUserDirectory([]),
+    userDirectory: createInMemoryUserDirectory([
+      { id: 'alice', email: 'alice@owner.test', createdAt: '2026-01-01T00:00:00.000Z' },
+    ]),
     authAdmin: { sendSignInLink: async () => {} },
     adminEmails: new Set(),
     resolveUser: (req) => {
@@ -48,6 +58,8 @@ type App = Awaited<ReturnType<typeof buildApp>>;
 let app: App;
 beforeEach(async () => {
   clock = 0;
+  sent = [];
+  failMail = false;
   app = await buildApp();
 });
 
@@ -274,5 +286,50 @@ describe('public submit', () => {
     await request(app).get('/api/questionnaire/submissions').expect(401);
     const bob = await request(app).get('/api/questionnaire/submissions').set('x-user-id', 'bob').expect(200);
     expect(bob.body.submissions).toEqual([]);
+  });
+});
+
+describe('CM notification on submit', () => {
+  it('emails the CM once with every answer, replying to the judge', async () => {
+    const token = await ready();
+    await submit(app, { token, email: 'jane@x.org', answers: ANSWERS }).expect(200);
+    expect(sent).toHaveLength(1); // both zones share one CM email
+    expect(sent[0]).toMatchObject({ to: 'cm@example.org', replyTo: 'jane@x.org', subject: 'Judge questionnaire: Jane Judge' });
+    expect(sent[0].text).toContain('Anything else: Arriving late');
+    expect(sent[0].text).toContain('2027 — 5A Zone 1 OAP');
+  });
+
+  it('marks a resubmission as an update', async () => {
+    const token = await ready();
+    await submit(app, { token, email: 'jane@x.org', answers: ANSWERS }).expect(200);
+    await submit(app, { token, email: 'jane@x.org', answers: ANSWERS }).expect(200);
+    expect(sent.map((m) => m.subject)).toEqual([
+      'Judge questionnaire: Jane Judge',
+      'Judge questionnaire (updated): Jane Judge',
+    ]);
+  });
+
+  it("falls back to the account's sign-in email when the contests have no CM email", async () => {
+    const token = await linkToken(app, 'alice');
+    const noCm = { ...ROSTER, contests: ROSTER.contests.map((c) => ({ ...c, cmEmail: '' })) };
+    await publish(app, 'alice', noCm).expect(204);
+    await submit(app, { token, email: 'jane@x.org', answers: ANSWERS }).expect(200);
+    expect(sent.map((m) => m.to)).toEqual(['alice@owner.test']);
+  });
+
+  it('still saves the submission when the email fails to send', async () => {
+    const token = await ready();
+    failMail = true;
+    await submit(app, { token, email: 'jane@x.org', answers: ANSWERS }).expect(200);
+    const list = await request(app).get('/api/questionnaire/submissions').set('x-user-id', 'alice').expect(200);
+    expect(list.body.submissions).toHaveLength(1);
+  });
+
+  it('sends nothing for a honeypot, an invalid submission, or an unknown judge', async () => {
+    const token = await ready();
+    await submit(app, { token, email: 'jane@x.org', website: 'spam', answers: ANSWERS }).expect(200);
+    await submit(app, { token, email: 'jane@x.org', answers: { ...ANSWERS, needsPower: 'x' } }).expect(400);
+    await submit(app, { token, email: 'nobody@x.org', answers: ANSWERS }).expect(404);
+    expect(sent).toEqual([]);
   });
 });
