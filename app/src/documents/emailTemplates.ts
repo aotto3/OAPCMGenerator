@@ -25,6 +25,7 @@
 
 import { contestFullName, type Contest } from '../model/contest';
 import { fmtTime, parseTime } from '../model/schedule';
+import { STATE_THEATRE_DIRECTOR_EMAIL, tabulationPlainText, tabulationReport } from '../model/tabulationReport';
 import { docSchools } from './docVars';
 import { fmtDate, fmtDateShort } from './format';
 
@@ -244,5 +245,34 @@ export function advancingEmail(contest: Contest, selectedSchoolIndices: number[]
       'As always, do not hesitate to reach out if you have any questions or if there is anything I can do to make your ' +
       'season more enjoyable from here.\n\n' +
       'Play with love,\n' + cmn + '\n' + cmp + (cmw ? '\n' + cmw : ''),
+  };
+}
+
+/** The State Office draft also carries its fixed recipient. */
+export interface TabulationDraft extends EmailDraft {
+  /** The State Theatre Director (UIL asks for the tabulation immediately). */
+  to: string[];
+}
+
+/**
+ * Tabulation to State Office (PRD #236): UIL's results page says to email the
+ * tabulation to the State Theatre Director immediately. The body is UIL's
+ * plain-text report; the first line reminds the CM to attach Panel
+ * Tabulation.pdf from the documents ZIP. Null until every ballot is valid, so
+ * the composer can only offer it once there are results.
+ */
+export function tabulationEmail(contest: Contest): TabulationDraft | null {
+  const report = tabulationReport(contest);
+  if (!report) return null;
+  const cn = contestFullName(contest.identity) || '[Contest Name]';
+  const cmn = contest.cmInfo.name || '[CM Name]';
+  return {
+    to: [STATE_THEATRE_DIRECTOR_EMAIL],
+    subject: cn + ' - Panel Tabulation',
+    body:
+      '[Before sending: attach Panel Tabulation.pdf from the documents ZIP, then delete this line.]\n\n' +
+      'Attached is the panel tabulation for the ' + cn + '.\n\n' +
+      tabulationPlainText(report) + '\n\n' +
+      cmn + '\nContest Manager',
   };
 }

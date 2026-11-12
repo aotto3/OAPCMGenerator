@@ -13,7 +13,13 @@ import {
   type Contest,
   type ContestIdentity,
 } from './contest';
-import { tabulationHeader, tabulationHeaderLines, tabulationPrintHtml, tabulationReport } from './tabulationReport';
+import {
+  tabulationHeader,
+  tabulationHeaderLines,
+  tabulationPlainText,
+  tabulationPrintHtml,
+  tabulationReport,
+} from './tabulationReport';
 
 const NOW = '2026-11-12T12:00:00.000Z';
 
@@ -251,5 +257,41 @@ table {
     const html = tabulationPrintHtml(tabulationReport(sample())!, css);
     expect(html).toContain('.pure-table{border-collapse:collapse');
     expect(html).not.toMatch(/<link|https?:\/\/(?!github\.com|git\.io)/);
+  });
+});
+
+describe('UIL plain-text report', () => {
+  it("renders UIL's text template for the sample", () => {
+    expect(tabulationPlainText(tabulationReport(sample())!)).toBe(
+      [
+        'UIL One-Act Play Panel Tabulation',
+        '*********************************',
+        'Date: 2026-11-12',
+        'Conference: 6A',
+        'Contest Site: Test High School',
+        'Contest Level: Zone',
+        'District Number: 22',
+        'Zone Number: A',
+        'Contest Manager: Allen Otto',
+        '',
+        'Results',
+        '*******',
+        '',
+        'Tie, Place, John Doe, Karen Hager, Smith Wesley',
+        'School 3 - Play Name,1,1,2,2,',
+        'School 1 - Play Name,2,2,3,1,',
+        'School 2 - Play Name,3,3,1,3,',
+      ].join('\n'),
+    );
+  });
+
+  it('marks an Acting Judge tie and keeps names as plain text', () => {
+    let c = withSchool(sample(), 0, { name: 'A&M Consolidated' }, NOW);
+    [
+      ['1', '2', '3'],
+      ['2', '3', '1'],
+      ['3', '1', '2'],
+    ].forEach((r, i) => r.forEach((t, j) => (c = setTabulationRank(c, i, j, t, NOW))));
+    expect(tabulationPlainText(tabulationReport(c)!)).toContain('\nA&M Consolidated - Play Name - TIE,1,1,2,3,');
   });
 });

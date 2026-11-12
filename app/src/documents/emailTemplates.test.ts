@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { withAdjudicator, withCmInfo, withDetails, withIdentity } from '../model/contest';
+import { setTabulationRank, withAdjudicator, withCmInfo, withDetails, withIdentity } from '../model/contest';
+import { tabulationPlainText, tabulationReport } from '../model/tabulationReport';
 import { fixtureContest, FIXTURE_NOW } from './__fixtures__/fixtureContest';
 import {
   advancingEmail,
@@ -19,6 +20,8 @@ import {
   deadlineEmail,
   judgeNeedsEmail,
   judgesEmail,
+  tabulationEmail,
+  EMAIL_TEMPLATES,
 } from './emailTemplates';
 
 /** Fixture contest name — every template opens with this. */
@@ -220,5 +223,47 @@ describe('advancingEmail', () => {
     const { body } = advancingEmail(fixtureContest(), [0]);
     expect(body).toContain('Play with love,\nAllen Otto\n281-777-8672\nwww.allenotto.com');
     expect(body).toContain('[PASTE EVALUATION LINK HERE]');
+  });
+});
+
+describe('tabulationEmail (PRD #236)', () => {
+  /** The fixture with every ballot entered (rotations keep each judge's ranks distinct). */
+  function tabulated() {
+    let c = fixtureContest();
+    const n = c.schools.length;
+    c.schools.forEach((_, i) =>
+      [i + 1, ((i + 1) % n) + 1, ((i + n - 1) % n) + 1].forEach(
+        (v, j) => (c = setTabulationRank(c, i, j, String(v), FIXTURE_NOW)),
+      ),
+    );
+    return c;
+  }
+
+  it('is not offered until every ballot is valid', () => {
+    expect(tabulationEmail(fixtureContest())).toBeNull();
+    expect(tabulationEmail(setTabulationRank(tabulated(), 0, 0, '', FIXTURE_NOW))).toBeNull();
+  });
+
+  it('goes to the State Theatre Director', () => {
+    expect(tabulationEmail(tabulated())!.to).toEqual(['prodriguez@uiltexas.org']);
+  });
+
+  it('carries the contest name in the subject', () => {
+    expect(tabulationEmail(tabulated())!.subject).toBe(CONTEST_NAME + ' - Panel Tabulation');
+  });
+
+  it("puts UIL's plain-text report in the body with a reminder to attach the PDF", () => {
+    const c = tabulated();
+    const { body } = tabulationEmail(c)!;
+    expect(body.split('\n')[0]).toBe(
+      '[Before sending: attach Panel Tabulation.pdf from the documents ZIP, then delete this line.]',
+    );
+    expect(body).toContain(tabulationPlainText(tabulationReport(c)!));
+    expect(body).toContain('Attached is the panel tabulation for the ' + CONTEST_NAME + '.');
+    expect(body.endsWith('Contest Manager')).toBe(true);
+  });
+
+  it('leaves the one-click template set unchanged', () => {
+    expect(Object.keys(EMAIL_TEMPLATES)).toEqual(['announcement', 'deadline', 'daybefore', 'judges', 'judgeneeds']);
   });
 });

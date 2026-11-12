@@ -481,6 +481,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   background: var(--c-bg-blue); border: 1.5px solid var(--c-blue-border); color: var(--c-blue);
   border-radius: var(--radius-sm); padding: 6px 12px; font-size: 0.82rem; font-weight: 700; white-space: nowrap;
 }
+.email-template-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .email-advancing-toggle {
   background: var(--c-warn-bg); border-color: var(--c-warn-border); color: var(--c-warn);
 }
