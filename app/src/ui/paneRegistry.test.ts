@@ -79,7 +79,10 @@ describe('per-pane module order (PRD mapping table)', () => {
       { module: 'schedule', mirror: false },
       { module: 'critique', mirror: false },
     ]);
-    expect(paneModules('results')).toEqual([{ module: 'results', mirror: false }]);
+    expect(paneModules('results')).toEqual([
+      { module: 'tabulation', mirror: false },
+      { module: 'results', mirror: false },
+    ]);
     expect(paneModules('generate')).toEqual([{ module: 'generate', mirror: false }]);
     expect(paneModules('save')).toEqual([{ module: 'history', mirror: false }]);
     expect(paneModules('email')).toEqual([{ module: 'email', mirror: false }]);

@@ -32,6 +32,7 @@ export type ModuleId =
   | 'compliance'
   | 'schedule'
   | 'critique'
+  | 'tabulation'
   | 'results'
   | 'generate'
   | 'history'
@@ -96,6 +97,7 @@ export const MODULE_META: Record<ModuleId, ModuleMeta> = {
   compliance: { label: 'Compliance', emoji: '✅' },
   schedule: { label: 'Schedule', emoji: '🗓️' },
   critique: { label: 'Critique', emoji: '🎲' },
+  tabulation: { label: 'Panel Tabulation', emoji: '🧮' },
   results: { label: 'Results & Advancement', emoji: '🏆' },
   generate: { label: 'Generate Documents', emoji: '⬇️' },
   history: { label: 'Manual Save', emoji: '💾' },
@@ -139,6 +141,7 @@ export const CANONICAL_HOME: Record<ModuleId, PaneId> = {
   draw: 'contest',
   schedule: 'contest',
   critique: 'contest',
+  tabulation: 'results',
   results: 'results',
   generate: 'generate',
   history: 'save',
@@ -163,6 +166,7 @@ const MODULE_ORDER: readonly ModuleId[] = [
   'draw',
   'schedule',
   'critique',
+  'tabulation',
   'results',
   'generate',
   'history',

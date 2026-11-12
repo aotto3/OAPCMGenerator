@@ -1160,3 +1160,34 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
     background: rgba(0, 0, 0, 0.4);
   }
 }
+
+/* Panel Tabulation (PRD #236). Grid shaped like UIL's TTAO tool; theme tokens only. */
+.tab-grid-scroll { overflow-x: auto; }
+.tab-grid { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); margin-top: var(--space-2); }
+.tab-grid th {
+  background: var(--c-bg-blue); color: var(--c-blue); text-align: left; vertical-align: bottom;
+  padding: 6px var(--space-2); font-weight: 700; border-bottom: 2px solid var(--c-border);
+}
+.tab-grid td { padding: 5px var(--space-2); border-bottom: 1px solid var(--c-border); color: var(--c-text); vertical-align: top; }
+.tab-judge-name { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--c-muted); }
+.tab-col-rank { width: 92px; }
+.tab-col-notranked { width: 72px; text-align: center; }
+.tab-grid td.tab-col-notranked { vertical-align: middle; }
+.tab-rank-input { width: 56px; text-align: center; font-size: var(--fs-sm); }
+.tab-rank-error { border-color: var(--c-red); background: var(--c-bg-red); color: var(--c-red); }
+.tab-cell-error { display: block; font-size: var(--fs-xs); color: var(--c-red); margin-top: 2px; }
+.tab-row-out .tab-col-school { color: var(--c-muted); text-decoration: line-through; }
+.tab-status { margin-top: var(--space-2); }
+.tab-status p { margin: 4px 0; }
+.tab-status-error { color: var(--c-red); font-size: var(--fs-sm); }
+.tab-results-title { margin: var(--space-3) 0 0; font-size: var(--fs-base); color: var(--c-blue); }
+.tab-place { font-weight: 700; }
+.tab-tie { color: var(--c-red); font-weight: 600; }
+@media (max-width: 600px) {
+  .tab-grid th, .tab-grid td { padding: 4px; }
+  .tab-col-rank { width: 52px; }
+  .tab-col-notranked { width: 48px; }
+  .tab-rank-input { width: 40px; }
+  .tab-grid .tab-col-school { min-width: 110px; }
+  .tab-results { min-width: 520px; }
+}

@@ -17,7 +17,7 @@
  * separately (see storage/contestStore.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 15;
+export const CONTEST_SCHEMA_VERSION = 16;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -508,6 +508,37 @@ export interface ContestResults {
   bestCrew: number | null;
 }
 
+/* ────────────────────────── panel tabulation ──────────────────────────
+ * PRD #236. The three judges' ranks for a panel contest, typed in by the CM and
+ * tabulated with UIL's TTAO rules (see tabulator.ts / tabulation.ts).
+ */
+
+/** One school's tabulation entry: the raw rank text per judge, plus Not ranked. */
+export interface TabulationEntry {
+  /**
+   * Raw text typed for [Acting Judge (Judge 1), Judge 2, Judge 3]. Kept as text
+   * so an invalid entry ("2.5", "x") is stored as typed and flagged, not lost.
+   */
+  ranks: [string, string, string];
+  /** True when the school is left off the ballots (withdrew / disqualified). */
+  notRanked: boolean;
+}
+
+/**
+ * The panel tabulation record (PRD #236). Always present; blank by default.
+ * Entries are keyed by school FORM index (as a string), never by row position,
+ * so a performance-order change can never move a rank onto another school. An
+ * absent key is a blank, ranked entry.
+ */
+export interface Tabulation {
+  entries: Record<string, TabulationEntry>;
+  /**
+   * The adjudicators confirmed the entered ranks (Handbook: after critiques).
+   * Informational only; any rank or Not-ranked change clears it.
+   */
+  judgesConfirmed: boolean;
+}
+
 /**
  * Next-level contest info (PRD #66). An always-present block (blank strings by
  * default, like cmInfo/details) so it can be filled independently of results and
@@ -625,6 +656,8 @@ export interface Contest {
   scheduleOverrides: ScheduleOverrides;
   /** Contest-level judge preference data (PRD #202); always present, blank by default. */
   judgePreferences: JudgePreferences;
+  /** Panel tabulation ranks (PRD #236); always present, blank by default. Per-occurrence. */
+  tabulation: Tabulation;
   /** Device-only — excluded from serializeContest() by construction. */
   speechwire: SpeechwireCredentials;
 }
@@ -762,6 +795,14 @@ export function defaultJudgePreferences(): JudgePreferences {
 }
 
 /** A blank next-level info block — all-empty strings (PRD #66). */
+export function defaultTabulation(): Tabulation {
+  return { entries: {}, judgesConfirmed: false };
+}
+
+export function blankTabulationEntry(): TabulationEntry {
+  return { ranks: ['', '', ''], notRanked: false };
+}
+
 export function defaultNextContest(): NextContestInfo {
   return { date: '', location: '', cmName: '', cmEmail: '', cmPhone: '' };
 }
@@ -827,6 +868,7 @@ export function createContest(options: NewContestOptions = {}): Contest {
     customReadinessItems: [],
     scheduleOverrides: defaultScheduleOverrides(),
     judgePreferences: defaultJudgePreferences(),
+    tabulation: defaultTabulation(),
     speechwire: defaultSpeechwire(),
   };
 }
@@ -936,6 +978,8 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     // Manual schedule breaks belong to one contest occurrence — start clean.
     scheduleOverrides: defaultScheduleOverrides(),
     judgePreferences: defaultJudgePreferences(),
+    // Ranks belong to one contest occurrence (PRD #236).
+    tabulation: defaultTabulation(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -1091,6 +1135,8 @@ export function advanceContest(contest: Contest, options: AdvanceContestOptions 
     // Manual schedule breaks belong to one contest occurrence — start clean.
     scheduleOverrides: defaultScheduleOverrides(),
     judgePreferences: defaultJudgePreferences(),
+    // Ranks belong to one contest occurrence (PRD #236).
+    tabulation: defaultTabulation(),
     // Device-only credentials are per-contest; never carry them across.
     speechwire: defaultSpeechwire(),
   };
@@ -1743,8 +1789,78 @@ export function setNumSchools(contest: Contest, count: number, now?: string): Co
   const schools = contest.schools.slice(0, n);
   while (schools.length < n) schools.push(blankSchool(schools.length + 1));
   // Changing the school count restructures the timeline (rows appear/disappear),
-  // so manual schedule breaks are cleared to a clean slate (PRD #179).
-  return { ...touch(contest, now), schools, scheduleOverrides: defaultScheduleOverrides() };
+  // so manual schedule breaks are cleared to a clean slate (PRD #179). Dropped
+  // schools take their tabulation entries with them (PRD #236).
+  const entries = Object.fromEntries(
+    Object.entries(contest.tabulation.entries).filter(([key]) => Number(key) < n),
+  );
+  return {
+    ...touch(contest, now),
+    schools,
+    scheduleOverrides: defaultScheduleOverrides(),
+    tabulation: { ...contest.tabulation, entries },
+  };
+}
+
+/* ── panel tabulation updaters (PRD #236) ── */
+
+/** The stored entry for a school, or a blank ranked one when none is stored. */
+export function tabulationEntry(contest: Contest, schoolIndex: number): TabulationEntry {
+  return contest.tabulation.entries[String(schoolIndex)] ?? blankTabulationEntry();
+}
+
+/**
+ * Writes one school's entry. Any change to ranks or Not ranked clears the
+ * judges' confirmation, which always refers to the entries as they stand.
+ * Out-of-range school indices are a no-op.
+ */
+function updateTabulationEntry(
+  contest: Contest,
+  schoolIndex: number,
+  mutate: (entry: TabulationEntry) => TabulationEntry,
+  now?: string,
+): Contest {
+  if (!Number.isInteger(schoolIndex) || schoolIndex < 0 || schoolIndex >= contest.schools.length) return contest;
+  const current = tabulationEntry(contest, schoolIndex);
+  const next = mutate({ ranks: [...current.ranks], notRanked: current.notRanked });
+  return {
+    ...touch(contest, now),
+    tabulation: {
+      entries: { ...contest.tabulation.entries, [String(schoolIndex)]: next },
+      judgesConfirmed: false,
+    },
+  };
+}
+
+/** Sets the raw rank text one judge (0 = Acting Judge / Judge 1) gave one school. */
+export function setTabulationRank(
+  contest: Contest,
+  schoolIndex: number,
+  judge: number,
+  text: string,
+  now?: string,
+): Contest {
+  if (!Number.isInteger(judge) || judge < 0 || judge > 2) return contest;
+  return updateTabulationEntry(
+    contest,
+    schoolIndex,
+    (e) => {
+      const ranks: [string, string, string] = [...e.ranks];
+      ranks[judge] = text;
+      return { ...e, ranks };
+    },
+    now,
+  );
+}
+
+/** Marks a school Not ranked (withdrew / disqualified) or back to ranked. Its typed ranks are kept. */
+export function setTabulationNotRanked(contest: Contest, schoolIndex: number, notRanked: boolean, now?: string): Contest {
+  return updateTabulationEntry(contest, schoolIndex, (e) => ({ ...e, notRanked }), now);
+}
+
+/** Records (or clears) the adjudicators' confirmation of the entered ranks. */
+export function setTabulationConfirmed(contest: Contest, confirmed: boolean, now?: string): Contest {
+  return { ...touch(contest, now), tabulation: { ...contest.tabulation, judgesConfirmed: confirmed } };
 }
 
 export function setDocumentSelected(contest: Contest, id: DocumentId, selected: boolean, now?: string): Contest {
@@ -2613,6 +2729,9 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
       ? (raw.adjudicators as Record<string, unknown>[]).map((j) => ({ ...j, email: '' }))
       : raw.adjudicators,
   }),
+  // v15 predates panel tabulation (PRD #236): every contest gains an empty
+  // tabulation record. Additive/blank-safe.
+  15: (raw) => ({ ...raw, tabulation: defaultTabulation() }),
 };
 
 export function parseContest(json: string): Contest {
