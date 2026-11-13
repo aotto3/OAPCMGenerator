@@ -252,9 +252,9 @@ export const EMAIL_TEMPLATES: Record<EmailTemplateId, (contest: Contest) => Emai
  */
 export function advancingEmail(contest: Contest, selectedSchoolIndices: number[]): AdvancingDraft {
   const cn = contestFullName(contest.identity) || '[Contest Name]';
-  const cmn = contest.cmInfo.name || 'Allen';
-  const cmp = contest.cmInfo.phone || '281-777-8672';
-  const cmw = contest.cmInfo.website || 'www.allenotto.com';
+  const cmn = contest.cmInfo.name || '[CM Name]';
+  const cmp = contest.cmInfo.phone || '';
+  const cmw = contest.cmInfo.website || '';
 
   const to: string[] = [];
   for (const i of selectedSchoolIndices) {
@@ -279,7 +279,7 @@ export function advancingEmail(contest: Contest, selectedSchoolIndices: number[]
       cn + ' Director\'s Evaluation\n[PASTE EVALUATION LINK HERE]\n\n' +
       'As always, do not hesitate to reach out if you have any questions or if there is anything I can do to make your ' +
       'season more enjoyable from here.\n\n' +
-      'Play with love,\n' + cmn + '\n' + cmp + (cmw ? '\n' + cmw : ''),
+      'Play with love,\n' + cmn + (cmp ? '\n' + cmp : '') + (cmw ? '\n' + cmw : ''),
   };
 }
 

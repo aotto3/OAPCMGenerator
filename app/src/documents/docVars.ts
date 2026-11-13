@@ -92,9 +92,9 @@ export function critiqueRows(contest: Contest): CritiqueRow[] | null {
 
 /** The Contest Manager's identity with the letter-family fallback strings. */
 export interface DocCmInfo {
-  /** CM name, or 'Allen Otto' when blank (v12 default). */
+  /** CM name, or '[CM Name]' when blank. */
   name: string;
-  /** CM email, or 'aotto3@gmail.com' when blank (v12 default). */
+  /** CM email, or '[CM Email]' when blank. */
   email: string;
   /** CM phone, or '' when blank. */
   phone: string;
@@ -110,7 +110,9 @@ export interface DocCmInfo {
  * The CM identity projected with the fallback strings the letter-family documents
  * share (the Director + Advancing letters, Host Checklist, Directors Meeting,
  * Adjudicator Info, Contact List). Centralizes the defaults those docs each
- * repeated — change 'Allen Otto' / 'aotto3@gmail.com' here, not in six files.
+ * repeated, so change the '[CM Name]' / '[CM Email]' placeholders here, not in six
+ * files. (v12 fell back to its owner's own name and email; 2.0 is multi-user, so
+ * a blank field prints a neutral placeholder, matching the email templates.)
  *
  * Deliberately NOT used by the email templates or the venue/'TBD' placeholders:
  * those carry their OWN (different) v12 fallbacks, and unifying them would change
@@ -119,8 +121,8 @@ export interface DocCmInfo {
 export function docCmInfo(contest: Contest): DocCmInfo {
   const cm = contest.cmInfo;
   return {
-    name: cm.name || 'Allen Otto',
-    email: cm.email || 'aotto3@gmail.com',
+    name: cm.name || '[CM Name]',
+    email: cm.email || '[CM Email]',
     phone: cm.phone || '',
     mailingAddress: cm.mailingAddress || '',
     website: cm.website || '',

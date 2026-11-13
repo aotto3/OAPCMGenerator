@@ -107,7 +107,7 @@ describe('Audience Program (with company) — bios, roster, scenes', () => {
     expect(xml).toContain('Dr. Jane Judge has directed competitive theatre');
     expect(xml).toContain('Prof. John Critic teaches dramatic literature');
     expect(xml).toContain('Contest Manager');
-    expect(xml).toContain('Allen Otto is a longtime UIL contest manager');
+    expect(xml).toContain('Dana Whitfield is a longtime UIL contest manager');
     // Judge 3 has no bio, so its name must not appear anywhere in the program.
     expect(xml).not.toContain('Ms. Mary Adjudicator');
   });

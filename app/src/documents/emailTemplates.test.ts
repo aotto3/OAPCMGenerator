@@ -46,8 +46,8 @@ describe('announcementEmail', () => {
     expect(body).toContain('Directors’ Meeting: 9:00 AM');
     expect(body).toContain('First Performance: 10:00 AM');
     expect(body).toContain('submit your entries by March 11, 2026'); // fmtDateShort
-    expect(body).toContain('aotto3@gmail.com or 281-777-8672');
-    expect(body).toMatch(/Sincerely,\nAllen Otto\nContest Manager$/);
+    expect(body).toContain('dana.whitfield@example.org or 555-0142');
+    expect(body).toMatch(/Sincerely,\nDana Whitfield\nContest Manager$/);
   });
 
   it('falls back to placeholders when fields are blank', () => {
@@ -64,7 +64,7 @@ describe('announcementEmail', () => {
   it('omits the phone clause when the CM phone is blank', () => {
     const c = withCmInfo(fixtureContest(), { phone: '' }, FIXTURE_NOW);
     const { body } = announcementEmail(c);
-    expect(body).toContain('please contact me at aotto3@gmail.com.');
+    expect(body).toContain('please contact me at dana.whitfield@example.org.');
     expect(body).not.toContain(' or ');
   });
 });
@@ -148,7 +148,7 @@ describe('questionnaireEmail', () => {
   it('gives the link after the Adjudicator Questionnaire label and signs off with CM contact', () => {
     const { body } = questionnaireEmail(fixtureContest(), LINK);
     expect(body).toContain(`Adjudicator Questionnaire: ${LINK}\n`);
-    expect(body).toMatch(/Allen Otto\nContest Manager\naotto3@gmail.com\n281-777-8672$/);
+    expect(body).toMatch(/Dana Whitfield\nContest Manager\ndana\.whitfield@example\.org\n555-0142$/);
   });
 
   it('leaves a placeholder when the link is unavailable', () => {
@@ -262,7 +262,7 @@ describe('advancingEmail', () => {
 
   it('carries the CM sign-off from the contest record', () => {
     const { body } = advancingEmail(fixtureContest(), [0]);
-    expect(body).toContain('Play with love,\nAllen Otto\n281-777-8672\nwww.allenotto.com');
+    expect(body).toContain('Play with love,\nDana Whitfield\n555-0142\nwww.example.org');
     expect(body).toContain('[PASTE EVALUATION LINK HERE]');
   });
 });
