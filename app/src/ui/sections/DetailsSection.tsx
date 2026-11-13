@@ -2,12 +2,14 @@ import { useState } from 'react';
 import {
   CRITIQUE_FORMATS,
   MAX_JUDGES,
+  MAX_REHEARSAL_TRANSITION_MINUTES,
   MAX_SCHOOLS,
   MIN_SCHOOLS,
   REHEARSAL_LENGTH_OPTIONS,
   numSchools,
   rehearsalDay1Count,
   rehearsalDay2Count,
+  rehearsalTransitionMinutes,
   setNumSchools,
   withDetails,
   withSpeechwire,
@@ -175,7 +177,10 @@ export function DetailsSection({
           options={REHEARSAL_LENGTH_OPTIONS}
           optionLabel={(m) => (m === 120 ? '2 hours' : `${m} minutes`)}
           onChange={(v) => edit({ rehearsalLengthMinutes: v })}
-          hint="10 min transition added between each slot"
+        />
+        <TransitionMinutesField
+          minutes={rehearsalTransitionMinutes(contest)}
+          onCommit={(v) => edit({ rehearsalTransitionMinutes: v })}
         />
       </div>
 
@@ -259,5 +264,37 @@ export function DetailsSection({
         </label>
       </div>
     </Section>
+  );
+}
+
+/**
+ * Transition minutes added after each rehearsal slot: a two-character numeric
+ * box (0-99), like the schedule's break-length box. A blank box while typing
+ * commits nothing and snaps back to the stored value on blur.
+ */
+function TransitionMinutesField({ minutes, onCommit }: { minutes: number; onCommit: (minutes: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <label className="field">
+      Rehearsal Transition
+      <span className="minutes-input">
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={2}
+          value={draft ?? String(minutes)}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => {
+            const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+            setDraft(digits);
+            const n = parseInt(digits, 10);
+            if (n >= 0 && n <= MAX_REHEARSAL_TRANSITION_MINUTES) onCommit(n);
+          }}
+          onBlur={() => setDraft(null)}
+        />{' '}
+        min
+      </span>
+      <span className="hint">Added after each rehearsal slot (default 10)</span>
+    </label>
   );
 }

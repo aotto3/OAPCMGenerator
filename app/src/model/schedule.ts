@@ -19,6 +19,7 @@
  */
 
 import {
+  rehearsalSlotMinutes,
   schoolsInPerformanceOrder,
   type Contest,
   type ScheduleOverrides,
@@ -301,13 +302,13 @@ export function isSameDayRehearsal(contest: Contest): boolean {
  * The same-day rehearsal block that leads the contest day: a single CM-arrival
  * row (an hour before rehearsals begin, per v12 — or the CM's explicit override,
  * PRD #192) followed by one rehearsal slot per school in performance order, each
- * length + a fixed 10-minute transition. Overrides are applied here too, so a
+ * length + the contest's rehearsal transition (10 minutes by default). Overrides are applied here too, so a
  * gap/nudge anchored to a rehearsal row lands in the block (PRD #192); gaps
  * anchored to contest rows have no match here and are skipped.
  */
 function sameDayRehearsalBlock(contest: Contest, overrides: ScheduleOverrides): ScheduleEvent[] {
   const d = contest.details;
-  const slotLen = d.rehearsalLengthMinutes + 10;
+  const slotLen = rehearsalSlotMinutes(contest);
   const start = parseTime(d.rehearsalStartTime1 || '2:00 PM') ?? 14 * 60;
   const events: ScheduleEvent[] = [];
   const arrival = overrides.arrival ?? start - 60;

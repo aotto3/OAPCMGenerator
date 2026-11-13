@@ -1056,6 +1056,20 @@ describe('judge email (PRD #227)', () => {
     const migrated = parseContest(JSON.stringify({ schemaVersion: 17, contest: v17Contest }));
     expect(migrated.adjudicators[0].hotelNights).toEqual({ before: true, after: true });
   });
+
+  it('migrates a v18 contest to the default 10-minute rehearsal transition', () => {
+    const { speechwire: _dev, ...rest } = withDetails(contest(), { rehearsalLengthMinutes: 60 });
+    const { rehearsalTransitionMinutes: _t, ...details } = rest.details;
+    const migrated = parseContest(JSON.stringify({ schemaVersion: 18, contest: { ...rest, details } }));
+    expect(migrated.details.rehearsalTransitionMinutes).toBe(10);
+    expect(migrated.details.rehearsalLengthMinutes).toBe(60); // pre-existing data preserved
+    expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+
+  it('round-trips a custom rehearsal transition', () => {
+    const c = withDetails(contest(), { rehearsalTransitionMinutes: 15 });
+    expect(parseContest(serializeContest(c)).details.rehearsalTransitionMinutes).toBe(15);
+  });
 });
 
 describe('hotelNightsSummary', () => {

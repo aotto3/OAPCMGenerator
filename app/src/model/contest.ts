@@ -17,7 +17,7 @@
  * separately (see storage/contestLibrary.ts).
  */
 
-export const CONTEST_SCHEMA_VERSION = 18;
+export const CONTEST_SCHEMA_VERSION = 19;
 
 export const CONTEST_LEVELS = ['Zone', 'District', 'BiDistrict', 'Area', 'Region'] as const;
 export type ContestLevel = (typeof CONTEST_LEVELS)[number];
@@ -35,6 +35,10 @@ export const DEFAULT_SCHOOLS = 6;
 export const MAX_JUDGES = 3;
 export const DEFAULT_JUDGES = 3;
 export const REHEARSAL_LENGTH_OPTIONS = [45, 60, 90, 120] as const;
+/** v12's fixed load-in/load-out gap between rehearsal slots; now the editable default. */
+export const DEFAULT_REHEARSAL_TRANSITION_MINUTES = 10;
+/** The transition box is two characters wide, so 0-99 minutes. */
+export const MAX_REHEARSAL_TRANSITION_MINUTES = 99;
 
 /** Contest Identity — the "Upon Appointment" fields (v12 sec-t1). */
 export interface ContestIdentity {
@@ -99,6 +103,11 @@ export interface ContestDetails {
    */
   rehearsalDay1Count: number | null;
   rehearsalLengthMinutes: number;
+  /**
+   * Minutes of transition (load in / load out) added after every rehearsal slot,
+   * 0-99. Each slot on the schedule is rehearsalLengthMinutes + this.
+   */
+  rehearsalTransitionMinutes: number;
   /** Raw dollar amount as typed, e.g. "50". '' ⇒ no entry fee. */
   entryFee: string;
   /** Raw dollar amount as typed. '' ⇒ no admission charge. */
@@ -744,6 +753,7 @@ export function defaultDetails(): ContestDetails {
     rehearsalStartTime2: '2:00 PM',
     rehearsalDay1Count: null,
     rehearsalLengthMinutes: 90,
+    rehearsalTransitionMinutes: DEFAULT_REHEARSAL_TRANSITION_MINUTES,
     entryFee: '',
     admissionFee: '',
     entrySystemDeadline: '',
@@ -2526,6 +2536,21 @@ export function rehearsalDay1Count(contest: Contest): number {
   return Math.min(Math.max(value, 1), n - 1);
 }
 
+/**
+ * Effective transition minutes between rehearsal slots: the stored value as a
+ * whole number clamped to 0-99, or the 10-minute default when it is missing.
+ */
+export function rehearsalTransitionMinutes(contest: Contest): number {
+  const v = contest.details.rehearsalTransitionMinutes;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return DEFAULT_REHEARSAL_TRANSITION_MINUTES;
+  return Math.min(Math.max(Math.round(v), 0), MAX_REHEARSAL_TRANSITION_MINUTES);
+}
+
+/** One rehearsal slot on the schedule: the rehearsal itself plus its transition. */
+export function rehearsalSlotMinutes(contest: Contest): number {
+  return contest.details.rehearsalLengthMinutes + rehearsalTransitionMinutes(contest);
+}
+
 /** "Day 2 gets the rest" (v12 updateRehearsalDay2Count). */
 export function rehearsalDay2Count(contest: Contest): number {
   return numSchools(contest) - rehearsalDay1Count(contest);
@@ -2840,6 +2865,15 @@ const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string
           };
         })
       : raw.adjudicators,
+  }),
+  // v18 predates the editable rehearsal transition: every contest keeps v12's
+  // fixed 10 minutes, so stored schedules are unchanged.
+  18: (raw) => ({
+    ...raw,
+    details:
+      typeof raw.details === 'object' && raw.details !== null
+        ? { ...(raw.details as Record<string, unknown>), rehearsalTransitionMinutes: DEFAULT_REHEARSAL_TRANSITION_MINUTES }
+        : raw.details,
   }),
 };
 

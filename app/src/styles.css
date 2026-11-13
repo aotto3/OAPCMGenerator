@@ -910,6 +910,9 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .field textarea { resize: vertical; min-height: 4.5em; }
 .field input[readonly] { background: var(--c-bg-blue); }
+/* Two-character minutes box (rehearsal transition), sized like the schedule's break box. */
+.field .minutes-input { font-weight: 400; white-space: nowrap; }
+.field .minutes-input input { width: calc(2ch + 14px); box-sizing: content-box; text-align: right; }
 
 /* Companies section (PRD #68, Group E). */
 .company-paste { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }

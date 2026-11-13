@@ -96,6 +96,16 @@ async function documentXml(bytes: Uint8Array): Promise<string> {
 }
 
 describe('buildDirectorLetter', () => {
+  it("states the contest's rehearsal transition, and drops the clause at 0", async () => {
+    const custom = withDetails(fixtureContest(), { rehearsalTransitionMinutes: 15 }, NOW);
+    const xml = await documentXml(await buildDirectorLetter(custom, { now: LETTER_DATE }));
+    expect(xml).toContain('with 15 minutes of that allotted for load in and load out');
+    const zero = withDetails(fixtureContest(), { rehearsalTransitionMinutes: 0 }, NOW);
+    const xml0 = await documentXml(await buildDirectorLetter(zero, { now: LETTER_DATE }));
+    expect(xml0).toContain('90 minutes in length.');
+    expect(xml0).not.toContain('allotted for load in');
+  });
+
   it('matches the approved golden file (content-normalized)', async () => {
     const bytes = await buildDirectorLetter(fixtureContest(), { now: LETTER_DATE });
     await expectArchiveMatchesGolden(bytes, GOLDEN);

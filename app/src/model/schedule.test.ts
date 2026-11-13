@@ -197,6 +197,15 @@ describe('computeContestDay', () => {
     expect(reh[0].start).toBeLessThan(firstShow!.start);
   });
 
+  it("pads each rehearsal slot with each contest's own transition length", () => {
+    const c = withDetails(sameDay(), { rehearsalTransitionMinutes: 15 });
+    const reh = computeContestDay(c).filter((e) => e.type === 'rehearsal');
+    expect(reh[0]).toMatchObject({ start: 8 * 60, end: 8 * 60 + 105, dur: 105 });
+    expect(reh[2].start).toBe(8 * 60 + 210);
+    const none = computeContestDay(withDetails(sameDay(), { rehearsalTransitionMinutes: 0 }));
+    expect(none.filter((e) => e.type === 'rehearsal')[1].start).toBe(8 * 60 + 90);
+  });
+
   it('returns [] with no first-show time, even when rehearsals are same-day', () => {
     const c = withDetails(sameDay(), { firstShowTime: '' });
     expect(computeContestDay(c)).toEqual([]);

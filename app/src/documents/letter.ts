@@ -20,6 +20,7 @@
  */
 
 import {
+  rehearsalTransitionMinutes,
   schoolsInPerformanceOrder,
   type Contest,
 } from '../model/contest';
@@ -64,6 +65,11 @@ export async function buildDirectorLetter(contest: Contest, options: LetterOptio
   const fs = d.firstShowTime || 'TBD';
   const af = d.admissionFee ? '$' + d.admissionFee : 'TBD';
   const rehearsalMinutes = d.rehearsalLengthMinutes || 90;
+  const transitionMinutes = rehearsalTransitionMinutes(contest);
+  const transitionClause =
+    transitionMinutes > 0
+      ? ', with ' + transitionMinutes + ' minutes of that allotted for load in and load out of the stage.'
+      : '.';
 
   const judgeAddrs: Array<{ name: string; addr: string }> = [];
   for (let i = 1; i <= d.numJudges; i++) {
@@ -119,7 +125,7 @@ export async function buildDirectorLetter(contest: Contest, options: LetterOptio
     ooP('Otherwise, please be sure to bring all necessary paperwork to your rehearsal time.  I will verify that you have all of your paperwork prior to your rehearsal time beginning.  If you do not have all necessary paperwork AND your entry fee (if applicable), you will not be allowed to rehearse.', { size: 20, sa: 200 }),
     // Rehearsal procedures
     ooPHead('Rehearsal'),
-    ooP('Rehearsals are ' + rehearsalMinutes + ' minutes in length, with 10 minutes of that allotted for load in and load out of the stage.  **You must arrive at least 20 minutes prior to your scheduled rehearsal time to unload, verify paperwork, and have a pre-rehearsal meeting with myself.  When you arrive, you may locate me in the ' + hv + ' stage area.  You will arrive at the loading dock and may unload anything you need into the covered area of the loading dock.  Please do not block any loading bay doors.  At or before your rehearsal time, I will instruct you to load onto the stage.  At that time, you may load all of your items into the stage wings or onto the stage — do not attempt to set up during this period.', { size: 20, sa: 120 }),
+    ooP('Rehearsals are ' + rehearsalMinutes + ' minutes in length' + transitionClause + '  **You must arrive at least 20 minutes prior to your scheduled rehearsal time to unload, verify paperwork, and have a pre-rehearsal meeting with myself.  When you arrive, you may locate me in the ' + hv + ' stage area.  You will arrive at the loading dock and may unload anything you need into the covered area of the loading dock.  Please do not block any loading bay doors.  At or before your rehearsal time, I will instruct you to load onto the stage.  At that time, you may load all of your items into the stage wings or onto the stage — do not attempt to set up during this period.', { size: 20, sa: 120 }),
     ooP('After all items are in the stage area, we will quickly talk about rehearsal and then get started.  Once your vehicle has been unloaded, please park it in the back parking lot.  Please do not block the loading dock entrance or any doors.  Any additional vehicles may park in the back lot until the conclusion of your rehearsal time or until the end of the day.', { size: 20, sa: 120 }),
     ooP('Alternates listed on the Online Enrollment may assist with spiking the set and assist from the audience.  Alternates may not be backstage during the official rehearsal.  Any extra students not on the Eligibility Notice must remain on the bus until the performances start and supervised by an employee of your District.', { size: 20, sa: 120 }),
     ooP('Be prepared for Full Technical Disclosure.  This means you must show all technical aspects of the show at the rehearsal.  Place all set items, properties and set dressings on the stage.  We must see everything to approve.  No new items should be placed on stage during your performance.  Show all questionable blocking and stage combat.  Glow-tape is allowed as long as it is placed on stage during the 7 minute set up, and completely struck during the 7 minute strike time.', { size: 20, sa: 120 }),

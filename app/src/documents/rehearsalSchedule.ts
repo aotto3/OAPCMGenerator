@@ -10,8 +10,8 @@
  *     contest section.
  *   • TWO REHEARSAL DAYS: schools split across two dated sections (day-1 count
  *     from the model), then the contest section.
- * Each rehearsal/show row wears the school's palette color; a fixed 10-minute
- * transition pads every rehearsal slot (slotLen = length + 10).
+ * Each rehearsal/show row wears the school's palette color; the contest's
+ * rehearsal transition (10 minutes by default) pads every rehearsal slot.
  *
  * TIMING COMES FROM THE ENGINE (issue #20 AC2). The contest-day rows reuse
  * computeSchedule() — the ported schedule engine — filtering out its 'dm'
@@ -27,7 +27,7 @@
  */
 
 import * as XLSX from 'xlsx-js-style';
-import { contestTitleLong, rehearsalDay1Count, type Contest } from '../model/contest';
+import { contestTitleLong, rehearsalDay1Count, rehearsalSlotMinutes, type Contest } from '../model/contest';
 import { computeContestDay, computeSchedule, isSameDayRehearsal, parseTime } from '../model/schedule';
 import { docSchools } from './docVars';
 import { fmtDate } from './format';
@@ -37,7 +37,7 @@ import { SCHOOL_COLORS_XLSX, makeSheet, minToFrac, sc } from './xlsx';
 export function buildRehearsalSchedule(contest: Contest): Uint8Array {
   const SCHOOL_COLORS = SCHOOL_COLORS_XLSX;
   const d = contest.details;
-  const slotLen = d.rehearsalLengthMinutes + 10; // rehearsal time + 10-min transition
+  const slotLen = rehearsalSlotMinutes(contest); // rehearsal time + transition
   const sheet = makeSheet();
 
   // v12 read these times with a '2:00 PM' fallback and the meeting time with 'TBD'.
