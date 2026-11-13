@@ -13,7 +13,8 @@
  *   POST /public/link    { token } -> { active }: whether the link is current, so
  *                        the page can tell a judge an old link was replaced
  *   POST /public/lookup  { token, email, website } -> the judge's contests and
- *                        their last answers
+ *                        their last answers, minus the saved cell phone and
+ *                        mailing address (only whether each is on file)
  *   POST /public/submit  { token, email, website, answers } -> stores the answers
  *                        and emails each CM involved (best-effort)
  *
