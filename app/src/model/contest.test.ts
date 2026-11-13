@@ -166,11 +166,17 @@ describe('createContest', () => {
     expect(details.rehearsalDay1Count).toBeNull();
   });
 
-  it('pre-fills CM info like the v12 form and starts with blank tech contact', () => {
+  it('starts with blank CM info (no v12 owner details leak to new accounts)', () => {
     const { cmInfo } = contest();
-    expect(cmInfo.name).toBe('Allen Otto');
-    expect(cmInfo.email).toBe('aotto3@gmail.com');
-    expect(cmInfo.techContact).toBe('');
+    expect(cmInfo).toEqual({
+      name: '',
+      email: '',
+      phone: '',
+      mailingAddress: '',
+      website: '',
+      techContact: '',
+      bio: '',
+    });
   });
 
   it('starts with 6 blank schools, one director row each, order = position', () => {
@@ -769,7 +775,7 @@ describe('sectionCompletion', () => {
   it('counts filled expected fields per section', () => {
     const c = contest();
     const progress = sectionCompletion(c);
-    expect(progress.cm).toEqual({ done: 4, total: 5 }); // v12 prefills all but tech contact
+    expect(progress.cm).toEqual({ done: 0, total: 5 }); // CM info starts blank
     expect(progress.identity).toEqual({ done: 1, total: 4 }); // year prefilled
     expect(progress.details).toEqual({ done: 0, total: 6 });
     expect(progress.adjudicators).toEqual({ done: 0, total: 9 }); // 3 judges × name+address+email

@@ -40,7 +40,19 @@ function fixtureContest(): Contest {
     },
     NOW,
   );
-  c = withCmInfo(c, { techContact: 'Chris Technician' }, NOW);
+  // Explicit fictional CM, so the golden never depends on defaultCmInfo().
+  c = withCmInfo(
+    c,
+    {
+      name: 'Dana Whitfield',
+      email: 'dana.whitfield@example.org',
+      phone: '555-0142',
+      mailingAddress: '100 Example Avenue, Springfield, TX 75000',
+      website: 'www.example.org',
+      techContact: 'Chris Technician',
+    },
+    NOW,
+  );
   c = withDetails(
     c,
     {
@@ -142,6 +154,10 @@ describe('buildDirectorLetter', () => {
     expect(xml).toContain('[Host School]');
     expect(xml).toContain('[Venue TBD]');
     expect(xml).toContain('Adjudicator addresses will be provided once contracting is complete.');
+    // A blank CM gets neutral placeholders, never v12's hard-coded owner details.
+    expect(xml).toContain('[CM Name]');
+    expect(xml).toContain('[CM Email]');
+    expect(xml).not.toMatch(/Allen|aotto3|777-8672|Sharpcrest|allenotto/);
   });
 
   it('emits the after_each critique wording when selected', async () => {

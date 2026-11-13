@@ -5,15 +5,15 @@ import { docCmInfo } from './docVars';
 const NOW = '2026-07-05T12:00:00.000Z';
 
 describe('docCmInfo — CM identity projection with letter-family fallbacks', () => {
-  it('applies the v12 default fallbacks when the fields are blank', () => {
+  it('falls back to neutral placeholders, never a real person, when the fields are blank', () => {
     const blank = withCmInfo(
       createContest({ id: 'x', now: NOW }),
       { name: '', email: '', phone: '', mailingAddress: '', website: '', techContact: '' },
       NOW,
     );
     expect(docCmInfo(blank)).toEqual({
-      name: 'Allen Otto',
-      email: 'aotto3@gmail.com',
+      name: '[CM Name]',
+      email: '[CM Email]',
       phone: '',
       mailingAddress: '',
       website: '',

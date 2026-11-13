@@ -721,11 +721,11 @@ export interface Contest {
  */
 export function defaultCmInfo(): CmInfo {
   return {
-    name: 'Allen Otto',
-    email: 'aotto3@gmail.com',
-    phone: '281-777-8672',
-    mailingAddress: '8010 Sharpcrest Street, Houston, TX 77036',
-    website: 'www.allenotto.com',
+    name: '',
+    email: '',
+    phone: '',
+    mailingAddress: '',
+    website: '',
     techContact: '',
     bio: '',
   };

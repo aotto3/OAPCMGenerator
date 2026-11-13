@@ -52,7 +52,7 @@ function readyContest(): Contest {
   let c = contest();
   // Preliminary: identity + CM info complete, validation already passes by default.
   c = withIdentity(c, { hostSchoolName: 'Friendswood HS', hostVenueName: 'Auditorium', hostAddress: '1 Main St' });
-  c = withCmInfo(c, { techContact: 'Brian Hamlin' });
+  c = withCmInfo(c, { name: 'Pat Manager', email: 'pat@x.org', phone: '555-0100', mailingAddress: '1 CM Rd', techContact: 'Brian Hamlin' });
   // Planning: all detail fields the section counts.
   c = withDetails(c, {
     contestDate: '2026-04-10',
@@ -227,9 +227,9 @@ describe('readinessReport — phase assignment of derived sources', () => {
 describe('readinessReport — derived sources reflect their derivations', () => {
   it('section-completion items carry the section done/total count and flip when filled', () => {
     const empty = item(contest(), 'cm')!;
-    expect(empty.count).toEqual({ done: 4, total: 5 }); // techContact blank by default
+    expect(empty.count).toEqual({ done: 0, total: 5 }); // CM info starts blank
     expect(empty.status).toBe('pending');
-    const filled = item(withCmInfo(contest(), { techContact: 'Brian' }), 'cm')!;
+    const filled = item(withCmInfo(contest(), { name: 'Pat Manager', email: 'pat@x.org', phone: '555-0100', mailingAddress: '1 CM Rd', techContact: 'Brian Hamlin' }), 'cm')!;
     expect(filled.count).toEqual({ done: 5, total: 5 });
     expect(filled.status).toBe('done');
   });

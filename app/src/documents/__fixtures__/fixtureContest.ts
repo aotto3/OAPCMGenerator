@@ -49,7 +49,19 @@ export function fixtureContest(): Contest {
     },
     FIXTURE_NOW,
   );
-  c = withCmInfo(c, { techContact: 'Chris Technician' }, FIXTURE_NOW);
+  // Explicit fictional CM, so the goldens never depend on defaultCmInfo().
+  c = withCmInfo(
+    c,
+    {
+      name: 'Dana Whitfield',
+      email: 'dana.whitfield@example.org',
+      phone: '555-0142',
+      mailingAddress: '100 Example Avenue, Springfield, TX 75000',
+      website: 'www.example.org',
+      techContact: 'Chris Technician',
+    },
+    FIXTURE_NOW,
+  );
   c = withDetails(
     c,
     {
@@ -183,7 +195,7 @@ export function fixtureContestWithCompany(): Contest {
   // Bios: two adjudicators + the CM; judge 3 deliberately left blank.
   c = setJudge(c, 0, { bio: 'Dr. Jane Judge has directed competitive theatre for 20 years.' }, FIXTURE_NOW);
   c = setJudge(c, 1, { bio: 'Prof. John Critic teaches dramatic literature at State University.' }, FIXTURE_NOW);
-  c = withCmInfo(c, { bio: 'Allen Otto is a longtime UIL contest manager and theatre educator.' }, FIXTURE_NOW);
+  c = withCmInfo(c, { bio: 'Dana Whitfield is a longtime UIL contest manager and theatre educator.' }, FIXTURE_NOW);
 
   // Bravo HS — a full play with two directors and a complete roster.
   c = withSchool(
