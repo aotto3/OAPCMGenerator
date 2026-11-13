@@ -1,10 +1,8 @@
 import { useRef, useState } from 'react';
 import {
   contestDisplayName,
-  createContest,
   duplicateContest,
   importContest,
-  latestCmInfo,
   startNextYear,
   withArchived,
 } from '../model/contest';
@@ -13,6 +11,7 @@ import { triggerContestFileDownload } from '../documents/generate';
 import { reportContestExported, reportContestImported } from '../telemetry/telemetryClient';
 import { contestLibrary } from '../storage/browserLibrary';
 import type { ContestSummary } from '../storage/contestLibrary';
+import { recordArchiveOffer } from './archiveOffer';
 import { useContestAction, useContestList } from './contestHooks';
 import {
   DEFAULT_SORT,
@@ -93,8 +92,8 @@ export function Dashboard({
   onOpenSaved,
 }: {
   onOpen: (id: string) => void;
-  /** Open a new in-memory draft; `cmCarried` = its CM info came from an earlier contest. */
-  onCreate: (draft: Contest, cmCarried: boolean) => void;
+  /** Open a new blank in-memory draft (App builds it, carrying CM info). */
+  onCreate: () => void | Promise<void>;
   /** Persist a fully-formed new contest (import/duplicate), then open it. */
   onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
@@ -111,14 +110,16 @@ export function Dashboard({
     saveSortPref(next);
   }
 
-  // Opens an in-memory draft; nothing is stored until the first edit. The CM
-  // info carries over from the most recently edited contest that has any (#307),
-  // so a returning CM doesn't retype it. A failed read just starts from defaults.
-  function handleCreate() {
+  // "+ New Contest" asks first (#306, reworked): a blank contest, or one started
+  // from a past contest's info. A blank one is an in-memory draft, stored only on
+  // its first edit.
+  const [choosing, setChoosing] = useState(false);
+  const [sourceId, setSourceId] = useState('');
+
+  function handleCreateBlank() {
+    setChoosing(false);
     action.run("Couldn't start a new contest", async () => {
-      const draft = createContest();
-      const carried = latestCmInfo(await contestLibrary().readAll().catch(() => []));
-      onCreate(carried ? { ...draft, cmInfo: carried } : draft, carried !== null);
+      await onCreate();
     });
   }
 
@@ -143,13 +144,17 @@ export function Dashboard({
     });
   }
 
-  // Next season's contest from this one (#306): year + 1, auto-named, same
-  // carry-forward and clearing rules as Duplicate. Persisted, then opened.
-  function handleStartNextYear(summary: ContestSummary) {
-    action.run(`Couldn't start next year from "${summary.name}"`, async () => {
-      const source = await contestLibrary().read(summary.id);
+  // A new contest started from a past one (#306): same schools, directors, host
+  // and CM info; dates, judges and plays cleared; year + 1; auto-named. Persisted,
+  // then opened. A source that is still active gets a one-time archive offer (#311).
+  function handleStartFrom(id: string) {
+    setChoosing(false);
+    action.run("Couldn't start from that contest", async () => {
+      const source = await contestLibrary().read(id);
       if (!source) return; // deleted out from under us
-      await onOpenSaved(startNextYear(source));
+      const next = startNextYear(source);
+      if (!source.archived) recordArchiveOffer(next.id, source.id);
+      await onOpenSaved(next);
     });
   }
 
@@ -204,11 +209,22 @@ export function Dashboard({
           <button className="btn-secondary" onClick={() => fileInput.current?.click()}>
             Import contest file
           </button>
-          <button className="btn-primary" onClick={handleCreate}>
+          <button className="btn-primary" aria-expanded={choosing} onClick={() => setChoosing((v) => !v)}>
             + New Contest
           </button>
         </div>
       </div>
+
+      {choosing && (
+        <NewContestChooser
+          contests={contests ?? []}
+          sourceId={sourceId}
+          onSourceId={setSourceId}
+          onBlank={handleCreateBlank}
+          onStartFrom={handleStartFrom}
+          onCancel={() => setChoosing(false)}
+        />
+      )}
 
       {action.error && (
         <p className="import-error" role="alert">
@@ -287,14 +303,6 @@ export function Dashboard({
               </button>
               <button
                 className="btn-secondary"
-                onClick={() => handleStartNextYear(c)}
-                aria-label={`Start next year from ${c.name}`}
-                title="New contest for next year: same schools, directors and host; dates, judges and plays cleared"
-              >
-                Next year
-              </button>
-              <button
-                className="btn-secondary"
                 onClick={() => handleDuplicate(c)}
                 aria-label={`Duplicate ${c.name}`}
               >
@@ -326,5 +334,67 @@ export function Dashboard({
         </ul>
       )}
     </main>
+  );
+}
+
+/**
+ * What "+ New Contest" offers (#306): a blank contest, or one started from a
+ * past contest's info. The list is the archived contests, since a finished
+ * season is normally archived; with none archived it falls back to every
+ * contest so the option still works. Newest first.
+ */
+function NewContestChooser({
+  contests,
+  sourceId,
+  onSourceId,
+  onBlank,
+  onStartFrom,
+  onCancel,
+}: {
+  contests: ContestSummary[];
+  sourceId: string;
+  onSourceId: (id: string) => void;
+  onBlank: () => void;
+  onStartFrom: (id: string) => void;
+  onCancel: () => void;
+}) {
+  const archived = contests.filter((c) => c.archived);
+  const pool = (archived.length > 0 ? archived : contests)
+    .slice()
+    .sort((a, b) => (b.contestDate || b.updatedAt).localeCompare(a.contestDate || a.updatedAt));
+  const selected = pool.some((c) => c.id === sourceId) ? sourceId : (pool[0]?.id ?? '');
+
+  return (
+    <div className="new-contest-chooser" role="group" aria-label="New contest">
+      <div className="ncc-option">
+        <button type="button" className="btn-primary" onClick={onBlank}>
+          Blank contest
+        </button>
+        <span className="muted">Start from scratch.</span>
+      </div>
+      {pool.length > 0 && (
+        <div className="ncc-option">
+          <label className="ncc-from">
+            <span>Start with info from {archived.length > 0 ? 'an archived contest' : 'a past contest'}:</span>
+            <select value={selected} onChange={(e) => onSourceId(e.target.value)}>
+              {pool.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn-secondary" disabled={!selected} onClick={() => onStartFrom(selected)}>
+            Start
+          </button>
+          <span className="muted ncc-hint">
+            Keeps its schools, directors, host and CM info. Clears dates, judges and plays, and moves the year up one.
+          </span>
+        </div>
+      )}
+      <button type="button" className="btn-ghost ncc-cancel" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
   );
 }

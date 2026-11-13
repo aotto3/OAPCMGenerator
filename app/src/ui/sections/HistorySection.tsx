@@ -116,7 +116,14 @@ export function HistorySection({
           {checkpoints.map((c) => (
             <li key={c.id} className="checkpoint-row">
               <div className="checkpoint-info">
-                <div className="checkpoint-name">{c.name}</div>
+                <div className="checkpoint-name">
+                  {c.name}
+                  {c.auto && (
+                    <span className="checkpoint-auto" title="Saved automatically before a destructive change. Only the newest 10 are kept.">
+                      Auto
+                    </span>
+                  )}
+                </div>
                 <div className="checkpoint-meta">{relativeTime(c.createdAt)}</div>
                 {c.note && <div className="checkpoint-note">📝 {c.note}</div>}
               </div>

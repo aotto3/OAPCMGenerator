@@ -8,6 +8,7 @@ import {
   type Contest,
 } from '../../model/contest';
 import { drawOrder } from '../../model/draw';
+import { autoCheckpoint } from '../autoCheckpoint';
 import { Section } from './Section';
 
 /**
@@ -57,6 +58,7 @@ export function DrawSection({
     if (draw && !locked) {
       if (!window.confirm('Re-run the draw? This replaces the current drawn order and timestamp.')) return;
     }
+    if (draw) autoCheckpoint(contest, 'Before re-running the draw');
     onChange(runDraw(contest, drawOrder(numSchools(contest))));
   }
 
@@ -69,6 +71,7 @@ export function DrawSection({
     ) {
       return;
     }
+    autoCheckpoint(contest, 'Before unlocking the draw');
     onChange(unlockDraw(contest));
   }
 
@@ -80,6 +83,7 @@ export function DrawSection({
   }
 
   function commitCeremony(order: number[]) {
+    if (draw) autoCheckpoint(contest, 'Before re-running the draw');
     onChange(runDraw(contest, order));
     setCeremony(null);
   }

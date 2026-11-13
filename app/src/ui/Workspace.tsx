@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   contestDisplayName,
   effectiveContestTitle,
   sectionCompletion,
   validateContest,
+  withArchived,
   withTitleOverride,
   type Contest,
 } from '../model/contest';
 import { EditableContestTitle } from './EditableContestTitle';
-import { useOpenContest } from './contestHooks';
+import { useAwaitFirstPass, useContestList, useOpenContest } from './contestHooks';
+import { clearArchiveOffer, pendingArchiveOffer } from './archiveOffer';
+import { contestLibrary } from '../storage/browserLibrary';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { ReadinessPage } from './ReadinessPage';
 import { ReadinessSummary } from './ReadinessSummary';
@@ -38,6 +41,7 @@ export function Workspace({
   cmCarried = false,
   pane,
   onPane,
+  onDraftSaved,
   onBack,
   onOpenSaved,
   onOpenContest,
@@ -51,6 +55,8 @@ export function Workspace({
   pane?: PaneId;
   /** Navigate to a pane: pushes a history entry, or replaces it with `replace`. */
   onPane: (pane: PaneId, opts?: { replace?: boolean }) => void;
+  /** A draft's first edit just saved it (#310): the URL can switch to its real address. */
+  onDraftSaved?: (pane: PaneId) => void;
   onBack: () => void;
   /** Persist a brand-new contest (e.g. the advance-clone) and open it. */
   onOpenSaved: (contest: Contest) => void | Promise<void>;
@@ -58,7 +64,25 @@ export function Workspace({
   onOpenContest: (id: string) => void;
 }) {
   const isDraft = !!(draft && draft.id === contestId);
-  const open = useOpenContest(contestId, isDraft ? draft : undefined);
+  // Bumped to reopen the contest after the first sync pass, in case it was
+  // pulled onto this device just now (#310).
+  const [attempt, setAttempt] = useState(0);
+  const open = useOpenContest(contestId, isDraft ? draft : undefined, attempt);
+  const presence = useAwaitFirstPass(open.status === 'missing', () => setAttempt((a) => a + 1));
+  // A draft is stored by its first edit; report that once so the URL can follow.
+  const draftSaved = useRef(!isDraft);
+  // The one-time "Archive the contest you started from?" offer (#311).
+  const [archiveOfferFrom, setArchiveOfferFrom] = useState(() => pendingArchiveOffer(contestId));
+  const summaries = useContestList();
+  // A source that is gone or already archived needs no offer: drop it for good.
+  useEffect(() => {
+    if (!archiveOfferFrom || !summaries) return;
+    const source = summaries.find((c) => c.id === archiveOfferFrom);
+    if (!source || source.archived) {
+      clearArchiveOffer(contestId);
+      setArchiveOfferFrom(null);
+    }
+  }, [archiveOfferFrom, summaries, contestId]);
   // Global expand/collapse-all signal broadcast to every mounted Section via
   // context. Content-swap makes this per-pane for free: only the current pane's
   // sections are mounted, so a broadcast reaches just them.
@@ -98,6 +122,14 @@ export function Workspace({
     );
   }, [view, pendingScroll]);
 
+  if (open.status === 'missing' && presence === 'waiting') {
+    return (
+      <main className="page">
+        <p className="muted">Looking for this contest… (waiting for your contests to sync)</p>
+        <button className="btn-ghost" onClick={onBack}>← Back to dashboard</button>
+      </main>
+    );
+  }
   if (open.status === 'missing') {
     return (
       <main className="page">
@@ -117,7 +149,30 @@ export function Workspace({
   if (open.status !== 'ready') return <main className="page"><p className="muted">Loading…</p></main>;
 
   const contest = open.contest;
-  const setContest = open.set;
+  const markSaved = () => {
+    if (draftSaved.current) return;
+    draftSaved.current = true;
+    onDraftSaved?.(view);
+  };
+  const setContest = (next: Contest) => {
+    open.set(next);
+    markSaved();
+  };
+
+  // The archive offer, shown only while its source still exists and is active.
+  const offerSource = archiveOfferFrom ? summaries?.find((c) => c.id === archiveOfferFrom) : undefined;
+  const closeArchiveOffer = () => {
+    clearArchiveOffer(contestId);
+    setArchiveOfferFrom(null);
+  };
+  const archiveSource = () => {
+    if (archiveOfferFrom) {
+      void contestLibrary()
+        .transform(archiveOfferFrom, (fresh) => withArchived(fresh, true))
+        .catch(() => {});
+    }
+    closeArchiveOffer();
+  };
 
   /** Navigate to a pane from the sidebar (a plain switch, no pending scroll). */
   const selectPane = (next: PaneId) => {
@@ -158,9 +213,27 @@ export function Workspace({
             title={effectiveContestTitle(contest)}
             override={contest.titleOverride}
             autoName={contestDisplayName(contest.identity)}
-            onChange={(v) => open.update((c) => withTitleOverride(c, v))}
+            onChange={(v) => {
+              open.update((c) => withTitleOverride(c, v));
+              markSaved();
+            }}
           />
           <p className="subtitle">Every change saves automatically.</p>
+          {offerSource && !offerSource.archived && (
+            <div className="update-notice" role="status">
+              <span>
+                You started this contest from <strong>{offerSource.name}</strong>. Archive it to tidy your dashboard?
+              </span>
+              <span className="update-notice-actions">
+                <button type="button" className="btn-secondary" onClick={archiveSource}>
+                  Archive it
+                </button>
+                <button type="button" className="btn-ghost" onClick={closeArchiveOffer}>
+                  Not now
+                </button>
+              </span>
+            </div>
+          )}
           {open.notice && (
             <div className="update-notice" role="status">
               <span>Updated from another device</span>

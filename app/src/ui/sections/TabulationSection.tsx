@@ -8,9 +8,11 @@ import {
   tabulationView,
 } from '../../model/tabulation';
 import { tabulationReport } from '../../model/tabulationReport';
-import { gmailComposeUrl, tabulationEmail } from '../../documents/emailTemplates';
+import { tabulationEmail } from '../../documents/emailTemplates';
+import { mailAppName, openDraft, usePreferredMailApp } from '../mailApp';
 import { triggerPanelTabulationDownload } from '../../documents/generate';
 import { openTabulationPrintPage } from '../tabulationPrint';
+import { autoCheckpoint } from '../autoCheckpoint';
 import { Section } from './Section';
 
 /**
@@ -30,8 +32,11 @@ const COLUMN_TITLES = ['Acting Judge', 'Judge B', 'Judge C'] as const;
 export function TabulationSection({ contest, onChange }: { contest: Contest; onChange: (c: Contest) => void }) {
   const view = tabulationView(contest);
   const cells = useRef(new Map<string, HTMLInputElement>());
-  const [popupBlocked, setPopupBlocked] = useState<'print' | 'gmail' | null>(null);
-  const [gmailNote, setGmailNote] = useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState<'print' | 'mail' | null>(null);
+  // The CM's chosen email app (#308), set in the Email pane.
+  const [mailApp] = usePreferredMailApp();
+  const appName = mailAppName(mailApp);
+  const [mailNote, setMailNote] = useState<string | null>(null);
   const [filledNote, setFilledNote] = useState<string | null>(null);
 
   if (!view.applicable) {
@@ -221,6 +226,7 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
             ) {
               return;
             }
+            if (fillWouldOverwrite(contest)) autoCheckpoint(contest, 'Before replacing results from tabulation');
             onChange(fillResultsFromTabulation(contest));
             const name = (i: number) => view.rows.find((r) => r.schoolIndex === i)?.label ?? `School ${i + 1}`;
             setFilledNote(
@@ -251,14 +257,16 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
           onClick={() => {
             const draft = tabulationEmail(contest, 'downloads');
             if (!draft) return;
-            // Open Gmail first, inside the click, so the browser treats it as user-initiated.
-            const win = window.open(gmailComposeUrl(draft), '_blank');
-            if (win) win.opener = null;
-            setPopupBlocked(win ? null : 'gmail');
-            setGmailNote(null);
+            // Open the email first, inside the click, so the browser treats it as user-initiated.
+            const opened = openDraft(mailApp, draft);
+            setPopupBlocked(opened.blocked ? 'mail' : null);
+            setMailNote(null);
+            const pasteNote = opened.bodyCopied
+              ? ' The message was too long for a mail link, so the body was copied: paste it in.'
+              : '';
             triggerPanelTabulationDownload(contest).then(
-              () => setGmailNote('Panel Tabulation.pdf was saved to your Downloads. Attach it in Gmail before sending.'),
-              () => setGmailNote('Could not create Panel Tabulation.pdf. Generate it from the documents ZIP instead.'),
+              () => setMailNote(`Panel Tabulation.pdf was saved to your Downloads. Attach it in ${appName} before sending.${pasteNote}`),
+              () => setMailNote('Could not create Panel Tabulation.pdf. Generate it from the documents ZIP instead.'),
             );
           }}
         >
@@ -266,15 +274,15 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
         </button>
         <span className="hint">
           {view.results
-            ? 'Print opens UIL\'s results page. Email opens Gmail filled in and saves Panel Tabulation.pdf for you to attach.'
+            ? `Print opens UIL's results page. Email opens ${appName} filled in and saves Panel Tabulation.pdf for you to attach.`
             : 'Available once every ballot is entered.'}
         </span>
       </div>
       {filledNote && <p className="hint">{filledNote}</p>}
-      {gmailNote && <p className="hint">{gmailNote}</p>}
+      {mailNote && <p className="hint">{mailNote}</p>}
       {popupBlocked && (
         <p className="tab-status-error">
-          The browser blocked the {popupBlocked === 'print' ? 'print' : 'Gmail'} window. Allow pop-ups for this site and
+          The browser blocked the {popupBlocked === 'print' ? 'print' : appName} window. Allow pop-ups for this site and
           try again.
         </p>
       )}

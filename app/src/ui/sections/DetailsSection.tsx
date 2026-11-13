@@ -18,6 +18,7 @@ import {
   type SectionCompletion,
 } from '../../model/contest';
 import { scheduleImpactOf } from '../../model/scheduleEdit';
+import { autoCheckpoint } from '../autoCheckpoint';
 import { Section } from './Section';
 import { CopyButton, Divider, SelectField, TextField, TimeField } from './fields';
 
@@ -49,11 +50,12 @@ export function DetailsSection({
   // actually has breaks to lose, so the wipe is never a surprise.
   const confirmClear = (change: ScheduleRestructure) => {
     const { clearsOverrides, breakCount } = scheduleImpactOf(contest, change);
-    return (
-      !clearsOverrides ||
-      breakCount === 0 ||
-      window.confirm(`This will clear your ${breakCount} manual schedule break${breakCount === 1 ? '' : 's'}. Continue?`)
+    if (!clearsOverrides || breakCount === 0) return true;
+    const ok = window.confirm(
+      `This will clear your ${breakCount} manual schedule break${breakCount === 1 ? '' : 's'}. Continue?`,
     );
+    if (ok) autoCheckpoint(contest, 'Before clearing schedule breaks');
+    return ok;
   };
 
   const n = numSchools(contest);

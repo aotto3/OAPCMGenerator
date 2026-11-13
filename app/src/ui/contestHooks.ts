@@ -23,9 +23,11 @@ export type UseOpenContest = OpenState & {
  * session owns the debounced save, the draft rule and the flush on unmount;
  * outside writes (a pull, applied questionnaire answers) arrive through it.
  */
-export function useOpenContest(id: string, draft?: Contest): UseOpenContest {
+export function useOpenContest(id: string, draft?: Contest, attempt = 0): UseOpenContest {
   const [session, setSession] = useState<OpenContest | null>(null);
 
+  // `attempt` reopens the session (e.g. after a sync pass may have pulled a
+  // contest that was missing on this device).
   useEffect(() => {
     const opened = contestLibrary().open(id, { draft });
     setSession(opened);
@@ -33,7 +35,7 @@ export function useOpenContest(id: string, draft?: Contest): UseOpenContest {
       setSession(null);
       void opened.close();
     };
-  }, [id, draft]);
+  }, [id, draft, attempt]);
 
   const state = useSyncExternalStore(
     session ? session.subscribe : noSubscribe,
@@ -132,6 +134,7 @@ export function useContestSync(enabled: boolean): SyncStatus {
 
   useEffect(() => {
     if (!enabled) return;
+    trackFirstPass();
     const off = contestLibrary().sync.onStatus(setStatus);
     const disconnect = connectBrowserSync();
     return () => {
@@ -141,4 +144,54 @@ export function useContestSync(enabled: boolean): SyncStatus {
   }, [enabled]);
 
   return status;
+}
+
+/* ── first completed sync pass (#310) ──
+ * A contest linked by URL may not be on this device yet (a new device, cleared
+ * storage). The workspace waits for the first completed server pass before
+ * calling it missing. Tracked once per page load, from the moment sync starts.
+ */
+let firstPassDone = false;
+let tracking = false;
+const firstPassListeners = new Set<() => void>();
+
+function trackFirstPass(): void {
+  if (tracking) return;
+  tracking = true;
+  contestLibrary().subscribe((event) => {
+    if (event.type !== 'reconciled' || firstPassDone) return;
+    firstPassDone = true;
+    for (const listener of firstPassListeners) listener();
+  });
+}
+
+/** How long to wait for that first pass (offline, a slow server) before giving up. */
+const FIRST_PASS_TIMEOUT_MS = 15_000;
+
+/**
+ * While `missing` is true: 'waiting' until the first sync pass completes (or
+ * the timeout passes), then 'missing'. `onPassed` fires once when the pass
+ * completes so the caller can reopen the contest. 'found' when not missing.
+ */
+export function useAwaitFirstPass(missing: boolean, onPassed: () => void): 'found' | 'waiting' | 'missing' {
+  const [gaveUp, setGaveUp] = useState(false);
+  const [passed, setPassed] = useState(firstPassDone);
+
+  useEffect(() => {
+    if (!missing || passed) return;
+    const listener = () => {
+      setPassed(true);
+      onPassed();
+    };
+    firstPassListeners.add(listener);
+    const timer = setTimeout(() => setGaveUp(true), FIRST_PASS_TIMEOUT_MS);
+    return () => {
+      firstPassListeners.delete(listener);
+      clearTimeout(timer);
+    };
+    // onPassed is a fresh closure each render; the subscription keys on state only.
+  }, [missing, passed]);
+
+  if (!missing) return 'found';
+  return passed || gaveUp ? 'missing' : 'waiting';
 }

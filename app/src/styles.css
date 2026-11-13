@@ -177,6 +177,18 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 
 /* Dashboard controls row: Active/Archived/All filter (PRD #141) on the left,
    sort dropdowns (PRD #142) on the right; wraps on narrow screens. */
+/* "+ New Contest" chooser (#306): blank, or start from a past contest. */
+.new-contest-chooser {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-md);
+}
+.ncc-option { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ncc-from { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ncc-from select { max-width: 100%; }
+.ncc-hint { flex-basis: 100%; font-size: var(--fs-sm); }
+.ncc-cancel { align-self: flex-start; }
+.mail-app-picker { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--c-muted); }
 .dashboard-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: var(--space-3); margin: var(--space-3) 0 0;
@@ -254,6 +266,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   border-radius: var(--radius-md); color: var(--c-text); font-size: var(--fs-sm);
 }
 .update-notice .btn-ghost { padding: 0 var(--space-2); }
+.update-notice-actions { display: inline-flex; gap: var(--space-2); flex-shrink: 0; }
 
 /* Click-to-edit contest title (PRD #143). The heading and its edit input share
    the same box metrics so swapping between them doesn't shift the layout. */
@@ -999,6 +1012,10 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .checkpoint-info { flex: 1; min-width: 0; }
 .checkpoint-name { font-weight: 600; }
+.checkpoint-auto {
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 0.7rem; font-weight: 600;
+  vertical-align: middle; color: var(--c-muted); border: 1px solid var(--c-border);
+}
 .checkpoint-meta { font-size: 0.78rem; color: var(--c-muted); }
 .checkpoint-note { font-size: 0.8rem; color: var(--c-muted); font-style: italic; margin-top: 2px; }
 .checkpoint-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }

@@ -17,7 +17,7 @@ function AddressListBox({ title, emails, placeholder }: { title: string; emails:
 export function EmailListBox({ contest }: { contest: Contest }) {
   return (
     <AddressListBox
-      title="📧 All-Director Email List (copy & paste into Gmail)"
+      title="📧 All-Director Email List (copy & paste into your email)"
       emails={allDirectorEmails(contest)}
       placeholder="Director emails will appear here as you enter them above..."
     />
@@ -28,7 +28,7 @@ export function EmailListBox({ contest }: { contest: Contest }) {
 export function JudgeEmailListBox({ contest }: { contest: Contest }) {
   return (
     <AddressListBox
-      title="⚖️ All-Judges Email List (copy & paste into Gmail)"
+      title="⚖️ All-Judges Email List (copy & paste into your email)"
       emails={allJudgeEmails(contest)}
       placeholder="Judge emails will appear here once you enter them in the Judges section..."
     />

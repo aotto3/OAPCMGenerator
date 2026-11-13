@@ -357,3 +357,84 @@ describe('the version rule', () => {
     expect(nextVersion(T1, T1)).toBe('2026-07-06T12:00:00.001Z');
   });
 });
+
+describe('automatic checkpoints (PRD #304, #309)', () => {
+  const at = (i: number) => `2026-08-01T00:00:${String(i).padStart(2, '0')}.000Z`;
+
+  it('stores the given (pre-change) state, marked automatic, and moves the contest version', async () => {
+    const before = sampleContest();
+    await library.save(before);
+    const versionBefore = versionOf(await library.list(), before.id);
+    now = at(1);
+    const cp = await library.checkpoints.saveAuto(before, 'Before re-draw');
+    expect(cp).toMatchObject({ name: 'Before re-draw', auto: true, contestId: before.id });
+    const [listed] = await library.checkpoints.list(before.id);
+    expect(listed).toMatchObject({ id: cp.id, auto: true });
+    expect(versionOf(await library.list(), before.id)).not.toBe(versionBefore);
+  });
+
+  it('keeps only the newest 10 automatic checkpoints and never prunes named or Before-restore ones', async () => {
+    const contest = sampleContest();
+    await library.save(contest);
+    now = at(0);
+    const named = await library.checkpoints.save(contest, 'my named one');
+    for (let i = 1; i <= 12; i++) {
+      now = at(i);
+      await library.checkpoints.saveAuto(contest, `auto ${i}`);
+    }
+    // A restore's "Before restore" checkpoint is not automatic, so it is never pruned either.
+    now = at(13);
+    await library.checkpoints.restore(contest, named.id);
+    now = at(14);
+    await library.checkpoints.saveAuto(contest, 'auto 13');
+
+    const list = await library.checkpoints.list(contest.id);
+    const autos = list.filter((c) => c.auto).map((c) => c.name);
+    expect(autos).toHaveLength(10);
+    expect(autos[0]).toBe('auto 13');
+    expect(autos).not.toContain('auto 1');
+    expect(autos).not.toContain('auto 3');
+    expect(list.map((c) => c.name)).toContain('my named one');
+    expect(list.some((c) => !c.auto && c.name.startsWith('Before restore'))).toBe(true);
+  });
+
+  it('prunes per contest: another contest keeps its own automatic checkpoints', async () => {
+    const a = sampleContest('a');
+    const b = sampleContest('b');
+    await library.save(a);
+    await library.save(b);
+    now = at(0);
+    await library.checkpoints.saveAuto(b, 'b only');
+    for (let i = 1; i <= 11; i++) {
+      now = at(i);
+      await library.checkpoints.saveAuto(a, `a ${i}`);
+    }
+    expect((await library.checkpoints.list('b')).map((c) => c.name)).toEqual(['b only']);
+    expect(await library.checkpoints.list('a')).toHaveLength(10);
+  });
+
+  it('restoring an automatic checkpoint returns the state from before the change', async () => {
+    const before = sampleContest();
+    await library.save(before);
+    now = at(1);
+    const cp = await library.checkpoints.saveAuto(before, 'Before clearing results');
+    const after = withIdentity(before, { hostSchoolName: 'Changed HS' }, at(2));
+    await library.save(after);
+    now = at(3);
+    const restored = await library.checkpoints.restore(after, cp.id);
+    expect(restored.identity.hostSchoolName).toBe('Westlake HS');
+  });
+
+  it('the automatic marker survives the sync bundle round trip', async () => {
+    const contest = sampleContest();
+    await library.save(contest);
+    now = at(1);
+    await library.checkpoints.save(contest, 'named');
+    now = at(2);
+    await library.checkpoints.saveAuto(contest, 'Before unlocking the draw');
+    await library.sync.reconcileNow();
+    const parsed = parseSyncBundle(server.contests.get(contest.id)!.payload);
+    const byName = Object.fromEntries(parsed.checkpoints.map((c) => [c.name, c.auto]));
+    expect(byName).toEqual({ named: undefined, 'Before unlocking the draw': true });
+  });
+});

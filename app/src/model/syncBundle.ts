@@ -84,7 +84,10 @@ export function parseSyncBundle(json: string): SyncBundle {
   }
   const { checkpoints, ...envelope } = parsed;
   const contest = parseContest(JSON.stringify(envelope));
-  const list = Array.isArray(checkpoints) ? checkpoints.filter(isCheckpoint) : [];
+  // Only a literal `true` marks a checkpoint automatic (#309); anything else reads as named.
+  const list = Array.isArray(checkpoints)
+    ? checkpoints.filter(isCheckpoint).map(({ auto, ...rest }) => (auto === true ? { ...rest, auto } : rest))
+    : [];
   return { contest, checkpoints: list };
 }
 

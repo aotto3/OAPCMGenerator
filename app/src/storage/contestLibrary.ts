@@ -38,7 +38,7 @@
  * fake-indexeddb and the in-memory server with a manual clock and timers.
  */
 import { wrap, type DBSchema, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import { makeCheckpoint, planRestore, type Checkpoint } from '../model/checkpoint';
+import { autoCheckpointsToPrune, makeCheckpoint, planRestore, type Checkpoint } from '../model/checkpoint';
 import {
   createContest,
   defaultSpeechwire,
@@ -176,6 +176,13 @@ export interface ContestLibrary {
     list(contestId: string): Promise<Checkpoint[]>;
     /** Snapshots `contest` as a named checkpoint; bumps the stored contest's version in the same transaction. */
     save(contest: Contest, name: string, note?: string): Promise<Checkpoint>;
+    /**
+     * Snapshots `contest` exactly as given (no flush: the caller passes the state
+     * from BEFORE a destructive change) as an AUTOMATIC checkpoint labeled `name`,
+     * then prunes that contest's automatic checkpoints to the newest
+     * MAX_AUTO_CHECKPOINTS, in one transaction (#309). Named ones are untouched.
+     */
+    saveAuto(contest: Contest, name: string): Promise<Checkpoint>;
     /**
      * Restores a checkpoint over `current` (the live working copy), undoably: the
      * pre-restore state is auto-checkpointed in the same transaction. Returns the
@@ -951,6 +958,21 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
         await tx.objectStore('checkpoints').put(checkpoint);
         // Checkpoints ride the contest's sync bundle, so the contest's version moves with them.
         const event = await bumpForCheckpoint(tx, contest.id, now);
+        await finish(tx, event);
+        return checkpoint;
+      },
+
+      async saveAuto(contest, name) {
+        // Captured synchronously, before any await, so a change the caller makes
+        // right after this call can never leak into the snapshot.
+        const checkpoint: Checkpoint = { ...makeCheckpoint(contest, name, '', deps.clock()), auto: true };
+        const tx = await readWrite();
+        const store = tx.objectStore('checkpoints');
+        await store.put(checkpoint);
+        for (const id of autoCheckpointsToPrune(await store.index('byContest').getAll(contest.id))) {
+          await store.delete(id);
+        }
+        const event = await bumpForCheckpoint(tx, contest.id, checkpoint.createdAt);
         await finish(tx, event);
         return checkpoint;
       },

@@ -7,6 +7,8 @@ describe('contest route codec', () => {
     const routes: ContestRoute[] = [
       { kind: 'dashboard' },
       { kind: 'contest', id: 'abc-123' },
+      { kind: 'newContest' },
+      { kind: 'newContest', pane: 'judges' },
       ...PANES.map((p): ContestRoute => ({ kind: 'contest', id: 'abc-123', pane: p.id })),
     ];
     for (const route of routes) expect(parseRoute(formatRoute(route))).toEqual(route);
@@ -37,5 +39,18 @@ describe('contest route codec', () => {
     const route: ContestRoute = { kind: 'contest', id: 'a b/c', pane: 'setup' };
     expect(formatRoute(route)).toBe('/contest/a%20b%2Fc/setup');
     expect(parseRoute(formatRoute(route))).toEqual(route);
+  });
+});
+
+describe('the new-contest draft route (#310)', () => {
+  it('parses /contest/new with and without a pane', () => {
+    expect(parseRoute('/contest/new')).toEqual({ kind: 'newContest' });
+    expect(parseRoute('/contest/new/setup')).toEqual({ kind: 'newContest', pane: 'setup' });
+    expect(parseRoute('/contest/new/bogus')).toEqual({ kind: 'newContest' });
+  });
+
+  it('formats it back', () => {
+    expect(formatRoute({ kind: 'newContest' })).toBe('/contest/new');
+    expect(formatRoute({ kind: 'newContest', pane: 'setup' })).toBe('/contest/new/setup');
   });
 });
