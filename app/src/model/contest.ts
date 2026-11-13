@@ -1049,6 +1049,38 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
   };
 }
 
+/**
+ * "Start next year" (PRD #304, slice #306): the roll-forward duplicate for a new
+ * season. Same carry-forward and clearing rules as duplicateContest, plus two
+ * differences: the contest year moves up one (or, when the source year is not a
+ * 4-digit number, becomes the current year), and there is NO title override, so
+ * the on-screen title is the auto-generated name and tracks the data. (Plain
+ * Duplicate titles its copy "<title> COPY", which is right for a same-year copy
+ * but freezes the title for a new season.)
+ */
+export function startNextYear(contest: Contest, options: NewFromExistingOptions = {}): Contest {
+  const now = options.now ?? new Date().toISOString();
+  const copy = duplicateContest(contest, { ...options, now });
+  const year = contest.identity.contestYear.trim();
+  const nextYear = /^\d{4}$/.test(year) ? String(Number(year) + 1) : String(new Date(now).getFullYear());
+  return { ...copy, titleOverride: '', identity: { ...copy.identity, contestYear: nextYear } };
+}
+
+/**
+ * The CM info to carry into a brand-new contest (PRD #304, slice #307): that of
+ * the most recently edited contest (archived ones count) with any CM field
+ * filled in, or null when there is none. Blank newer contests are skipped, so
+ * one empty contest never wipes out the carry-forward.
+ */
+export function latestCmInfo(contests: readonly Contest[]): CmInfo | null {
+  let best: Contest | null = null;
+  for (const c of contests) {
+    const filled = Object.values(c.cmInfo).some((v) => typeof v === 'string' && v.trim() !== '');
+    if (filled && (best === null || c.updatedAt > best.updatedAt)) best = c;
+  }
+  return best ? { ...best.cmInfo } : null;
+}
+
 /* ────────────────── advancing a contest to the next level ──────────────────
  * PRD #66 (user stories 18–27). The post-contest sibling of duplicateContest:
  * a NEW record pre-filled with only the companies that advanced, the same show

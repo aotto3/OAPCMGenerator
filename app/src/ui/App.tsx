@@ -7,6 +7,7 @@ import { useIsAdmin } from '../admin/useIsAdmin';
 import { signOut, useSession } from '../auth/authClient';
 import { SignIn } from '../auth/SignIn';
 import { useContestSync } from './contestHooks';
+import { formatRoute, parseRoute, type ContestRoute } from './contestRoute';
 import { Dashboard } from './Dashboard';
 import { SyncStatus } from './SyncStatus';
 import { ThemeToggle } from './ThemeToggle';
@@ -17,39 +18,75 @@ import { questionnaireTokenFromPath } from '../questionnaire/questionnaireClient
 
 /**
  * Dashboard-first flow: contest list → contest workspace → back.
- * Navigation is a single piece of state for now; a router can replace it
- * in a later slice without touching Dashboard/Workspace internals.
+ * Navigation is the URL (see contestRoute.ts), driven with pushState and
+ * popstate rather than a router library.
  *
  * "+ New Contest" opens an in-memory draft (`draft` below) — nothing is
  * written to storage until the user actually edits a field, so an
- * accidental click leaves no stray contest behind. Import and Duplicate, by
+ * accidental click leaves no stray contest behind. Import, Duplicate and
+ * Start next year, by
  * contrast, produce a fully-formed contest that is persisted immediately
  * (openSaved) before opening — there is nothing to "edit first".
  */
 function ContestFlow() {
-  const [open, setOpen] = useState<{ id: string; draft?: Contest } | null>(null);
+  // The address bar is the navigation state (PRD #304, #305): which contest and
+  // pane are open lives in the URL, so a refresh keeps the CM's place and the
+  // browser's Back/Forward step through it. `route` mirrors location.pathname.
+  const [route, setRoute] = useState<ContestRoute>(() => parseRoute(window.location.pathname));
+  // The one in-memory draft from "+ New Contest" (not in storage until edited),
+  // plus whether its CM info was carried from an earlier contest (#307).
+  const [draft, setDraft] = useState<{ contest: Contest; cmCarried: boolean } | null>(null);
+
+  useEffect(() => {
+    const onPop = () => setRoute(parseRoute(window.location.pathname));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  /** Go to a route: push a history entry (or replace the current one). */
+  function navigate(next: ContestRoute, opts: { replace?: boolean } = {}) {
+    const path = formatRoute(next);
+    if (path !== window.location.pathname) {
+      if (opts.replace) window.history.replaceState(null, '', path);
+      else window.history.pushState(null, '', path);
+    }
+    setRoute(next);
+  }
+
+  const openContest = (id: string) => navigate({ kind: 'contest', id });
 
   async function openSaved(contest: Contest) {
     await contestLibrary().add(contest);
-    setOpen({ id: contest.id });
+    openContest(contest.id);
   }
 
-  return open === null ? (
-    <Dashboard
-      onOpen={(id) => setOpen({ id })}
-      onCreate={(draft) => setOpen({ id: draft.id, draft })}
-      onOpenSaved={openSaved}
-    />
-  ) : (
+  if (route.kind === 'dashboard') {
+    return (
+      <Dashboard
+        onOpen={openContest}
+        onCreate={(contest, cmCarried) => {
+          setDraft({ contest, cmCarried });
+          openContest(contest.id);
+        }}
+        onOpenSaved={openSaved}
+      />
+    );
+  }
+
+  const isDraft = draft?.contest.id === route.id;
+  return (
     // Keyed so opening another contest remounts it: autosave flushes the old
     // contest's pending edits, and pane state starts fresh for the new one.
     <Workspace
-      key={open.id}
-      contestId={open.id}
-      draft={open.draft}
-      onBack={() => setOpen(null)}
+      key={route.id}
+      contestId={route.id}
+      draft={isDraft ? draft.contest : undefined}
+      cmCarried={isDraft && draft.cmCarried}
+      pane={route.pane}
+      onPane={(pane, opts) => navigate({ kind: 'contest', id: route.id, pane }, opts)}
+      onBack={() => navigate({ kind: 'dashboard' })}
       onOpenSaved={openSaved}
-      onOpenContest={(id) => setOpen({ id })}
+      onOpenContest={openContest}
     />
   );
 }

@@ -59,6 +59,8 @@ import {
   retainLevelFields,
   levelNumberText,
   duplicateContest,
+  latestCmInfo,
+  startNextYear,
   generationWarnings,
   importContest,
   defaultAdjudicators,
@@ -2669,5 +2671,75 @@ describe('v7 → v8 migration (company roster + bios)', () => {
     expect(migrated.adjudicators.every((j) => j.bio === '')).toBe(true);
     // Re-serializes at the current version.
     expect(JSON.parse(serializeContest(migrated)).schemaVersion).toBe(CONTEST_SCHEMA_VERSION);
+  });
+});
+
+describe('startNextYear (PRD #304, #306)', () => {
+  it('moves the year up one and drops the title override so the auto-name tracks', () => {
+    const source = { ...filledContest(), titleOverride: 'My Custom 2026 Title' };
+    source.identity = { ...source.identity, contestYear: '2026' };
+    const next = startNextYear(source, { id: 'next-id', now: LATER });
+    expect(next.identity.contestYear).toBe('2027');
+    expect(next.titleOverride).toBe('');
+    expect(next.id).toBe('next-id');
+    expect(source.identity.contestYear).toBe('2026'); // source untouched
+  });
+
+  it('carries and clears exactly what Duplicate does, apart from year and title', () => {
+    const source = filledContest();
+    const opts = { id: 'same-id', now: LATER };
+    const next = startNextYear(source, opts);
+    const dup = duplicateContest(source, opts);
+    expect({ ...next, titleOverride: dup.titleOverride, identity: { ...next.identity, contestYear: dup.identity.contestYear } }).toEqual(dup);
+  });
+
+  it('uses the current year when the source year is blank or not a 4-digit year', () => {
+    for (const year of ['', 'next', '26', '2026-27']) {
+      const source = filledContest();
+      source.identity = { ...source.identity, contestYear: year };
+      expect(startNextYear(source, { now: '2031-03-01T12:00:00.000Z' }).identity.contestYear).toBe('2031');
+    }
+  });
+
+  it('starts active even from an archived source', () => {
+    expect(startNextYear({ ...filledContest(), archived: true }).archived).toBe(false);
+  });
+});
+
+describe('latestCmInfo (PRD #304, #307)', () => {
+  const withCm = (updatedAt: string, name: string, archived = false): Contest => {
+    const c = createContest({ now: updatedAt });
+    return {
+      ...c,
+      updatedAt,
+      archived,
+      cmInfo: { name, email: '', phone: '', mailingAddress: '', website: '', techContact: '', bio: '' },
+    };
+  };
+
+  it('returns the CM info of the most recently edited contest', () => {
+    const got = latestCmInfo([withCm('2026-01-01T00:00:00Z', 'Old'), withCm('2026-06-01T00:00:00Z', 'New')]);
+    expect(got?.name).toBe('New');
+  });
+
+  it('skips newer contests whose CM info is blank', () => {
+    const got = latestCmInfo([withCm('2026-01-01T00:00:00Z', 'Kept'), withCm('2026-06-01T00:00:00Z', '  ')]);
+    expect(got?.name).toBe('Kept');
+  });
+
+  it('counts archived contests', () => {
+    expect(latestCmInfo([withCm('2026-06-01T00:00:00Z', 'Archived', true)])?.name).toBe('Archived');
+  });
+
+  it('returns null when nothing has CM info', () => {
+    expect(latestCmInfo([])).toBeNull();
+    expect(latestCmInfo([withCm('2026-06-01T00:00:00Z', '')])).toBeNull();
+  });
+
+  it('returns a copy, not the source object', () => {
+    const source = withCm('2026-06-01T00:00:00Z', 'Copy');
+    const got = latestCmInfo([source]);
+    expect(got).toEqual(source.cmInfo);
+    expect(got).not.toBe(source.cmInfo);
   });
 });
