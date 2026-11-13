@@ -650,6 +650,27 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   font: inherit; font-size: var(--fs-sm); padding: 5px var(--space-2); max-width: 100%;
   border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-input-bg); color: var(--c-text);
 }
+.template-badge {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 700; vertical-align: middle;
+  background: var(--c-surface); border: 1px solid var(--c-blue-border); color: var(--c-blue);
+}
+.template-share { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.template-share-toggle { font-size: var(--fs-sm); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.template-gallery {
+  background: var(--c-surface); border: 1.5px solid var(--c-blue-border); border-radius: 7px;
+  padding: 14px var(--space-4); margin-bottom: 14px;
+}
+.template-gallery-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.template-card { border-top: 1px solid var(--c-border); padding: var(--space-3) 0; }
+.template-card:last-child { padding-bottom: 0; }
+.template-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.template-card .template-preview-body { max-height: 220px; overflow-y: auto; margin-bottom: var(--space-2); }
+.template-tag {
+  display: inline-block; padding: 0 5px; margin: 0 1px; border-radius: var(--radius-sm);
+  background: var(--c-bg-blue); border: 1px solid var(--c-blue-border); color: var(--c-blue);
+  font-size: 0.85em; font-weight: 600;
+}
 .template-unknown-warning {
   margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--c-warn);
   background: var(--c-warn-bg); border: 1px solid var(--c-warn-border); border-radius: var(--radius-sm);

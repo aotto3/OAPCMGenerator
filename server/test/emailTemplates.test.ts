@@ -133,6 +133,8 @@ describe('edit', () => {
       body: 'New body',
       createdAt: made.template.createdAt,
       updatedAt: h.clock.now.toISOString(),
+      shared: false,
+      sharedAt: null,
     });
     const list = await h.as('alice').get('/api/templates').expect(200);
     expect(list.body.templates).toEqual([body.template]);

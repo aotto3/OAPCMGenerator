@@ -13,7 +13,19 @@ export const TEMPLATE_LIMITS = {
   subject: 200,
   body: 20000,
   perAccount: 50,
+  /** The author name shown on a shared template. */
+  authorName: 80,
 } as const;
+
+/**
+ * The author name to share a template under: trimmed, or null when it is
+ * blank, too long or not a string (sharing is refused).
+ */
+export function cleanAuthorName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim();
+  return name === '' || name.length > TEMPLATE_LIMITS.authorName ? null : name;
+}
 
 /** What a CM sends to create (or later, update) a template. */
 export interface TemplateInput {

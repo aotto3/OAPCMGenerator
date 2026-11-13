@@ -28,7 +28,36 @@ export interface EmailTemplate {
   body: string;
   createdAt: string;
   updatedAt: string;
+  /** In the gallery. Absent on a device copy saved before sharing existed. */
+  shared?: boolean;
+  /** When it was shared; null or absent while private. */
+  sharedAt?: string | null;
 }
+
+/** A shared template as the gallery shows it. Never carries who owns it beyond `mine`. */
+export interface GalleryTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  authorName: string;
+  sharedAt: string;
+  /** True when the signed-in CM wrote it. */
+  mine: boolean;
+}
+
+export type GalleryResult = { kind: 'ok'; templates: GalleryTemplate[] } | { kind: 'offline' } | { kind: 'error' };
+
+export type ShareResult =
+  | { kind: 'saved'; template: EmailTemplate }
+  | { kind: 'offline' }
+  /** The author name was blank or too long. */
+  | { kind: 'no_author' }
+  | { kind: 'not_found' }
+  | { kind: 'error' };
+
+/** Adding from the gallery: a create, or the template is no longer shared. */
+export type AddResult = CreateResult | { kind: 'not_found' };
 
 /** Where `list()` got its answer. */
 export type ListResult =
@@ -67,6 +96,15 @@ const BASE = '/api/templates';
 /** The device-copy key for an account. */
 export function deviceKey(userId: string): string {
   return `oap.emailTemplates.${userId}`;
+}
+
+function isGalleryTemplate(t: unknown): t is GalleryTemplate {
+  if (typeof t !== 'object' || t === null) return false;
+  const r = t as Record<string, unknown>;
+  return (
+    ['id', 'name', 'subject', 'body', 'authorName', 'sharedAt'].every((k) => typeof r[k] === 'string') &&
+    typeof r.mine === 'boolean'
+  );
 }
 
 function isTemplate(t: unknown): t is EmailTemplate {
@@ -161,10 +199,17 @@ export function createTemplatesClient(options: TemplatesClientOptions) {
       }
     },
 
-    /** Replaces a template (last write wins). */
-    async update(id: string, input: TemplateInput): Promise<UpdateResult> {
+    /**
+     * Replaces a template (last write wins). For a shared template, pass the
+     * author name so the gallery card shows the current one.
+     */
+    async update(id: string, input: TemplateInput, authorName?: string): Promise<UpdateResult> {
       try {
-        const body = await api.send<{ template?: unknown }>('PUT', `${BASE}/${encodeURIComponent(id)}`, input);
+        const body = await api.send<{ template?: unknown }>(
+          'PUT',
+          `${BASE}/${encodeURIComponent(id)}`,
+          authorName ? { ...input, authorName } : input,
+        );
         if (!isTemplate(body?.template)) return { kind: 'error' };
         keepOne(body.template);
         return { kind: 'saved', template: body.template };
@@ -174,6 +219,52 @@ export function createTemplatesClient(options: TemplatesClientOptions) {
           keep(saved().filter((t) => t.id !== id));
           return { kind: 'not_found' };
         }
+        return writeFailure(err);
+      }
+    },
+
+    /** Shares a template under `authorName`, or takes it back out of the gallery when `authorName` is null. */
+    async setShared(id: string, authorName: string | null): Promise<ShareResult> {
+      const path = `${BASE}/${encodeURIComponent(id)}/share`;
+      try {
+        const body = await (authorName === null
+          ? api.send<{ template?: unknown }>('DELETE', path)
+          : api.send<{ template?: unknown }>('POST', path, { authorName }));
+        if (!isTemplate(body?.template)) return { kind: 'error' };
+        keepOne(body.template);
+        return { kind: 'saved', template: body.template };
+      } catch (err) {
+        if (err instanceof ApiNetworkError) return { kind: 'offline' };
+        if (err instanceof ApiHttpError && err.status === 404) return { kind: 'not_found' };
+        if (err instanceof ApiHttpError && err.status === 400) return { kind: 'no_author' };
+        return { kind: 'error' };
+      }
+    },
+
+    /** Every shared template. Online only: the gallery is not kept on the device. */
+    async gallery(): Promise<GalleryResult> {
+      try {
+        const body = await api.get<{ templates?: unknown }>(`${BASE}/gallery`);
+        if (!Array.isArray(body?.templates)) return { kind: 'error' };
+        return { kind: 'ok', templates: body.templates.filter(isGalleryTemplate) };
+      } catch (err) {
+        return err instanceof ApiNetworkError ? { kind: 'offline' } : { kind: 'error' };
+      }
+    },
+
+    /** Copies a shared template into this account, optionally under a new name. */
+    async addFromGallery(id: string, name?: string): Promise<AddResult> {
+      try {
+        const body = await api.send<{ template?: unknown }>(
+          'POST',
+          `${BASE}/gallery/${encodeURIComponent(id)}/add`,
+          name === undefined ? {} : { name },
+        );
+        if (!isTemplate(body?.template)) return { kind: 'error' };
+        keepOne(body.template);
+        return { kind: 'saved', template: body.template };
+      } catch (err) {
+        if (err instanceof ApiHttpError && err.status === 404) return { kind: 'not_found' };
         return writeFailure(err);
       }
     },
