@@ -55,13 +55,24 @@ describe('admin request-ip probe', () => {
       .set('X-Forwarded-For', '198.51.100.1, 203.0.113.9')
       .set('X-Real-IP', '198.51.100.1')
       .expect(200);
+    // Two trusted hops: the client is second from the right, ahead of the frontend's egress.
     expect(res.body).toMatchObject({
-      ip: '203.0.113.9',
+      ip: '198.51.100.1',
       forwardedFor: '198.51.100.1, 203.0.113.9',
       realIp: '198.51.100.1',
     });
     expect(Array.isArray(res.body.ips)).toBe(true);
     expect(typeof res.body.remoteAddress).toBe('string');
+  });
+
+  it('takes the client from the live chain, ignoring an address forged ahead of it', async () => {
+    const h = await buildTestApp({ adminEmails: new Set(['admin@example.test']) });
+    const res = await h
+      .as('admin')
+      .get('/api/admin/request-ip')
+      .set('X-Forwarded-For', '6.6.6.6, 152.55.181.123, 152.233.30.101')
+      .expect(200);
+    expect(res.body.ip).toBe('152.55.181.123');
   });
 
   it('is dark to everyone else', async () => {

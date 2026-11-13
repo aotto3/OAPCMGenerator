@@ -85,7 +85,15 @@ export function createApp(deps: AppDeps): Express {
   app.disable('x-powered-by');
   // Behind Railway's TLS-terminating edge and the frontend reverse proxy, trust
   // X-Forwarded-* so req.protocol/secure reflect the original https origin.
-  app.set('trust proxy', 1);
+  //
+  // Two hops (#261): the browser's request reaches us as browser -> Railway edge
+  // -> frontend (serve.mjs) -> Railway edge -> API, and arrives with
+  // X-Forwarded-For "<client>, <frontend egress>". With 1, req.ip was the
+  // frontend's address, so every judge shared one per-IP rate limit. Measured on
+  // the live chain with GET /api/admin/request-ip (2026-11-13). Safe only with
+  // the proxy-secret gate on: a caller who skips the proxy could otherwise put
+  // any address in that second-from-right slot.
+  app.set('trust proxy', 2);
 
   // The proxy gate runs first, ahead of auth, so nothing under /api answers a
   // caller that skipped the frontend proxy. /health and / stay open.
