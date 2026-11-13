@@ -21,6 +21,8 @@ import {
   deadlineEmail,
   judgeNeedsEmail,
   judgesEmail,
+  questionnaireEmail,
+  QUESTIONNAIRE_LINK_PLACEHOLDER,
   tabulationEmail,
   gmailComposeUrl,
   EMAIL_TEMPLATES,
@@ -129,6 +131,37 @@ describe('judgesEmail', () => {
   it('does not leak the critique assignment into the email', () => {
     // Judges must not learn the draw ahead of time (#23 deferred clause, decided out).
     expect(judgesEmail(fixtureContest()).body).not.toMatch(/Judge \d+ \(/);
+  });
+});
+
+describe('questionnaireEmail', () => {
+  const LINK = 'https://app.test/q/abc123';
+
+  it('has the questionnaire subject and reminds judges of the contest', () => {
+    const { subject, body } = questionnaireEmail(fixtureContest(), LINK);
+    expect(subject).toBe(`${CONTEST_NAME} - Adjudicator Questionnaire`);
+    expect(body).toMatch(/^Dear Judges,/);
+    expect(body).toContain(`adjudicate the ${CONTEST_NAME} on Saturday, March 21, 2026.`);
+    expect(body).toContain('held at Performing Arts Center, 7504 Bissonnet St, Houston, TX 77074.');
+  });
+
+  it('gives the link after the Adjudicator Questionnaire label and signs off with CM contact', () => {
+    const { body } = questionnaireEmail(fixtureContest(), LINK);
+    expect(body).toContain(`Adjudicator Questionnaire: ${LINK}\n`);
+    expect(body).toMatch(/Allen Otto\nContest Manager\naotto3@gmail.com\n281-777-8672$/);
+  });
+
+  it('leaves a placeholder when the link is unavailable', () => {
+    const { body } = questionnaireEmail(fixtureContest(), null);
+    expect(body).toContain(`Adjudicator Questionnaire: ${QUESTIONNAIRE_LINK_PLACEHOLDER}`);
+  });
+
+  it('falls back to placeholders when contest fields are blank', () => {
+    let c = withIdentity(fixtureContest(), { hostVenueName: '', hostAddress: '' }, FIXTURE_NOW);
+    c = withDetails(c, { contestDate: '' }, FIXTURE_NOW);
+    const { body } = questionnaireEmail(c, LINK);
+    expect(body).toContain('on [Contest Date TBD].');
+    expect(body).toContain('held at [Venue TBD], [Address TBD].');
   });
 });
 
