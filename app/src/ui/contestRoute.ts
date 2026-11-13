@@ -8,6 +8,8 @@
  *   /                       → dashboard
  *   /contest/<id>           → contest, no pane (the landing rule applies)
  *   /contest/<id>/<pane>    → contest at that pane
+ *   /contest/new[/<pane>]   → the unsaved "+ New Contest" draft (#310); a
+ *                             refresh here simply opens a fresh draft
  *
  * Anything else (including an unknown pane name) degrades gracefully: unknown
  * paths are the dashboard, unknown panes are "no pane". The public questionnaire
@@ -17,6 +19,7 @@ import { PANES, type PaneId } from './paneRegistry';
 
 export type ContestRoute =
   | { kind: 'dashboard' }
+  | { kind: 'newContest'; pane?: PaneId }
   | { kind: 'contest'; id: string; pane?: PaneId };
 
 const PANE_IDS = new Set<string>(PANES.map((p) => p.id));
@@ -36,13 +39,15 @@ export function parseRoute(pathname: string): ContestRoute {
     return { kind: 'dashboard' };
   }
   if (!id.trim()) return { kind: 'dashboard' };
-  const pane = parts[2];
-  return pane && isPaneId(pane) ? { kind: 'contest', id, pane } : { kind: 'contest', id };
+  const pane = parts[2] && isPaneId(parts[2]) ? parts[2] : undefined;
+  // Contest ids are UUIDs, so the literal "new" can never collide with one.
+  if (id === 'new') return pane ? { kind: 'newContest', pane } : { kind: 'newContest' };
+  return pane ? { kind: 'contest', id, pane } : { kind: 'contest', id };
 }
 
 /** Route → pathname. The inverse of parseRoute for every route it produces. */
 export function formatRoute(route: ContestRoute): string {
   if (route.kind === 'dashboard') return '/';
-  const base = `/contest/${encodeURIComponent(route.id)}`;
+  const base = route.kind === 'newContest' ? '/contest/new' : `/contest/${encodeURIComponent(route.id)}`;
   return route.pane ? `${base}/${route.pane}` : base;
 }

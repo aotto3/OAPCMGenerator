@@ -85,3 +85,22 @@ describe('serializeSyncBundle / parseSyncBundle', () => {
     expect(() => parseSyncBundle('42')).toThrow(/not an object/);
   });
 });
+
+describe('automatic checkpoint marker (PRD #304, #309)', () => {
+  it('old bundles without the marker parse, and only a literal true marks a checkpoint automatic', () => {
+    const contest = createContest({ id: 'c', now: '2026-01-01T00:00:00.000Z' });
+    const base = makeCheckpoint(contest, 'x', '', '2026-01-01T00:00:00.000Z', 'cp1');
+    const json = bundleFromEnvelope(serializeContest(contest), [
+      base,
+      { ...base, id: 'cp2', auto: true },
+      { ...base, id: 'cp3', auto: 'yes' } as unknown as typeof base,
+    ]);
+    const { checkpoints } = parseSyncBundle(json);
+    expect(checkpoints.map((c) => [c.id, c.auto])).toEqual([
+      ['cp1', undefined],
+      ['cp2', true],
+      ['cp3', undefined],
+    ]);
+    expect('auto' in checkpoints[0]).toBe(false);
+  });
+});

@@ -27,6 +27,28 @@ export interface Checkpoint {
   createdAt: string;
   /** Immutable snapshot: the versioned envelope from serializeContest(). */
   payload: string;
+  /**
+   * Taken automatically before a destructive action (PRD #304, #309), e.g.
+   * "Before re-draw". Absent on checkpoints the CM named, and on records made
+   * before this field existed, so those read as named and are never pruned.
+   */
+  auto?: true;
+}
+
+/** Only this many automatic checkpoints are kept per contest; named ones are never pruned. */
+export const MAX_AUTO_CHECKPOINTS = 10;
+
+/**
+ * The ids to delete so a contest keeps only its newest MAX_AUTO_CHECKPOINTS
+ * automatic checkpoints. Named checkpoints (and "Before restore" ones, which
+ * are not marked automatic) are never returned. Pure.
+ */
+export function autoCheckpointsToPrune(checkpoints: readonly Checkpoint[]): string[] {
+  return checkpoints
+    .filter((c) => c.auto === true)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+    .slice(MAX_AUTO_CHECKPOINTS)
+    .map((c) => c.id);
 }
 
 /**

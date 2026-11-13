@@ -21,6 +21,7 @@ import {
   type Contest,
   type School,
 } from '../../model/contest';
+import { autoCheckpoint } from '../autoCheckpoint';
 import { Section } from './Section';
 import { TextField } from './fields';
 
@@ -456,6 +457,7 @@ export function ResultsSection({
             className="btn-util"
             onClick={() => {
               if (window.confirm('Clear all recorded results? The Awards Script returns to its blank fill-in template.')) {
+                autoCheckpoint(contest, 'Before clearing results');
                 onChange(clearResults(contest));
               }
             }}

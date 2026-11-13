@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Contest } from '../model/contest';
+import { createContest, latestCmInfo, type Contest } from '../model/contest';
 import { contestLibrary } from '../storage/browserLibrary';
 import { requestPersistentStorage } from '../storage/persist';
 import { AdminPanel } from '../admin/AdminPanel';
@@ -60,19 +60,57 @@ function ContestFlow() {
     openContest(contest.id);
   }
 
+  // "+ New Contest": a fresh in-memory draft whose CM info carries over from the
+  // most recently edited contest that has any (#307). A failed read starts blank.
+  async function buildDraft(): Promise<{ contest: Contest; cmCarried: boolean }> {
+    const fresh = createContest();
+    const carried = latestCmInfo(await contestLibrary().readAll().catch(() => []));
+    return { contest: carried ? { ...fresh, cmInfo: carried } : fresh, cmCarried: carried !== null };
+  }
+
+  // A refresh (or Forward) onto /contest/new with no draft in memory just opens a
+  // fresh one: an untouched draft was never stored, so there is nothing to lose (#310).
+  const needsDraft = route.kind === 'newContest' && draft === null;
+  useEffect(() => {
+    if (needsDraft) void buildDraft().then(setDraft);
+  }, [needsDraft]);
+
   if (route.kind === 'dashboard') {
     return (
       <Dashboard
         onOpen={openContest}
-        onCreate={(contest, cmCarried) => {
-          setDraft({ contest, cmCarried });
-          openContest(contest.id);
+        onCreate={async () => {
+          setDraft(await buildDraft());
+          navigate({ kind: 'newContest' });
         }}
         onOpenSaved={openSaved}
       />
     );
   }
 
+  if (route.kind === 'newContest') {
+    if (!draft) return <main className="page"><p className="muted">Loading…</p></main>;
+    const id = draft.contest.id;
+    return (
+      <Workspace
+        key={id}
+        contestId={id}
+        draft={draft.contest}
+        cmCarried={draft.cmCarried}
+        pane={route.pane}
+        onPane={(pane, opts) => navigate({ kind: 'newContest', pane }, opts)}
+        // The first edit stored the draft: swap /contest/new for its real address
+        // in place, so a refresh from here reopens the saved contest.
+        onDraftSaved={(pane) => navigate({ kind: 'contest', id, pane }, { replace: true })}
+        onBack={() => navigate({ kind: 'dashboard' })}
+        onOpenSaved={openSaved}
+        onOpenContest={openContest}
+      />
+    );
+  }
+
+  // The same draft object keeps flowing after its URL switches, so the
+  // Workspace (keyed by id) stays mounted and its session is not reopened.
   const isDraft = draft?.contest.id === route.id;
   return (
     // Keyed so opening another contest remounts it: autosave flushes the old

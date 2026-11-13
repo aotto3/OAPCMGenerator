@@ -3,7 +3,6 @@ import { allDirectorEmails, allJudgeEmails, type Contest } from '../model/contes
 import {
   advancingEmail,
   EMAIL_TEMPLATES,
-  gmailComposeUrl,
   questionnaireEmail,
   tabulationEmail,
   type EmailTemplateId,
@@ -12,6 +11,7 @@ import { createQuestionnaireClient, questionnaireUrl } from '../questionnaire/qu
 
 const questionnaireClient = createQuestionnaireClient();
 import { CopyButton } from './sections/fields';
+import { MailAppPicker, mailAppName, openDraft, openInLabel, usePreferredMailApp, type OpenDraftResult } from './mailApp';
 import { Section } from './sections/Section';
 
 /**
@@ -48,13 +48,12 @@ export function EmailComposer({ contest }: { contest: Contest }) {
   const [toList, setToList] = useState<string[] | null>(null);
   /** Shown in the To: line when the resolved list is empty. */
   const [toEmptyText, setToEmptyText] = useState('');
-  const [gmailBlocked, setGmailBlocked] = useState(false);
+  const [mailApp, setMailApp] = usePreferredMailApp();
+  const [openResult, setOpenResult] = useState<OpenDraftResult | null>(null);
 
-  /** Opens the shown draft (as edited) in Gmail compose; To is filled when the draft has a recipient list. */
-  function openInGmail() {
-    const win = window.open(gmailComposeUrl({ to: toList ?? [], subject, body }), '_blank');
-    if (win) win.opener = null;
-    setGmailBlocked(!win);
+  /** Opens the shown draft (as edited) in the chosen email app (#308); To is filled when the draft has a recipient list. */
+  function openInMailApp() {
+    setOpenResult(openDraft(mailApp, { to: toList ?? [], subject, body }));
   }
 
   function loadTemplate(id: EmailTemplateId) {
@@ -247,13 +246,27 @@ export function EmailComposer({ contest }: { contest: Contest }) {
           className="btn-util email-gmail-btn"
           disabled={!subject && !body}
           title={subject || body ? undefined : 'Pick a template first'}
-          onClick={openInGmail}
+          onClick={openInMailApp}
         >
-          ✉ Open in Gmail
+          ✉ {openInLabel(mailApp)}
         </button>
+        <MailAppPicker
+          value={mailApp}
+          onChange={(app) => {
+            setMailApp(app);
+            setOpenResult(null);
+          }}
+        />
       </div>
-      {gmailBlocked && (
-        <p className="tab-status-error">The browser blocked the Gmail window. Allow pop-ups for this site and try again.</p>
+      {openResult?.blocked && (
+        <p className="tab-status-error">
+          The browser blocked the {mailAppName(mailApp)} window. Allow pop-ups for this site and try again.
+        </p>
+      )}
+      {openResult?.bodyCopied && (
+        <p className="hint">
+          This message is too long for a mail link, so the body was copied. Paste it into the message before sending.
+        </p>
       )}
     </Section>
   );

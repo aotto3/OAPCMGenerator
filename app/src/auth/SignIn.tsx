@@ -4,13 +4,18 @@
  * field exists anywhere by design. On success Better Auth sets the session
  * cookie and the session hook in App re-renders into the dashboard.
  *
- * The magic-link and Google flows both redirect back to the app's own origin
- * after the server completes auth.
+ * The magic-link and Google flows both redirect back to the page the CM was on
+ * (same origin, current path), so a bookmarked contest link still opens that
+ * contest after signing in (PRD #304, #310).
  */
 import { useState } from 'react';
 import { signIn } from './authClient';
 
-const callbackURL = typeof window === 'undefined' ? '/' : window.location.origin;
+/** Same origin, current path: read at click time so it is the page being signed in from. */
+function callbackURL(): string {
+  if (typeof window === 'undefined') return '/';
+  return window.location.origin + window.location.pathname;
+}
 
 export function SignIn() {
   const [email, setEmail] = useState('');
@@ -19,7 +24,7 @@ export function SignIn() {
 
   async function handleGoogle() {
     setError('');
-    await signIn.social({ provider: 'google', callbackURL });
+    await signIn.social({ provider: 'google', callbackURL: callbackURL() });
   }
 
   async function handleMagicLink(e: React.FormEvent) {
@@ -27,7 +32,7 @@ export function SignIn() {
     if (!email.trim()) return;
     setStatus('sending');
     setError('');
-    const { error: err } = await signIn.magicLink({ email: email.trim(), callbackURL });
+    const { error: err } = await signIn.magicLink({ email: email.trim(), callbackURL: callbackURL() });
     if (err) {
       setStatus('error');
       setError(err.message ?? 'Could not send the sign-in link. Try again.');
