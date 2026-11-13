@@ -41,6 +41,12 @@ export interface QuestionnaireService {
    * new one instead of thinking they are not on file.
    */
   linkActive(token: string): Promise<boolean>;
+  /**
+   * The account a link token belongs to, for filing activity events (#261):
+   * its id and sign-in email ('' when the directory has none). undefined for
+   * an unknown token. Never sent to the public page.
+   */
+  linkOwner(token: string): Promise<{ id: string; email: string } | undefined>;
   /** Validates and replaces the account's roster. */
   publishRoster(ownerId: string, roster: unknown): Promise<{ ok: true } | { error: 'invalid' | 'too_large' }>;
   submissionsFor(ownerId: string): Promise<JudgeSubmission[]>;
@@ -130,6 +136,13 @@ export function createQuestionnaireService(deps: QuestionnaireServiceDeps): Ques
 
     async linkActive(token) {
       return (await store.ownerForToken(token)) !== undefined;
+    },
+
+    async linkOwner(token) {
+      const id = await store.ownerForToken(token);
+      if (id === undefined) return undefined;
+      const email = (await deps.ownerEmail(id).catch(() => undefined)) ?? '';
+      return { id, email };
     },
 
     async publishRoster(ownerId, input) {

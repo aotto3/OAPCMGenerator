@@ -64,9 +64,27 @@ const EVENT_LABELS: Record<string, string> = {
   'contest.imported': 'Imported file',
   'client.error': 'Client error',
   'admin.signin_link_resent': 'Resent sign-in link',
+  'questionnaire.judge_found': 'Questionnaire: judge opened',
+  'questionnaire.submitted': 'Questionnaire: judge submitted',
+  'questionnaire.not_on_roster': 'Questionnaire: email not on roster',
+  'questionnaire.rate_limited': 'Questionnaire: rate limited',
+  'questionnaire.honeypot': 'Questionnaire: bot blocked',
 };
 const EVENT_TYPES = Object.keys(EVENT_LABELS);
 const eventLabel = (type: string): string => EVENT_LABELS[type] ?? type;
+
+/**
+ * The extra context a feed row shows after its label: the contest name, or for
+ * questionnaire events (#261) the judge email typed and, on abuse-shaped events,
+ * the client IP the server recorded.
+ */
+function eventContext(e: { type: string; contestName?: string; detail?: unknown }): string | null {
+  if (e.contestName) return e.contestName;
+  if (!e.type.startsWith('questionnaire.') || typeof e.detail !== 'object' || e.detail === null) return null;
+  const d = e.detail as Record<string, unknown>;
+  const parts = [d.email, d.ip].filter((v): v is string => typeof v === 'string' && v !== '');
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
 
 /** Turns a `yyyy-mm-dd` date input into an inclusive ISO instant bound. */
 function dayBound(day: string, end: boolean): string | undefined {
@@ -350,7 +368,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
                     <span className="admin-feed-who">{e.userEmail}</span>
                     <span className="admin-feed-what">
                       {eventLabel(e.type)}
-                      {e.contestName ? <span className="muted"> · {e.contestName}</span> : null}
+                      {eventContext(e) ? <span className="muted"> · {eventContext(e)}</span> : null}
                     </span>
                   </li>
                 ))}

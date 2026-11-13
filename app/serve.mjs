@@ -15,6 +15,10 @@
  * Runtime config (Railway → frontend service → Variables; NOT VITE_ build vars):
  *   API_URL  required — origin of the API service to forward /api/* to
  *            (e.g. https://oapcmgenerator-production.up.railway.app).
+ *   PROXY_SECRET  optional — shared secret stamped on every forwarded request
+ *            (header x-oap-proxy-secret). Set the same value on the API, which
+ *            then 404s /api/* calls that did not come through here (#261). Set it
+ *            here FIRST, then on the API, so nothing is rejected mid-rollout.
  *   PORT     provided by Railway.
  */
 import express from 'express';
@@ -23,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const API_URL = process.env.API_URL;
+const PROXY_SECRET = process.env.PROXY_SECRET || '';
 if (!API_URL) {
   console.error('Missing required environment variable: API_URL (origin of the API service to proxy /api/* to)');
   process.exit(1);
@@ -46,6 +51,8 @@ app.use(
     target: API_URL,
     changeOrigin: true,
     xfwd: true,
+    // Overwrites any value a caller sent, so only this proxy can present it.
+    ...(PROXY_SECRET ? { headers: { 'x-oap-proxy-secret': PROXY_SECRET } } : {}),
     pathFilter: (path) => path.startsWith('/api'),
   }),
 );

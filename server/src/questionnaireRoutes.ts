@@ -25,8 +25,17 @@
  * says only whether a 144-bit token is current, which helps no one guess one. Token and email
  * travel in the body, never the URL, so they stay out of access logs. Rate limits
  * per IP and per email return 429.
+ *
+ * Activity (#261): lookups, submits, misses, rate-limit trips and honeypot hits
+ * are appended to the activity log under the CM whose link was used,
+ * best-effort (a log failure never changes the response). Unknown-token
+ * requests and the page-load link check are not logged. A rate-limit trip is
+ * logged once per IP or email per window, not per rejected request. The client
+ * IP is stored only on the abuse-shaped events (miss, rate limit, honeypot).
  */
 import { Router, type Request, type Response } from 'express';
+import type { EventLog } from './eventLog';
+import { QUESTIONNAIRE_EVENTS, type QuestionnaireEventType } from './eventTypes';
 import { normalizeEmail } from './judgeRoster';
 import type { QuestionnaireService } from './questionnaire';
 import { createRateLimiter, type RateLimiter } from './rateLimiter';
@@ -37,15 +46,23 @@ export interface QuestionnaireLimiters {
   perIp: RateLimiter;
   /** Lookups per normalized email, across IPs. */
   perEmail: RateLimiter;
+  /**
+   * Gates the rate-limited event: one log row per tripped key per window. Keys
+   * are `ip:<addr>` / `email:<addr>`. Defaults to 1 per 10 minutes.
+   */
+  tripLog?: RateLimiter;
 }
 
 /** The production limits, timed by the given clock (epoch ms). */
+const TRIP_LOG_WINDOW_MS = 10 * 60 * 1000;
+
 export function defaultQuestionnaireLimiters(now: () => number): QuestionnaireLimiters {
   return {
     // Generous per IP: behind the proxy chain several judges may share one address.
     perIp: createRateLimiter({ limit: 60, windowMs: 10 * 60 * 1000, now }),
     // Lookups and submits share it; a judge fixing answers a few times stays well under.
     perEmail: createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000, now }),
+    tripLog: createRateLimiter({ limit: 1, windowMs: TRIP_LOG_WINDOW_MS, now }),
   };
 }
 
@@ -53,7 +70,9 @@ export interface QuestionnaireRoutesDeps {
   questionnaire: QuestionnaireService;
   resolveUser: ResolveUser;
   limiters: QuestionnaireLimiters;
-  /** Injected clock; stamps the honeypot's fake success. */
+  /** The activity log the public routes append to, best-effort. */
+  eventLog: EventLog;
+  /** Injected clock; stamps the honeypot's fake success and every event. */
   now: () => Date;
 }
 
@@ -77,8 +96,50 @@ const guarded =
   };
 
 export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router {
-  const { questionnaire, resolveUser, limiters, now } = deps;
+  const { questionnaire, resolveUser, limiters, eventLog, now } = deps;
+  const tripLog =
+    limiters.tripLog ?? createRateLimiter({ limit: 1, windowMs: TRIP_LOG_WINDOW_MS, now: () => now().getTime() });
   const router = Router();
+
+  /**
+   * Appends one questionnaire event under the CM who owns `token`. Skipped for
+   * an unknown or malformed token. Never throws: the log is best-effort.
+   */
+  async function record(token: unknown, type: QuestionnaireEventType, detail: Record<string, unknown>): Promise<void> {
+    try {
+      if (typeof token !== 'string' || token === '' || token.length > 64) return;
+      const owner = await questionnaire.linkOwner(token);
+      if (!owner) return;
+      await eventLog.recordEvent({
+        occurredAt: now().toISOString(),
+        userId: owner.id,
+        userEmail: owner.email,
+        type,
+        detail,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to record questionnaire event (ignored)', err);
+    }
+  }
+
+  const clientIp = (req: Request): string => req.ip ?? 'unknown';
+
+  /** The typed email, normalized, when the body carries a usable one. */
+  const typedEmail = (value: unknown): string | null => {
+    if (typeof value !== 'string' || value.length > 320) return null;
+    const key = normalizeEmail(value);
+    return key === '' ? null : key;
+  };
+
+  /** Answers 429 and logs the trip the first time `key` trips this window. */
+  async function rateLimited(req: Request, res: Response, limit: 'ip' | 'email', key: string): Promise<void> {
+    if (tripLog.tryAcquire(`${limit}:${key}`)) {
+      const { token, email } = bodyOf(req);
+      await record(token, QUESTIONNAIRE_EVENTS.rateLimited, { limit, email: typedEmail(email), ip: clientIp(req) });
+    }
+    res.status(429).json({ error: 'rate_limited' });
+  }
 
   /** Signed-in routes: resolves the user or answers 401. */
   const authed = (handler: (req: Request, res: Response, user: AuthUser) => Promise<void>) =>
@@ -131,14 +192,20 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
    * limit. Answers the request itself (and returns null) unless the request may
    * go on to the service, in which case it returns the token and email.
    */
-  function admit(req: Request, res: Response, onHoneypot: () => void): { token: string; email: string } | null {
-    if (!limiters.perIp.tryAcquire(req.ip ?? 'unknown')) {
-      res.status(429).json({ error: 'rate_limited' });
+  async function admit(
+    req: Request,
+    res: Response,
+    onHoneypot: () => void,
+  ): Promise<{ token: string; email: string } | null> {
+    const ip = clientIp(req);
+    if (!limiters.perIp.tryAcquire(ip)) {
+      await rateLimited(req, res, 'ip', ip);
       return null;
     }
     const { token, email, website } = bodyOf(req);
     // Honeypot: a person never sees the field; anything in it is a bot.
     if (typeof website === 'string' && website.trim() !== '') {
+      await record(token, QUESTIONNAIRE_EVENTS.honeypot, { email: typedEmail(email), ip });
       onHoneypot();
       return null;
     }
@@ -152,7 +219,7 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
       return null;
     }
     if (!limiters.perEmail.tryAcquire(key)) {
-      res.status(429).json({ error: 'rate_limited' });
+      await rateLimited(req, res, 'email', key);
       return null;
     }
     return { token, email: key };
@@ -161,8 +228,9 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
   router.post(
     '/public/link',
     guarded(async (req, res) => {
-      if (!limiters.perIp.tryAcquire(req.ip ?? 'unknown')) {
-        res.status(429).json({ error: 'rate_limited' });
+      const ip = clientIp(req);
+      if (!limiters.perIp.tryAcquire(ip)) {
+        await rateLimited(req, res, 'ip', ip);
         return;
       }
       const { token } = bodyOf(req);
@@ -174,13 +242,15 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
   router.post(
     '/public/lookup',
     guarded(async (req, res) => {
-      const ok = admit(req, res, () => notFound(res));
+      const ok = await admit(req, res, () => notFound(res));
       if (!ok) return;
       const found = await questionnaire.lookup(ok.token, ok.email);
       if (!found) {
+        await record(ok.token, QUESTIONNAIRE_EVENTS.notOnRoster, { action: 'lookup', email: ok.email, ip: clientIp(req) });
         notFound(res);
         return;
       }
+      await record(ok.token, QUESTIONNAIRE_EVENTS.judgeFound, { email: ok.email, judgeName: found.judgeName });
       res.json(found);
     }),
   );
@@ -189,14 +259,17 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
     '/public/submit',
     guarded(async (req, res) => {
       // A bot that fills the honeypot is told it succeeded and nothing is stored.
-      const ok = admit(req, res, () => void res.json({ submittedAt: now().toISOString() }));
+      const ok = await admit(req, res, () => void res.json({ submittedAt: now().toISOString() }));
       if (!ok) return;
       const result = await questionnaire.submit(ok.token, ok.email, bodyOf(req).answers);
       if ('error' in result) {
-        if (result.error === 'not_found') notFound(res);
-        else res.status(400).json({ error: 'invalid_answers' });
+        if (result.error === 'not_found') {
+          await record(ok.token, QUESTIONNAIRE_EVENTS.notOnRoster, { action: 'submit', email: ok.email, ip: clientIp(req) });
+          notFound(res);
+        } else res.status(400).json({ error: 'invalid_answers' });
         return;
       }
+      await record(ok.token, QUESTIONNAIRE_EVENTS.submitted, { email: ok.email });
       res.json(result);
     }),
   );
