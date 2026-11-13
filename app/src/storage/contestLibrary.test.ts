@@ -15,7 +15,7 @@ import {
   type ContestEvent,
   type ContestLibrary,
 } from './contestLibrary';
-import { createLibrarySyncStore } from './syncStore';
+import { createMemoryContestServer, type MemoryContestServer } from './memoryContestServer';
 import {
   createContest,
   effectiveContestTitle,
@@ -27,7 +27,7 @@ import {
   type Contest,
 } from '../model/contest';
 import { makeCheckpoint } from '../model/checkpoint';
-import { parseSyncBundle, serializeSyncBundle } from '../model/syncBundle';
+import { parseSyncBundle } from '../model/syncBundle';
 
 const T0 = '2026-07-05T12:00:00.000Z';
 const T1 = '2026-07-06T12:00:00.000Z';
@@ -35,16 +35,18 @@ const T2 = '2026-07-07T12:00:00.000Z';
 const FUTURE = '2027-01-01T00:00:00.000Z';
 
 let factory: IDBFactory;
+let server: MemoryContestServer;
 let now: string;
 let library: ContestLibrary;
 let events: ContestEvent[];
 
 function open(): ContestLibrary {
-  return createContestLibrary({ idb: factory, clock: () => now });
+  return createContestLibrary({ idb: factory, clock: () => now, server: server.server });
 }
 
 beforeEach(() => {
   factory = new IDBFactory();
+  server = createMemoryContestServer();
   now = T2;
   library = open();
   events = [];
@@ -281,7 +283,9 @@ describe('checkpoints', () => {
   });
 });
 
-describe('the sync engine seams', () => {
+describe('pulls and pushes through the server port', () => {
+  const changes = () => events.filter((e) => e.type !== 'reconciled');
+
   it('a pull stamps the server version, replaces checkpoints, keeps credentials, and emits a remote event', async () => {
     const contest = sampleContest();
     await library.save(contest);
@@ -290,7 +294,8 @@ describe('the sync engine seams', () => {
 
     const remoteCopy = withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2);
     const fromServer = makeCheckpoint(remoteCopy, 'from server', '', T2, 'cp-server');
-    await library.applyRemote({ updatedAt: FUTURE, payload: serializeSyncBundle(remoteCopy, [fromServer]) });
+    server.seed(remoteCopy, { version: FUTURE, checkpoints: [fromServer] });
+    await library.sync.reconcileNow();
 
     const stored = await library.read(contest.id);
     expect(stored?.identity.hostSchoolName).toBe('Remote HS');
@@ -298,48 +303,41 @@ describe('the sync engine seams', () => {
     expect((await library.checkpoints.list(contest.id)).map((c) => c.name)).toEqual(['from server']);
     expect(versionOf(await library.list(), contest.id)).toBe(FUTURE);
     await expectListMatchesSummarize();
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'changed', id: contest.id, origin: 'remote' });
-  });
-
-  it("the engine's store writes pulls through the library, so every subscriber hears them", async () => {
-    const store = createLibrarySyncStore(library);
-    const remote = sampleContest('pulled');
-    await store.applyRemote('pulled', { name: 'x', updatedAt: T2, payload: serializeSyncBundle(remote, []) });
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'changed', id: 'pulled', origin: 'remote' });
-    expect(await store.listLocal()).toEqual([{ id: 'pulled', updatedAt: T2 }]);
-    expect((await store.loadBundle('pulled'))?.updatedAt).toBe(T2);
+    expect(changes()).toHaveLength(1);
+    expect(changes()[0]).toMatchObject({ type: 'changed', id: contest.id, origin: 'remote' });
+    expect(events.at(-1)).toEqual({ type: 'reconciled' });
   });
 
   it('a pull of a contest new to this device stores it with blank credentials', async () => {
-    const remote = sampleContest('fresh');
-    await library.applyRemote({ updatedAt: T2, payload: serializeSyncBundle(remote, []) });
+    server.seed(sampleContest('fresh'));
+    await library.sync.reconcileNow();
     expect((await library.read('fresh'))?.speechwire).toEqual({ username: '', password: '' });
     await expectListMatchesSummarize();
   });
 
-  it('the upload bundle carries the contest and its checkpoints but never the credentials', async () => {
+  it('the push carries the contest and its checkpoints at the stored version, never the credentials', async () => {
     const contest = sampleContest();
     await library.save(contest);
     await library.checkpoints.save(contest, 'snap');
+    await library.sync.reconcileNow();
 
-    const bundle = await library.bundleFor(contest.id);
-
-    expect(bundle?.name).toBe(effectiveContestTitle(contest));
-    expect(bundle?.updatedAt).toBe(versionOf(await library.list(), contest.id));
-    expect(bundle?.payload).not.toContain('s3cret');
-    const parsed = parseSyncBundle(bundle!.payload);
+    const pushed = server.contests.get(contest.id)!;
+    expect(pushed.name).toBe(effectiveContestTitle(contest));
+    expect(pushed.updatedAt).toBe(versionOf(await library.list(), contest.id));
+    const parsed = parseSyncBundle(pushed.payload);
     expect(parsed.contest.identity.hostSchoolName).toBe('Westlake HS');
     expect(parsed.checkpoints.map((c) => c.name)).toEqual(['snap']);
-    expect(await library.bundleFor('ghost')).toBeUndefined();
+    // No call to the server port ever carries a credential.
+    expect(JSON.stringify(server.calls)).not.toContain('s3cret');
+    expect(JSON.stringify(server.calls)).not.toContain('cm@speechwire');
   });
 });
 
 describe('the version rule', () => {
   it('after pulling a copy stamped in the future, a local edit still counts as newer', async () => {
     const contest = sampleContest();
-    await library.applyRemote({ updatedAt: FUTURE, payload: serializeSyncBundle(contest, []) });
+    server.seed(contest, { version: FUTURE });
+    await library.sync.reconcileNow();
 
     // This device's clock is behind the other device's: the edit stamps T2 < FUTURE.
     const pulled = (await library.read(contest.id))!;
@@ -347,7 +345,9 @@ describe('the version rule', () => {
 
     const version = versionOf(await library.list(), contest.id)!;
     expect(Date.parse(version)).toBeGreaterThan(Date.parse(FUTURE));
-    expect((await library.bundleFor(contest.id))?.updatedAt).toBe(version);
+    await library.sync.reconcileNow();
+    expect(server.contests.get(contest.id)?.updatedAt).toBe(version);
+    expect(parseSyncBundle(server.contests.get(contest.id)!.payload).contest.details.contestDate).toBe('2026-04-01');
   });
 
   it('is the later of the contest updatedAt and one millisecond past the stored version', () => {

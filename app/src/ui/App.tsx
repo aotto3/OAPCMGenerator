@@ -6,11 +6,11 @@ import { AdminPanel } from '../admin/AdminPanel';
 import { useIsAdmin } from '../admin/useIsAdmin';
 import { signOut, useSession } from '../auth/authClient';
 import { SignIn } from '../auth/SignIn';
+import { useContestSync } from './contestHooks';
 import { Dashboard } from './Dashboard';
 import { SyncStatus } from './SyncStatus';
 import { ThemeToggle } from './ThemeToggle';
 import { UpdatePrompt } from './UpdatePrompt';
-import { useSync } from './useSync';
 import { Workspace } from './Workspace';
 import { QuestionnairePage } from '../questionnaire/QuestionnairePage';
 import { questionnaireTokenFromPath } from '../questionnaire/questionnaireClient';
@@ -56,8 +56,8 @@ function ContestFlow() {
 
 /**
  * Auth gate (PRD user stories 1, 2). Once signed in, background sync (Slice 14,
- * issue #27) keeps this device's contests in step with the account: useSync
- * starts the engine and the SyncStatus indicator reflects it. Contests still
+ * issue #27) keeps this device's contests in step with the account: useContestSync
+ * starts the library's sync and the SyncStatus indicator reflects it. Contests still
  * live locally in IndexedDB and edits never block on the network — sync runs in
  * the storage layer, off the typing path.
  */
@@ -90,7 +90,7 @@ function AppFooter() {
 
 function AccountApp() {
   const { data: session, isPending } = useSession();
-  const syncStatus = useSync(!!session);
+  const syncStatus = useContestSync(!!session);
   // Admin gate: probe the server once signed in. Non-admins get a 404 → false,
   // so nothing below ever renders for them (PRD user story 13). The server
   // re-checks admin on every request behind the panel regardless.

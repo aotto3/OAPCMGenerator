@@ -1,19 +1,15 @@
 /**
  * Boundary tests for contest-library followers (RFC #276, slice A3 #279): a
  * real library on fake-indexeddb with manual timers and a manual wake port.
- * `noteReconciled()` stands in for the sync engine's completed server pass,
- * except in the last test, which runs the real engine against a fake server.
+ * A completed server pass is a real `library.sync.reconcileNow()` against the
+ * in-memory server (slice A5 #281); the last test connects the full loop.
  */
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ContestLibrary, FollowBatch } from './contestLibrary';
 import { followerKit, type FollowerKit } from './followerTestKit';
-import { createSyncEngine } from './syncEngine';
-import { createLibrarySyncStore } from './syncStore';
-import { SyncNetworkError, type RemoteContest, type SyncClient } from './syncClient';
 import { createContest, withDetails, withIdentity, type Contest } from '../model/contest';
 import { setJudge } from '../model/judgePanel';
-import { serializeSyncBundle } from '../model/syncBundle';
 import { startRosterPublisher } from '../questionnaire/rosterPublisher';
 import type { JudgeRoster } from '../questionnaire/roster';
 import { blankAnswers, type JudgeSubmission } from '../questionnaire/submission';
@@ -62,7 +58,7 @@ describe('library.follow', () => {
     await kit.settle();
     expect(f.batches).toEqual([]);
 
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     // What arrived before the pass is in the first batch.
     expect(f.batches).toEqual([{ first: true, reconciled: true, changed: ['c1'], removed: [] }]);
@@ -73,7 +69,7 @@ describe('library.follow', () => {
     const f = recorder('r', async (b) => {
       for (const c of b.changed) seen.push(c.identity.hostSchoolName);
     });
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     for (const host of ['A HS', 'B HS', 'C HS', 'D HS']) await library.save(contest('c1', host));
     await kit.settle();
@@ -85,7 +81,7 @@ describe('library.follow', () => {
   it('reports removed contests', async () => {
     await library.add(contest('c1'));
     const f = recorder('r');
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     await library.remove('c1');
     await kit.settle();
@@ -98,7 +94,7 @@ describe('library.follow', () => {
       if (b.first) await b.transform('c1', (c) => withIdentity(c, { hostSchoolName: 'Own HS' }, '2026-11-03T00:00:00.000Z'));
     });
     const other = recorder('other');
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     expect(own.batches).toHaveLength(1);
     expect(other.batches.flatMap((b) => b.changed)).toContain('c1');
@@ -115,7 +111,7 @@ describe('library.follow', () => {
       if (b.first) await new Promise<void>((resolve) => (release = resolve));
       active -= 1;
     });
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle(); // the first run is now blocked
     await library.add(contest('c2'));
     await kit.settle(); // its debounce fires while the first run is still going
@@ -132,7 +128,7 @@ describe('library.follow', () => {
       if (fail) throw new Error('offline');
     });
     await library.add(contest('c1'));
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     expect(f.batches).toHaveLength(1);
     await kit.settle();
@@ -152,7 +148,7 @@ describe('library.follow', () => {
   it('stops running once stopped', async () => {
     const f = recorder('r');
     f.stop();
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await library.add(contest('c1'));
     await kit.settle();
     expect(f.batches).toEqual([]);
@@ -197,7 +193,7 @@ describe('the roster and submission followers together', () => {
   it('a burst of device edits makes zero submission fetches and at most one roster publish', async () => {
     await library.add(judged('c1', 'jane@x.org'));
     const w = wire();
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     expect(w.fetches()).toBe(1);
     expect(w.published).toHaveLength(1);
@@ -219,7 +215,7 @@ describe('the roster and submission followers together', () => {
     await library.add(judged('c1', 'jane@x.org'));
     const open = library.open('c1');
     const w = wire();
-    library.noteReconciled();
+    await library.sync.reconcileNow();
     await kit.settle();
     const state = open.getState();
     expect(state.status === 'ready' && state.contest.adjudicators[0].dietary).toBe('vegan');
@@ -228,39 +224,11 @@ describe('the roster and submission followers together', () => {
   });
 });
 
-describe('a fresh device (with the real sync engine)', () => {
+describe('a fresh device (with the connected sync loop)', () => {
   it('cannot publish an empty roster before its first pull completes', async () => {
     // The account's server copy has a judged contest; this device has nothing yet.
-    const remote = judged('c1', 'jane@x.org');
-    const record: RemoteContest = {
-      id: 'c1',
-      name: 'Contest',
-      updatedAt: remote.updatedAt,
-      payload: serializeSyncBundle(remote, []),
-    };
-    const state = { reachable: false };
-    const guard = () => {
-      if (!state.reachable) throw new SyncNetworkError();
-    };
-    const client: SyncClient = {
-      list: async () => (guard(), [{ id: 'c1', name: 'Contest', updatedAt: record.updatedAt }]),
-      get: async () => (guard(), record),
-      create: async () => guard(),
-      update: async () => guard(),
-      remove: async () => guard(),
-    };
-    const tasks: (() => void | Promise<void>)[] = [];
-    const drain = async () => {
-      while (tasks.length) await tasks.shift()!();
-    };
-    const engine = createSyncEngine({
-      client,
-      store: createLibrarySyncStore(library),
-      isOnline: () => true,
-      schedule: (fn) => void tasks.push(fn),
-      flushDelayMs: 0,
-      backoff: () => 0,
-    });
+    kit.server.seed(judged('c1', 'jane@x.org'));
+    kit.server.reachable = false;
     const published: JudgeRoster[] = [];
     const roster = startRosterPublisher({
       follow: (name, handler) => library.follow(name, handler),
@@ -270,18 +238,17 @@ describe('a fresh device (with the real sync engine)', () => {
     });
 
     // Start-up with the server unreachable: the pass fails, so nothing publishes.
-    engine.start();
-    await drain();
+    const disconnect = library.sync.connect();
     await kit.settle();
     expect(published).toEqual([]);
+    expect(await library.list()).toEqual([]);
 
-    // The server comes back (a reconnect or wake reconciles): the pull lands first.
-    state.reachable = true;
-    await engine.reconcile();
-    await kit.settle();
+    // The server comes back (a reconnect, wake or retry reconciles): the pull lands first.
+    kit.server.reachable = true;
+    await kit.pass();
     expect(published).toHaveLength(1);
     expect(published[0].judges.map((j) => j.email)).toEqual(['jane@x.org']);
     roster.stop();
-    engine.stop();
+    disconnect();
   });
 });

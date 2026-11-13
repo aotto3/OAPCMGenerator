@@ -48,10 +48,8 @@ async function harness(contests: Contest[], submissions: JudgeSubmission[] | Err
     stop,
     fetches: () => fetches,
     setResult: (r: JudgeSubmission[] | Error) => (result = r),
-    async pass() {
-      library.noteReconciled();
-      await kit.settle();
-    },
+    /** A completed server pass, then everything settles. */
+    pass: () => kit.pass(),
   };
 }
 

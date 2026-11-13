@@ -8,7 +8,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createQuestionnaireClient, questionnaireUrl } from '../../questionnaire/questionnaireClient';
 import type { RosterPublishStatus } from '../../questionnaire/rosterPublisher';
-import { getRosterPublishStatus, subscribeRosterPublishStatus } from '../../storage/browserSync';
+import { getRosterPublishStatus, subscribeRosterPublishStatus } from '../../storage/browserLibrary';
 
 const client = createQuestionnaireClient();
 

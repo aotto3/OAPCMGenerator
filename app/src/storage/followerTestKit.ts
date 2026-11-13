@@ -1,14 +1,21 @@
 /**
  * Test kit for contest-library followers (slice A3 #279): a real library on a
- * fresh fake-indexeddb, manual timers, a manual wake port, and `settle()`,
- * which fires due timers until everything has gone quiet. Test files must
+ * fresh fake-indexeddb, the in-memory server, manual timers, a manual wake
+ * port, `pass()` (a real completed server pass, slice A5 #281), and `settle()`,
+ * which fires due timers until everything has gone quiet. Sync is not
+ * connected, so no pass runs unless a test asks for one. Test files must
  * `import 'fake-indexeddb/auto'` first (idb checks the global IDBRequest).
  */
 import { IDBFactory } from 'fake-indexeddb';
 import { createContestLibrary, type ContestLibrary, type Timers } from './contestLibrary';
+import { createMemoryContestServer, type MemoryContestServer } from './memoryContestServer';
 
 export interface FollowerKit {
   library: ContestLibrary;
+  /** The account's server, shared by nothing else. */
+  server: MemoryContestServer;
+  /** One full server pass, then everything settles. */
+  pass(): Promise<void>;
   /** Fires the wake port, as tab focus or the periodic tick would. */
   wake(): void;
   /** Fires timers and waits until no timer is pending and IndexedDB work has drained. */
@@ -28,17 +35,24 @@ export function followerKit(clock: () => string = () => '2026-11-01T12:00:00.000
     },
   };
   const wakeListeners = new Set<() => void>();
+  const server = createMemoryContestServer();
   const library = createContestLibrary({
     idb: new IDBFactory(),
     clock,
     timers,
+    server: server.server,
     wake: (listener) => {
       wakeListeners.add(listener);
       return () => wakeListeners.delete(listener);
     },
   });
-  return {
+  const kit: FollowerKit = {
     library,
+    server,
+    async pass() {
+      await library.sync.reconcileNow();
+      await kit.settle();
+    },
     wake() {
       for (const listener of [...wakeListeners]) listener();
     },
@@ -57,4 +71,5 @@ export function followerKit(clock: () => string = () => '2026-11-01T12:00:00.000
       }
     },
   };
+  return kit;
 }

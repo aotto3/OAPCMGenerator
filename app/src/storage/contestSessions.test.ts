@@ -16,7 +16,7 @@ import {
   type Timers,
 } from './contestLibrary';
 import { createContest, withDetails, withIdentity, type Contest } from '../model/contest';
-import { serializeSyncBundle } from '../model/syncBundle';
+import { createMemoryContestServer, type MemoryContestServer } from './memoryContestServer';
 
 const T0 = '2026-07-05T12:00:00.000Z';
 const T1 = '2026-07-06T12:00:00.000Z';
@@ -51,17 +51,19 @@ function manualTimers() {
 }
 
 let factory: IDBFactory;
+let server: MemoryContestServer;
 let clock: ReturnType<typeof manualTimers>;
 let now: string;
 let library: ContestLibrary;
 let events: ContestEvent[];
 
 function makeLibrary(): ContestLibrary {
-  return createContestLibrary({ idb: factory, clock: () => now, timers: clock.timers });
+  return createContestLibrary({ idb: factory, clock: () => now, timers: clock.timers, server: server.server });
 }
 
 beforeEach(() => {
   factory = new IDBFactory();
+  server = createMemoryContestServer();
   clock = manualTimers();
   now = T4;
   library = makeLibrary();
@@ -87,10 +89,13 @@ function live(open: OpenContest): Contest {
   return state.contest;
 }
 
-/** A pulled copy as the sync engine hands it to the library. */
-function remoteCopy(contest: Contest, version = contest.updatedAt) {
-  return { updatedAt: version, payload: serializeSyncBundle(contest, []) };
+/** Another device pushed `contest`; this device runs a server pass and pulls it. */
+async function pull(contest: Contest, version = contest.updatedAt): Promise<void> {
+  server.seed(contest, { version });
+  await library.sync.reconcileNow();
 }
+
+const changes = (list: ContestEvent[]) => list.filter((e) => e.type !== 'reconciled');
 
 /** What a fresh library (a reload) reads from the same IndexedDB. */
 async function readAfterReload(id: string): Promise<Contest | undefined> {
@@ -196,7 +201,7 @@ describe('outside writes to an open contest', () => {
     const open = library.open('c1');
     await ready(open);
 
-    await library.applyRemote(remoteCopy(withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2)));
+    await pull(withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2));
     const state = await ready(open);
     expect(state.contest.identity.hostSchoolName).toBe('Remote HS');
     expect(state.notice).toEqual({ origin: 'remote', at: T4 });
@@ -213,7 +218,7 @@ describe('outside writes to an open contest', () => {
     await library.add(contest);
     const open = library.open('c1');
     await ready(open);
-    await library.applyRemote(remoteCopy(withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2)));
+    await pull(withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2));
     open.dismissNotice();
     const state = await ready(open);
     expect(state.notice).toBeNull();
@@ -228,7 +233,7 @@ describe('outside writes to an open contest', () => {
     events.length = 0;
 
     open.set(withDetails(live(open), { contestDate: '2026-03-14' }, T3));
-    await library.applyRemote(remoteCopy(withIdentity(contest, { hostSchoolName: 'Older Remote HS' }, T2)));
+    await pull(withIdentity(contest, { hostSchoolName: 'Older Remote HS' }, T2));
 
     const state = await ready(open);
     expect(state.notice).toBeNull();
@@ -237,8 +242,9 @@ describe('outside writes to an open contest', () => {
     const stored = await readAfterReload('c1');
     expect(stored?.details.contestDate).toBe('2026-03-14');
     expect(stored?.identity.hostSchoolName).toBe('Westlake HS');
-    // A device write, so the engine pushes it; no remote event.
-    expect(events.map((e) => e.type === 'changed' && e.origin)).toEqual(['device']);
+    // A device write, so it is pushed; no remote event.
+    expect(changes(events).map((e) => e.type === 'changed' && e.origin)).toEqual(['device']);
+    expect(server.contests.get('c1')?.payload).toContain('2026-03-14');
     expect(clock.pending).toBe(0);
   });
 
@@ -249,7 +255,7 @@ describe('outside writes to an open contest', () => {
     await ready(open);
 
     open.set(withDetails(live(open), { contestDate: '2026-03-14' }, T2));
-    await library.applyRemote(remoteCopy(withIdentity(contest, { hostSchoolName: 'Newer Remote HS' }, T3)));
+    await pull(withIdentity(contest, { hostSchoolName: 'Newer Remote HS' }, T3));
 
     const state = await ready(open);
     expect(state.notice?.origin).toBe('remote');
@@ -305,7 +311,7 @@ describe('outside writes to an open contest', () => {
     await library.add(contest);
     const open = library.open('c1');
     expect(open.getState().status).toBe('loading');
-    await library.applyRemote(remoteCopy(withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2)));
+    await pull(withIdentity(contest, { hostSchoolName: 'Remote HS' }, T2));
     expect((await ready(open)).contest.identity.hostSchoolName).toBe('Remote HS');
   });
 });
@@ -338,12 +344,20 @@ describe("the session's own changes never set the notice", () => {
 describe('pulls that are no longer newer', () => {
   it('a pull older than a local write that landed after it was planned is dropped', async () => {
     const contest = sampleContest();
-    await library.add(withDetails(contest, { contestDate: '2026-03-14' }, T3));
+    await library.add(contest);
+    server.seed(withIdentity(contest, { hostSchoolName: 'Stale HS' }, T2));
+    // The local edit lands between the server list (which planned the pull) and the pull itself.
+    server.beforeGet = async () => {
+      server.beforeGet = undefined;
+      await library.save(withDetails(contest, { contestDate: '2026-03-14' }, T3));
+    };
     events.length = 0;
-    await library.applyRemote(remoteCopy(withIdentity(contest, { hostSchoolName: 'Stale HS' }, T2)));
+    await library.sync.reconcileNow();
     const stored = await library.read('c1');
     expect(stored?.identity.hostSchoolName).toBe('Westlake HS');
     expect(stored?.details.contestDate).toBe('2026-03-14');
-    expect(events).toEqual([]);
+    expect(changes(events).map((e) => e.type === 'changed' && e.origin)).toEqual(['device']);
+    // And the newer local copy wins on the server too.
+    expect(server.contests.get('c1')?.updatedAt).toBe(T3);
   });
 });
