@@ -24,6 +24,7 @@ import { ADMIN_EVENTS, TELEMETRY_EVENTS } from './eventTypes';
 import { computeSyncHealth } from './syncHealth';
 import { createRateLimiter } from './rateLimiter';
 import type { AuthAdmin } from './authAdmin';
+import type { EmailTemplateStore } from './emailTemplateStore';
 
 /** How far back the drill-down looks for a user's "recent" errors. */
 const RECENT_EVENT_WINDOW_DAYS = 14;
@@ -45,6 +46,8 @@ export interface AdminRoutesDeps {
   userDirectory: UserDirectory;
   /** The one account-acting seam (resend sign-in link). */
   authAdmin: AuthAdmin;
+  /** Email templates, for gallery moderation (PRD #320). */
+  emailTemplateStore: EmailTemplateStore;
   resolveUser: ResolveUser;
   /** Lowercased admin email allowlist (see env.adminEmails). */
   adminEmails: ReadonlySet<string>;
@@ -101,7 +104,7 @@ function parseWindow(req: Request, nowMs: number): AnalyticsWindow {
 }
 
 export function createAdminRoutes(deps: AdminRoutesDeps): Router {
-  const { repo, eventLog, userDirectory, authAdmin, resolveUser, adminEmails, now } = deps;
+  const { repo, eventLog, userDirectory, authAdmin, emailTemplateStore, resolveUser, adminEmails, now } = deps;
   const router = Router();
 
   // Per-target-email limiter for the resend action (in-memory; one API process).
@@ -315,6 +318,48 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         eventLog.countEvents({ userId }),
       ]);
       res.json({ events, total, limit, offset });
+    }),
+  );
+
+  // Gallery moderation (PRD #320, slice #326): every shared email template with
+  // its author's name and account email, so the admin can review what is shared.
+  router.get(
+    '/shared-templates',
+    adminOnly(async (_req, res) => {
+      const shared = await emailTemplateStore.listSharedForAdmin();
+      const emails = new Map<string, string | undefined>();
+      for (const id of new Set(shared.map((t) => t.ownerId))) {
+        emails.set(id, (await userDirectory.getUser(id))?.email);
+      }
+      res.json({
+        templates: shared.map((t) => ({ ...t, ownerEmail: emails.get(t.ownerId) ?? null })),
+      });
+    }),
+  );
+
+  // Takes a template out of the gallery. The author keeps it, now private.
+  // Audited best-effort by template name only, never its text.
+  router.delete(
+    '/shared-templates/:id',
+    adminOnly(async (req, res, admin) => {
+      const result = await emailTemplateStore.adminUnshare(String(req.params.id));
+      if (result.kind === 'not_found') {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      try {
+        await eventLog.recordEvent({
+          occurredAt: now().toISOString(),
+          userId: admin.id,
+          userEmail: admin.email,
+          type: ADMIN_EVENTS.templateRemovedFromGallery,
+          detail: { templateName: result.name, targetUserId: result.ownerId },
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to record admin.template_removed_from_gallery event', err);
+      }
+      res.status(204).end();
     }),
   );
 

@@ -120,6 +120,19 @@ export interface AdminUserDetail {
   syncHealth: SyncHealth;
 }
 
+/** A shared email template as the admin sees it (PRD #320): the gallery card plus its owner. */
+export interface AdminSharedTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  authorName: string;
+  sharedAt: string;
+  ownerId: string;
+  /** The owner's account email; null when the account is no longer listed. */
+  ownerEmail: string | null;
+}
+
 /** The admin panel's error for a failed request, as the panel has always shown it. */
 function adminError(err: unknown): unknown {
   return err instanceof ApiHttpError ? new Error(`Admin request failed: ${err.status}`) : err;
@@ -203,6 +216,23 @@ export function createAdminClient(fetchImpl?: typeof fetch) {
     async fetchUserContests(userId: string): Promise<AdminContest[]> {
       return (await getJson<{ contests: AdminContest[] }>(`${userPath(userId)}/contests`)).contests;
     },
+    /** Every shared email template, newest share first (gallery moderation). */
+    async fetchSharedTemplates(): Promise<AdminSharedTemplate[]> {
+      return (await getJson<{ templates: AdminSharedTemplate[] }>('/api/admin/shared-templates')).templates;
+    },
+    /**
+     * Takes a template out of the gallery (the author keeps it). 'removed' on
+     * success, 'gone' when it is no longer shared (404); throws on other failures.
+     */
+    async removeSharedTemplate(id: string): Promise<'removed' | 'gone'> {
+      try {
+        await api.send('DELETE', `/api/admin/shared-templates/${encodeURIComponent(id)}`);
+        return 'removed';
+      } catch (err) {
+        if (err instanceof ApiHttpError && err.status === 404) return 'gone';
+        throw adminError(err);
+      }
+    },
   };
 }
 
@@ -220,4 +250,6 @@ export const {
   fetchUser,
   resendSignInLink,
   fetchUserContests,
+  fetchSharedTemplates,
+  removeSharedTemplate,
 } = defaultClient;

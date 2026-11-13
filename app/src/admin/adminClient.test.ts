@@ -90,3 +90,23 @@ describe('resendSignInLink', () => {
     ).rejects.toThrow('Admin request failed: 502');
   });
 });
+
+describe('shared templates', () => {
+  it('lists them from the admin route', async () => {
+    const card = { id: 't1', name: 'Hotel', subject: 's', body: 'b', authorName: 'Dana', sharedAt: 'x', ownerId: 'u1', ownerEmail: null };
+    const { fn, calls } = recordingFetch(() => json(200, { templates: [card] }));
+    expect(await createAdminClient(fn).fetchSharedTemplates()).toEqual([card]);
+    expect(calls[0].url).toBe('/api/admin/shared-templates');
+  });
+
+  it('removal DELETEs the encoded path; 404 is gone, other failures throw', async () => {
+    const ok = recordingFetch(() => new Response(null, { status: 204 }));
+    expect(await createAdminClient(ok.fn).removeSharedTemplate('t/1')).toBe('removed');
+    expect(ok.calls[0].url).toBe('/api/admin/shared-templates/t%2F1');
+    expect(ok.calls[0].init?.method).toBe('DELETE');
+    expect(await createAdminClient(recordingFetch(() => json(404)).fn).removeSharedTemplate('t1')).toBe('gone');
+    await expect(
+      createAdminClient(recordingFetch(() => json(500)).fn).removeSharedTemplate('t1'),
+    ).rejects.toThrow('Admin request failed: 500');
+  });
+});
