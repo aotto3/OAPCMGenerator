@@ -1,8 +1,14 @@
 /**
  * Wires the sync engine to the browser: the real network client, the IndexedDB
- * store, navigator.onLine, the window online/offline events, and the store's
- * change notifier. This is the impure seam the app calls; the engine itself
- * stays environment-free and unit-tested.
+ * store, navigator.onLine, the window online/offline events, the wake port (tab
+ * focus/visibility and a periodic tick), and the store's change notifier. This
+ * is the impure seam the app calls; the engine itself stays environment-free
+ * and unit-tested.
+ *
+ * It also attaches the contest library's two followers (slice A3 #279): the
+ * judge roster publisher and the questionnaire answer follower. The library
+ * decides when they run (data events and completed server passes), not the
+ * engine's UI status.
  *
  * The engine is a module singleton so its status survives re-renders and there
  * is only ever one sync loop. startBrowserSync() connects the live inputs and
@@ -12,6 +18,7 @@ import { createQuestionnaireClient } from '../questionnaire/questionnaireClient'
 import { localToday, startRosterPublisher, type RosterPublishStatus } from '../questionnaire/rosterPublisher';
 import { startSubmissionSync } from '../questionnaire/submissionSync';
 import { contestLibrary } from './browserLibrary';
+import { browserWake } from './browserWake';
 import { createBrowserSyncClient } from './syncClient';
 import { createSyncEngine, type SyncEngine } from './syncEngine';
 import { createLibrarySyncStore } from './syncStore';
@@ -47,6 +54,7 @@ export function getSyncEngine(): SyncEngine {
     client: createBrowserSyncClient(),
     store: createLibrarySyncStore(contestLibrary()),
     isOnline: () => navigator.onLine,
+    wake: browserWake,
   });
   return engine;
 }
@@ -61,7 +69,7 @@ export function startBrowserSync(): () => void {
   const library = contestLibrary();
   // Push this device's writes; pulls (origin 'remote') came from the server.
   const offChange = library.subscribe((event) => {
-    if (event.origin !== 'device') return;
+    if (event.type === 'reconciled' || event.origin !== 'device') return;
     active.markDirty(event.id, event.type === 'removed' ? 'delete' : 'save');
   });
   const handleOnline = () => active.notifyOnline();
@@ -70,25 +78,24 @@ export function startBrowserSync(): () => void {
   window.addEventListener('offline', handleOffline);
 
   // Keep the judge questionnaire's roster current (PRD #252): republished when
-  // sync settles and the roster changed. Off the edit path; its outcome is
-  // shown by the questionnaire link control.
+  // the roster changed, never before the first server pass. Off the edit path;
+  // its outcome is shown by the questionnaire link control.
   const questionnaire = createQuestionnaireClient();
   const rosterPublisher = startRosterPublisher({
-    subscribe: (listener) => active.subscribe(listener),
-    loadContests: () => library.readAll(),
+    follow: (name, handler) => library.follow(name, handler),
     publish: (roster) => questionnaire.publishRoster(roster),
     today: () => localToday(),
     now: () => new Date(),
   });
   const offRosterStatus = rosterPublisher.onStatus(setRosterStatus);
-  // And bring judges' questionnaire answers into the contests, through the
-  // library's transform, so an open workspace gets them via its session. A
-  // changed contest is saved like an edit, so it syncs to the other devices.
+  // And bring judges' questionnaire answers into the contests, fetched once per
+  // server pass, through the library's transform, so an open workspace gets
+  // them via its session. A changed contest is saved like an edit, so it syncs
+  // to the other devices.
   const stopSubmissions = startSubmissionSync({
-    subscribe: (listener) => active.subscribe(listener),
+    follow: (name, handler) => library.follow(name, handler),
     fetchSubmissions: () => questionnaire.listSubmissions(),
     contestIds: async () => (await library.list()).map((summary) => summary.id),
-    transform: (id, fn) => library.transform(id, fn, { by: 'submissions' }),
     now: () => new Date().toISOString(),
   });
 

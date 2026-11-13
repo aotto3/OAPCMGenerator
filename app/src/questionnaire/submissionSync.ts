@@ -1,62 +1,48 @@
 /**
- * Brings judge questionnaire answers into this device's contests (PRD #252).
+ * Brings judge questionnaire answers into this device's contests (PRD #252), as
+ * a contest-library follower (RFC #276, slice A3 #279).
  *
- * Like the roster publisher it rides the sync engine's status: whenever sync
- * settles after a real pass, it fetches the account's submissions and applies
- * them to every stored contest through the library's `transform`
- * (applySubmissions is idempotent, so an unchanged contest is a no-op). The
- * write then syncs like any edit.
+ * The network is touched only when a batch includes a completed server pass:
+ * then it fetches the account's submissions and applies them to every stored
+ * contest. A batch of edits alone fetches nothing; it applies the submissions
+ * already fetched to the contests that changed (a new contest, a judge's email
+ * typed in). Passes come from the start-up reconcile, a reconnect, and the
+ * wake port (tab focus and a periodic tick), which is how answers reach an open
+ * tab without any edit.
  *
- * `transform` runs on an open contest's live copy, so answers reach an open
- * workspace through its session and are never overwritten by its next save.
+ * Writes go through the batch's `transform`: it runs on an open contest's live
+ * copy, so answers reach an open workspace through its session, and they are
+ * left out of this follower's next batch. applySubmissions is idempotent, so an
+ * unchanged contest is a no-op. A failed fetch throws, so the library retries
+ * the batch at the next event or wake.
  */
 import type { Contest } from '../model/contest';
-import type { SyncStatus } from '../storage/syncEngine';
+import type { FollowBatch } from '../storage/contestLibrary';
 import { applySubmissions, type JudgeSubmission } from './submission';
 
 export interface SubmissionSyncDeps {
-  subscribe(listener: (status: SyncStatus) => void): () => void;
+  /** The library's `follow`. */
+  follow(name: string, handler: (batch: FollowBatch) => Promise<void>): () => void;
   fetchSubmissions(): Promise<JudgeSubmission[]>;
   /** The ids of every stored contest. */
   contestIds(): Promise<string[]>;
-  /** The library's read-transform-persist (one transaction; no-op on an identical result). */
-  transform(id: string, fn: (fresh: Contest) => Contest): Promise<unknown>;
   now(): string;
 }
 
 export function startSubmissionSync(deps: SubmissionSyncDeps): () => void {
-  let sawSyncPass = false;
-  let running = false;
-  let rerun = false;
+  let submissions: JudgeSubmission[] = [];
 
-  async function pullAndApply(): Promise<void> {
-    if (running) {
-      rerun = true;
-      return;
+  return deps.follow('submissions', async (batch) => {
+    let ids: string[];
+    if (batch.reconciled) {
+      submissions = await deps.fetchSubmissions();
+      ids = await deps.contestIds();
+    } else {
+      ids = batch.changed.map((contest) => contest.id);
     }
-    running = true;
-    try {
-      do {
-        rerun = false;
-        let submissions: JudgeSubmission[];
-        try {
-          submissions = await deps.fetchSubmissions();
-        } catch {
-          continue; // offline or signed out: the next settle retries
-        }
-        if (submissions.length === 0) continue;
-        const now = deps.now();
-        for (const id of await deps.contestIds()) {
-          await deps.transform(id, (fresh) => applySubmissions(fresh, submissions, now));
-        }
-      } while (rerun);
-    } finally {
-      running = false;
-    }
-  }
-
-  return deps.subscribe((status) => {
-    if (status === 'syncing') sawSyncPass = true;
-    else if (status === 'synced' && sawSyncPass) void pullAndApply();
+    if (submissions.length === 0) return;
+    const now = deps.now();
+    const apply = (fresh: Contest) => applySubmissions(fresh, submissions, now);
+    for (const id of ids) await batch.transform(id, apply);
   });
 }

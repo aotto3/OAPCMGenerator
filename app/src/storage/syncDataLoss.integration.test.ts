@@ -97,7 +97,7 @@ function wireEngine(client: SyncClient, scheduler: ReturnType<typeof manualSched
     backoff: () => 0,
   });
   const off = library.subscribe((event) => {
-    if (event.origin === 'device') engine.markDirty(event.id, event.type === 'removed' ? 'delete' : 'save');
+    if (event.type !== 'reconciled' && event.origin === 'device') engine.markDirty(event.id, event.type === 'removed' ? 'delete' : 'save');
   });
   engine.start();
   return {
