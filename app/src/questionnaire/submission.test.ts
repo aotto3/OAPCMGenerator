@@ -8,6 +8,7 @@ import {
   blankAnswers,
   groupContests,
   readGroup,
+  shiftDays,
   writeGroup,
   type JudgeSubmission,
 } from './submission';
@@ -186,5 +187,14 @@ describe('readGroup / writeGroup', () => {
       requestingFlight: false,
       needsPower: false,
     });
+  });
+});
+
+describe('shiftDays', () => {
+  it('moves across month and year boundaries both ways', () => {
+    expect(shiftDays('2027-02-28', 1)).toBe('2027-03-01');
+    expect(shiftDays('2027-03-01', -1)).toBe('2027-02-28');
+    expect(shiftDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(shiftDays('2027-03-04', 0)).toBe('2027-03-04');
   });
 });

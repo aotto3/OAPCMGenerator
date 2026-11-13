@@ -9,7 +9,7 @@
  * starts a reconcile; its returned disposer detaches everything (on sign-out).
  */
 import { createQuestionnaireClient } from '../questionnaire/questionnaireClient';
-import { localToday, startRosterPublisher } from '../questionnaire/rosterPublisher';
+import { localToday, startRosterPublisher, type RosterPublishStatus } from '../questionnaire/rosterPublisher';
 import { startSubmissionSync } from '../questionnaire/submissionSync';
 import { contestLibrary } from './browserLibrary';
 import { createBrowserSyncClient } from './syncClient';
@@ -17,6 +17,29 @@ import { createSyncEngine, type SyncEngine } from './syncEngine';
 import { createLibrarySyncStore } from './syncStore';
 
 let engine: SyncEngine | undefined;
+
+/* The roster publisher's last outcome (#275), kept here so the questionnaire
+ * link control can read it whether or not a publisher is running right now. */
+let rosterStatus: RosterPublishStatus = { kind: 'idle' };
+const rosterStatusListeners = new Set<() => void>();
+
+function setRosterStatus(next: RosterPublishStatus): void {
+  rosterStatus = next;
+  for (const listener of rosterStatusListeners) listener();
+}
+
+/** The judge roster's last publish outcome; 'idle' until one has run this session. */
+export function getRosterPublishStatus(): RosterPublishStatus {
+  return rosterStatus;
+}
+
+/** Notifies on every roster publish outcome; returns an unsubscribe. */
+export function subscribeRosterPublishStatus(listener: () => void): () => void {
+  rosterStatusListeners.add(listener);
+  return () => {
+    rosterStatusListeners.delete(listener);
+  };
+}
 
 /** The shared engine instance (created on first use). */
 export function getSyncEngine(): SyncEngine {
@@ -47,14 +70,17 @@ export function startBrowserSync(): () => void {
   window.addEventListener('offline', handleOffline);
 
   // Keep the judge questionnaire's roster current (PRD #252): republished when
-  // sync settles and the roster changed. Off the edit path, best-effort.
+  // sync settles and the roster changed. Off the edit path; its outcome is
+  // shown by the questionnaire link control.
   const questionnaire = createQuestionnaireClient();
-  const stopRoster = startRosterPublisher({
+  const rosterPublisher = startRosterPublisher({
     subscribe: (listener) => active.subscribe(listener),
     loadContests: () => library.readAll(),
     publish: (roster) => questionnaire.publishRoster(roster),
     today: () => localToday(),
+    now: () => new Date(),
   });
+  const offRosterStatus = rosterPublisher.onStatus(setRosterStatus);
   // And bring judges' questionnaire answers into the contests, through the
   // library's transform, so an open workspace gets them via its session. A
   // changed contest is saved like an edit, so it syncs to the other devices.
@@ -69,7 +95,9 @@ export function startBrowserSync(): () => void {
   active.start();
 
   return () => {
-    stopRoster();
+    offRosterStatus();
+    rosterPublisher.stop();
+    setRosterStatus({ kind: 'idle' });
     stopSubmissions();
     offChange();
     window.removeEventListener('online', handleOnline);

@@ -7,10 +7,16 @@
  * CM email, and each judge's normalized email, name and contest ids. Nothing else
  * about a judge (address, phone, bio, needs, contracting) ever leaves the device here.
  *
+ * The roster is always publishable (#262 decision): every text field is cut to the
+ * server's field cap, a CM email that cannot fit is dropped, and a judge whose
+ * email is empty, not a plausible address, or over the cap is left out. One bad
+ * field never blocks the rest of the roster.
+ *
  * Pure: `today` (YYYY-MM-DD) is injected, never read from the clock.
  */
 import { activeJudges, effectiveContestTitle, type Contest } from '../model/contest';
 import { normalizeEmail } from '../model/judgePanel';
+import { MAX_ROSTER_FIELD_LENGTH } from './limits';
 
 export interface RosterContest {
   id: string;
@@ -38,6 +44,20 @@ export interface JudgeRoster {
 /** Moved to the judge panel (RFC #267); re-exported for questionnaire callers. */
 export { normalizeEmail };
 
+/** Cuts a text field to the server's cap. */
+function clip(value: string): string {
+  return value.length > MAX_ROSTER_FIELD_LENGTH ? value.slice(0, MAX_ROSTER_FIELD_LENGTH) : value;
+}
+
+/** Something, an @, something with a dot; no spaces. Loose on purpose. */
+const PLAUSIBLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** A normalized email the roster can carry, or '' when it cannot (empty, invalid, too long). */
+function rosterEmail(raw: string): string {
+  const email = normalizeEmail(raw);
+  return email.length <= MAX_ROSTER_FIELD_LENGTH && PLAUSIBLE_EMAIL.test(email) ? email : '';
+}
+
 /** Upcoming = not archived and dated today or later, or not dated yet. */
 function isUpcoming(contest: Contest, today: string): boolean {
   if (contest.archived) return false;
@@ -63,10 +83,10 @@ export function buildJudgeRoster(contests: Contest[], today: string): JudgeRoste
 
   for (const contest of upcoming) {
     for (const judge of activeJudges(contest)) {
-      const email = normalizeEmail(judge.email);
+      const email = rosterEmail(judge.email);
       if (email === '') continue;
       const entry = judges.get(email) ?? { email, name: '', contestIds: [] };
-      if (entry.name === '') entry.name = judge.name.trim();
+      if (entry.name === '') entry.name = clip(judge.name.trim());
       if (!entry.contestIds.includes(contest.id)) entry.contestIds.push(contest.id);
       judges.set(email, entry);
     }
@@ -75,11 +95,11 @@ export function buildJudgeRoster(contests: Contest[], today: string): JudgeRoste
   return {
     contests: upcoming.map((c) => ({
       id: c.id,
-      title: effectiveContestTitle(c),
-      level: c.identity.contestLevel,
-      date: c.details.contestDate.trim(),
-      host: c.identity.hostSchoolName.trim(),
-      cmEmail: normalizeEmail(c.cmInfo.email),
+      title: clip(effectiveContestTitle(c)),
+      level: clip(c.identity.contestLevel),
+      date: clip(c.details.contestDate.trim()),
+      host: clip(c.identity.hostSchoolName.trim()),
+      cmEmail: rosterEmail(c.cmInfo.email),
     })),
     judges: [...judges.values()],
   };

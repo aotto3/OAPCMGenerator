@@ -10,6 +10,7 @@
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { fmtDate } from '../documents/format';
+import { ANSWER_LIMITS } from './limits';
 import { createQuestionnaireClient, type JudgeLookup, type LookupResult } from './questionnaireClient';
 import type { RosterContest } from './roster';
 import {
@@ -18,6 +19,7 @@ import {
   groupContestIds,
   groupContests,
   readGroup,
+  shiftDays,
   writeGroup,
   type ContestGroup,
   type GroupAnswers,
@@ -216,7 +218,7 @@ function QuestionnaireForm({
           <input
             type="tel"
             autoComplete="tel"
-            maxLength={40}
+            maxLength={ANSWER_LIMITS.cellPhone}
             value={answers.cellPhone}
             onChange={(e) => set({ cellPhone: e.target.value })}
           />
@@ -224,20 +226,20 @@ function QuestionnaireForm({
         <Field label="Mailing address (scripts will be sent here)">
           <textarea
             autoComplete="street-address"
-            maxLength={400}
+            maxLength={ANSWER_LIMITS.mailingAddress}
             rows={2}
             value={answers.mailingAddress}
             onChange={(e) => set({ mailingAddress: e.target.value })}
           />
         </Field>
         <Field label="Any dietary preferences or restrictions?">
-          <input maxLength={1000} value={answers.dietary} onChange={(e) => set({ dietary: e.target.value })} />
+          <input maxLength={ANSWER_LIMITS.dietary} value={answers.dietary} onChange={(e) => set({ dietary: e.target.value })} />
         </Field>
         <Field label="Short bio (optional; if none provided, your TTAO summary may be used)">
-          <textarea maxLength={4000} rows={4} value={answers.bio} onChange={(e) => set({ bio: e.target.value })} />
+          <textarea maxLength={ANSWER_LIMITS.bio} rows={4} value={answers.bio} onChange={(e) => set({ bio: e.target.value })} />
         </Field>
         <Field label="What else would you like me to know to make the contest easy for you?">
-          <textarea maxLength={4000} rows={3} value={answers.notes} onChange={(e) => set({ notes: e.target.value })} />
+          <textarea maxLength={ANSWER_LIMITS.notes} rows={3} value={answers.notes} onChange={(e) => set({ notes: e.target.value })} />
         </Field>
       </fieldset>
 
@@ -273,10 +275,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 /** "Wednesday, March 3, 2027" for the night of the day before/of `iso`; '' when undated. */
 function nightOf(iso: string, offsetDays: number): string {
-  if (!iso) return '';
-  const d = new Date(iso + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return fmtDate(d.toISOString().slice(0, 10));
+  return iso ? fmtDate(shiftDays(iso, offsetDays)) : '';
 }
 
 function withDate(label: string, date: string): string {

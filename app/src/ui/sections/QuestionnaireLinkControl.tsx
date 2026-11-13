@@ -2,10 +2,13 @@
  * The CM's standing judge questionnaire link (PRD #252), shown in the Judges pane.
  * One link per account covers every upcoming contest, so the same link appears in
  * every contest. Copy puts it on the clipboard; Reset issues a new link and kills
- * the old one (after a confirm). Needs the network: offline it says so.
+ * the old one (after a confirm). Needs the network: offline it says so. Below the
+ * link it shows when the judge roster was last published, or why it failed (#275).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createQuestionnaireClient, questionnaireUrl } from '../../questionnaire/questionnaireClient';
+import type { RosterPublishStatus } from '../../questionnaire/rosterPublisher';
+import { getRosterPublishStatus, subscribeRosterPublishStatus } from '../../storage/browserSync';
 
 const client = createQuestionnaireClient();
 
@@ -13,6 +16,7 @@ export function QuestionnaireLinkControl() {
   const [token, setToken] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [status, setStatus] = useState('');
+  const publish = useSyncExternalStore(subscribeRosterPublishStatus, getRosterPublishStatus);
 
   useEffect(() => {
     let live = true;
@@ -77,6 +81,29 @@ export function QuestionnaireLinkControl() {
           )}
         </>
       )}
+      <PublishStatusLine status={publish} />
     </div>
+  );
+}
+
+/** "3:42 PM" today, "Mar 3, 3:42 PM" otherwise, in the device's locale. */
+function fmtWhen(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return today
+    ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function PublishStatusLine({ status }: { status: RosterPublishStatus }) {
+  if (status.kind === 'idle') return null;
+  if (status.kind === 'published') {
+    return <p className="hint">Judge list published {fmtWhen(status.at)}.</p>;
+  }
+  return (
+    <p className="hint" role="alert">
+      Couldn't publish the judge list ({status.reason}). Judges may not find their newest contests yet; it will try
+      again at the next sync.
+    </p>
   );
 }
