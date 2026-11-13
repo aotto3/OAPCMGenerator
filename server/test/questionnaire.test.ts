@@ -76,6 +76,16 @@ describe('owner routes', () => {
     expect(reset.body.token).not.toBe(first.body.token);
   });
 
+  it('answer the public link check as { active }, false once reset or malformed', async () => {
+    const old = await ready();
+    const check = (body: unknown) => request(h.app).post('/api/questionnaire/public/link').send(body as object);
+    await check({ token: old }).expect(200, { active: true });
+    await h.as('alice').post('/api/questionnaire/link/reset').expect(200);
+    await check({ token: old }).expect(200, { active: false });
+    await check({ token: 42 }).expect(200, { active: false });
+    await check({ token: 'x'.repeat(65) }).expect(200, { active: false });
+  });
+
   it('map roster results to 204, Invalid roster and Roster too large', async () => {
     await publish(h, 'alice').expect(204, '');
     await publish(h, 'alice', { contests: 'nope', judges: [] }).expect(400, { error: 'Invalid roster' });

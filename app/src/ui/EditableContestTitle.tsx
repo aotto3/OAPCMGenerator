@@ -3,9 +3,10 @@ import { useState } from 'react';
 /**
  * The workspace-header contest title as a click-to-edit control (PRD #143).
  * Shows the effective title as an <h1> with a pencil affordance; clicking swaps
- * to a text input seeded with the current override (placeholder = the auto
- * name). Enter / blur commits; Escape cancels. Committing an empty value clears
- * the override, reverting to the auto name.
+ * to a text input holding the title as shown, so a small change is a small edit
+ * (placeholder = the auto name). Enter / blur commits; Escape cancels.
+ * Committing an empty value, or the auto name itself, clears the override so the
+ * title follows the contest details again.
  */
 export function EditableContestTitle({
   title,
@@ -15,7 +16,7 @@ export function EditableContestTitle({
 }: {
   /** The effective title to display when not editing (custom or auto). */
   title: string;
-  /** Current custom override ('' when using the auto name) — seeds the input. */
+  /** Current custom override ('' when using the auto name). */
   override: string;
   /** The auto-derived name, shown as the input placeholder. */
   autoName: string;
@@ -23,16 +24,17 @@ export function EditableContestTitle({
   onChange: (override: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(override);
+  const [draft, setDraft] = useState(title);
 
   function start() {
-    setDraft(override);
+    setDraft(title);
     setEditing(true);
   }
 
   function commit() {
     setEditing(false);
-    const next = draft.trim();
+    const typed = draft.trim();
+    const next = typed === autoName.trim() ? '' : typed;
     if (next !== override) onChange(next);
   }
 
