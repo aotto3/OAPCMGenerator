@@ -6,9 +6,11 @@ const TOAST_MS = 8000;
 
 /**
  * The one-click Undo after a destructive action (PRD #304, #312). Shows the
- * latest offer for THIS contest; Undo restores its automatic checkpoint through
- * the open contest's restore, which checkpoints the current state first, so the
- * undo can itself be undone from Manual Save. Never blocks input.
+ * latest offer for THIS contest. A checkpoint offer restores its automatic
+ * checkpoint through the open contest's restore, which checkpoints the current
+ * state first, so the undo can itself be undone from Manual Save. An offer with
+ * its own undo action (a deleted email template, PRD #320) runs that instead.
+ * Never blocks input.
  */
 export function UndoToast({
   contestId,
@@ -39,7 +41,8 @@ export function UndoToast({
     if (!shown || busy) return;
     setBusy(true);
     try {
-      await onUndo(shown.checkpointId);
+      if ('undo' in shown) await shown.undo();
+      else await onUndo(shown.checkpointId);
       dismissUndo(shown.nonce);
     } catch {
       setFailed(true);
@@ -50,7 +53,11 @@ export function UndoToast({
 
   return (
     <div className="undo-toast" role="status" aria-live="polite">
-      <span>{failed ? "Couldn't undo. Restore it from Manual Save." : `${shown.message}.`}</span>
+      <span>{failed
+          ? 'undo' in shown
+            ? shown.failMessage
+            : "Couldn't undo. Restore it from Manual Save."
+          : `${shown.message}.`}</span>
       {!failed && (
         <button type="button" className="undo-toast-btn" disabled={busy} onClick={() => void undo()}>
           Undo

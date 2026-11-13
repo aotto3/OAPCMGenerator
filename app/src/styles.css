@@ -621,7 +621,13 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .my-templates { margin-bottom: 14px; }
 .my-templates-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--fs-sm); }
 .my-templates .email-template-row { margin-bottom: var(--space-2); }
-.my-template-btn { white-space: normal; text-align: left; }
+.my-template { display: inline-flex; align-items: stretch; gap: 2px; max-width: 100%; }
+.my-template-btn { white-space: normal; text-align: left; min-width: 0; }
+.my-template-icon {
+  background: none; border: 1px solid var(--c-border); border-radius: var(--radius-sm);
+  color: var(--c-muted); padding: 0 7px; font-size: 0.82rem; line-height: 1;
+}
+.my-template-icon:hover { color: var(--c-blue); border-color: var(--c-blue-border); }
 .my-templates-offline { margin: 0 0 var(--space-2); }
 .template-editor {
   background: var(--c-surface); border: 1.5px solid var(--c-blue-border); border-radius: 7px;

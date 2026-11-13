@@ -42,6 +42,11 @@ export type CreateResult =
   | { kind: 'invalid'; problem: TemplateProblem }
   | { kind: 'error' };
 
+/** An edit: like a create, plus the template no longer existing (deleted on another device). */
+export type UpdateResult = CreateResult | { kind: 'not_found' };
+
+export type DeleteResult = { kind: 'deleted' } | { kind: 'offline' } | { kind: 'error' };
+
 /** The slice of the Storage API the device copy needs (injectable for tests). */
 export interface DeviceStorage {
   getItem(key: string): string | null;
@@ -110,6 +115,25 @@ export function createTemplatesClient(options: TemplatesClientOptions) {
     }
   }
 
+  /** Maps a failed write to its result. */
+  function writeFailure(err: unknown): { kind: 'offline' } | { kind: 'invalid'; problem: TemplateProblem } | { kind: 'error' } {
+    if (err instanceof ApiNetworkError) return { kind: 'offline' };
+    if (err instanceof ApiHttpError && err.status === 400) {
+      const problem = (err.body as { error?: unknown } | undefined)?.error;
+      if (typeof problem === 'string' && PROBLEMS.has(problem)) {
+        return { kind: 'invalid', problem: problem as TemplateProblem };
+      }
+    }
+    return { kind: 'error' };
+  }
+
+  /** Puts a saved template into the device copy, replacing its old version in place. */
+  function keepOne(template: EmailTemplate): void {
+    const current = saved();
+    const at = current.findIndex((t) => t.id === template.id);
+    keep(at === -1 ? [...current, template] : current.map((t) => (t.id === template.id ? template : t)));
+  }
+
   return {
     /** The device copy, at once; [] when there is none. */
     saved,
@@ -130,18 +154,41 @@ export function createTemplatesClient(options: TemplatesClientOptions) {
       try {
         const body = await api.send<{ template?: unknown }>('POST', BASE, input);
         if (!isTemplate(body?.template)) return { kind: 'error' };
-        keep([...saved().filter((t) => t.id !== (body.template as EmailTemplate).id), body.template]);
+        keepOne(body.template);
         return { kind: 'saved', template: body.template };
       } catch (err) {
-        if (err instanceof ApiNetworkError) return { kind: 'offline' };
-        if (err instanceof ApiHttpError && err.status === 400) {
-          const problem = (err.body as { error?: unknown } | undefined)?.error;
-          if (typeof problem === 'string' && PROBLEMS.has(problem)) {
-            return { kind: 'invalid', problem: problem as TemplateProblem };
-          }
-        }
-        return { kind: 'error' };
+        return writeFailure(err);
       }
+    },
+
+    /** Replaces a template (last write wins). */
+    async update(id: string, input: TemplateInput): Promise<UpdateResult> {
+      try {
+        const body = await api.send<{ template?: unknown }>('PUT', `${BASE}/${encodeURIComponent(id)}`, input);
+        if (!isTemplate(body?.template)) return { kind: 'error' };
+        keepOne(body.template);
+        return { kind: 'saved', template: body.template };
+      } catch (err) {
+        if (err instanceof ApiHttpError && err.status === 404) {
+          // Gone on the server (deleted elsewhere): drop it here too.
+          keep(saved().filter((t) => t.id !== id));
+          return { kind: 'not_found' };
+        }
+        return writeFailure(err);
+      }
+    },
+
+    /** Deletes a template. Already gone on the server counts as deleted. */
+    async remove(id: string): Promise<DeleteResult> {
+      try {
+        await api.send('DELETE', `${BASE}/${encodeURIComponent(id)}`);
+      } catch (err) {
+        if (!(err instanceof ApiHttpError && err.status === 404)) {
+          return err instanceof ApiNetworkError ? { kind: 'offline' } : { kind: 'error' };
+        }
+      }
+      keep(saved().filter((t) => t.id !== id));
+      return { kind: 'deleted' };
     },
   };
 }

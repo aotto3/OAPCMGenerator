@@ -135,3 +135,68 @@ describe('create', () => {
     }
   });
 });
+
+describe('update', () => {
+  const input = { name: 'Hotel details', subject: 'New', body: 'New body' };
+  const edited: EmailTemplate = { ...T1, ...input, updatedAt: '2026-11-13T11:00:00.000Z' };
+
+  it('puts the template and replaces it in place in the device copy', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1, T2]) });
+    const { fn, calls } = recordingFetch(() => json(200, { template: edited }));
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: fn, storage });
+    expect(await client.update('t1', input)).toEqual({ kind: 'saved', template: edited });
+    expect(calls[0].url).toBe('/api/templates/t1');
+    expect(calls[0].init?.method).toBe('PUT');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual(input);
+    expect(client.saved()).toEqual([edited, T2]);
+  });
+
+  it('offline or refused: reported, device copy unchanged', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1]) });
+    expect(await createTemplatesClient({ userId: 'alice', fetchImpl: offline, storage }).update('t1', input)).toEqual({
+      kind: 'offline',
+    });
+    const { fn } = recordingFetch(() => json(400, { error: 'duplicate_name' }));
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: fn, storage });
+    expect(await client.update('t1', input)).toEqual({ kind: 'invalid', problem: 'duplicate_name' });
+    expect(client.saved()).toEqual([T1]);
+  });
+
+  it('a template deleted elsewhere is not_found and leaves the device copy', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1, T2]) });
+    const { fn } = recordingFetch(() => json(404));
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: fn, storage });
+    expect(await client.update('t1', input)).toEqual({ kind: 'not_found' });
+    expect(client.saved()).toEqual([T2]);
+  });
+});
+
+describe('remove', () => {
+  it('deletes on the server, then from the device copy', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1, T2]) });
+    const { fn, calls } = recordingFetch(() => new Response(null, { status: 204 }));
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: fn, storage });
+    expect(await client.remove('t1')).toEqual({ kind: 'deleted' });
+    expect(calls[0].url).toBe('/api/templates/t1');
+    expect(calls[0].init?.method).toBe('DELETE');
+    expect(client.saved()).toEqual([T2]);
+  });
+
+  it('already gone on the server counts as deleted', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1]) });
+    const { fn } = recordingFetch(() => json(404));
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: fn, storage });
+    expect(await client.remove('t1')).toEqual({ kind: 'deleted' });
+    expect(client.saved()).toEqual([]);
+  });
+
+  it('offline or failed: reported, device copy unchanged', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1]) });
+    expect(await createTemplatesClient({ userId: 'alice', fetchImpl: offline, storage }).remove('t1')).toEqual({
+      kind: 'offline',
+    });
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: async () => json(500), storage });
+    expect(await client.remove('t1')).toEqual({ kind: 'error' });
+    expect(client.saved()).toEqual([T1]);
+  });
+});
