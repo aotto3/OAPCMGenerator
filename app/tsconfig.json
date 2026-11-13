@@ -13,5 +13,9 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // The app/server contract test imports ../server, which the frontend's
+  // Railway build does not have (it builds app/ alone). Vitest still runs it
+  // locally; it is just left out of the deploy typecheck.
+  "exclude": ["src/questionnaire/contract.test.ts"]
 }
