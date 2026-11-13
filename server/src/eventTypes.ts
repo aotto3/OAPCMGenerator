@@ -7,9 +7,10 @@
  *  - TELEMETRY_EVENTS are the ONLY types the browser may report; the telemetry
  *    endpoint validates against TELEMETRY_EVENT_TYPES and 400s anything else, so a
  *    client can't inject a server-authored 'contest.created' (PRD user story 21).
- *  - CONTEST_EVENTS, ADMIN_EVENTS and QUESTIONNAIRE_EVENTS are recorded by the
- *    server itself (contest writes, the admin resend action, the public judge
- *    questionnaire) and are never accepted from a client.
+ *  - CONTEST_EVENTS, ADMIN_EVENTS, QUESTIONNAIRE_EVENTS and TEMPLATE_EVENTS are
+ *    recorded by the server itself (contest writes, the admin resend action, the
+ *    public judge questionnaire, email template writes) and are never accepted
+ *    from a client.
  */
 
 /** Events the browser may report via the telemetry endpoint (the client allowlist). */
@@ -44,7 +45,15 @@ export const QUESTIONNAIRE_EVENTS = {
   honeypot: 'questionnaire.honeypot',
 } as const;
 
-export type QuestionnaireEventType = (typeof QUESTIONNAIRE_EVENTS)[keyof typeof QUESTIONNAIRE_EVENTS];
+/**
+ * Events the server records on a CM's custom email templates (PRD #320), by
+ * template name only, never the body. Never client-reportable.
+ */
+export const TEMPLATE_EVENTS = {
+  created: 'template.created',
+} as const;
+
+export type QuestionnaireEventType =(typeof QUESTIONNAIRE_EVENTS)[keyof typeof QUESTIONNAIRE_EVENTS];
 
 export type TelemetryEventType = (typeof TELEMETRY_EVENTS)[keyof typeof TELEMETRY_EVENTS];
 

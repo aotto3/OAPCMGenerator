@@ -617,6 +617,34 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .email-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
+/* The CM's own templates (PRD #320). */
+.my-templates { margin-bottom: 14px; }
+.my-templates-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--fs-sm); }
+.my-templates .email-template-row { margin-bottom: var(--space-2); }
+.my-template-btn { white-space: normal; text-align: left; }
+.my-templates-offline { margin: 0 0 var(--space-2); }
+.template-editor {
+  background: var(--c-surface); border: 1.5px solid var(--c-blue-border); border-radius: 7px;
+  padding: 14px var(--space-4); margin-bottom: 14px;
+}
+.template-editor-field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); font-size: var(--fs-sm); font-weight: 600; }
+.template-editor-field input {
+  font: inherit; font-weight: 400; padding: var(--space-2);
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-input-bg);
+}
+.template-editor-field .email-body { font-weight: 400; margin-bottom: 0; min-height: 180px; }
+.template-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.template-editor-actions:last-child { margin-bottom: 0; }
+.template-field-picker {
+  font: inherit; font-size: var(--fs-sm); padding: 5px var(--space-2); max-width: 100%;
+  border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-input-bg); color: var(--c-text);
+}
+.template-preview {
+  border: 1px dashed var(--c-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3);
+}
+.template-preview-subject { margin: var(--space-1) 0; font-weight: 700; overflow-wrap: anywhere; }
+.template-preview-body { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* Critique assignment randomizer (v12 sec-critique). */
 .critique-generate-row { text-align: center; margin: 6px 0 14px; }
 .critique-generate-btn { padding: var(--space-3) 28px; font-size: 0.95rem; }

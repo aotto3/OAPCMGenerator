@@ -17,5 +17,5 @@
   // The app/server contract test imports ../server, which the frontend's
   // Railway build does not have (it builds app/ alone). Vitest still runs it
   // locally; it is just left out of the deploy typecheck.
-  "exclude": ["src/questionnaire/contract.test.ts"]
+  "exclude": ["src/questionnaire/contract.test.ts", "src/templates/contract.test.ts"]
 }
