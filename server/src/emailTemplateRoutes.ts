@@ -5,6 +5,11 @@
  *   GET  /   the caller's templates, oldest first: { templates }
  *   POST /   { name, subject, body } -> 201 { template }, or 400 { error } where
  *            error is a TemplateProblem or 'invalid_body'
+ *   PUT  /:id     { name, subject, body } -> 200 { template } (replaces it, last
+ *                 write wins), 400 { error } as for POST, or 404
+ *   DELETE /:id   -> 204, or 404
+ *
+ * An id that is not one of the caller's templates is a 404, whoever owns it.
  *
  * Each write appends an activity event carrying the template name only, never
  * its subject or body, best-effort: a logging failure never fails the request.
@@ -82,6 +87,41 @@ export function createEmailTemplateRoutes(deps: EmailTemplateRoutesDeps): Router
       }
       await record(user, TEMPLATE_EVENTS.created, result.template.name);
       res.status(201).json({ template: result.template });
+    }),
+  );
+
+  router.put(
+    '/:id',
+    authed(async (req, res, user) => {
+      const input = parseTemplateInput(req.body);
+      if (!input) {
+        res.status(400).json({ error: 'invalid_body' });
+        return;
+      }
+      const result = await store.update(user.id, String(req.params.id), input, now().toISOString());
+      if (result.kind === 'not_found') {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      if (result.kind === 'invalid') {
+        res.status(400).json({ error: result.problem });
+        return;
+      }
+      await record(user, TEMPLATE_EVENTS.updated, result.template.name);
+      res.json({ template: result.template });
+    }),
+  );
+
+  router.delete(
+    '/:id',
+    authed(async (req, res, user) => {
+      const result = await store.remove(user.id, String(req.params.id));
+      if (result.kind === 'not_found') {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      await record(user, TEMPLATE_EVENTS.deleted, result.template.name);
+      res.status(204).end();
     }),
   );
 

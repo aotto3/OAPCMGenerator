@@ -3,17 +3,20 @@ import { useSession } from '../auth/authClient';
 import type { Contest } from '../model/contest';
 import { MERGE_FIELDS, mergeTag, renderTemplate } from '../templates/templateRender';
 import { TEMPLATE_LIMITS, templateProblem, templateProblemMessage } from '../templates/templateRules';
+import { offerUndo } from './undoOffer';
 import { createTemplatesClient, type EmailTemplate, type TemplatesClient } from '../templates/templatesClient';
 
 /**
  * The CM's own email templates in the Email Draft Composer (PRD #320): a "My
- * templates" button row under the built-ins and a "+ New template" editor.
+ * templates" button row under the built-ins, a "+ New template" editor, and
+ * edit and delete on each template.
  *
  * Templates belong to the account, not the contest, so the same row appears in
  * every contest. Clicking one fills the composer's subject and body from the
  * open contest (renderTemplate) and leaves the To: line empty; the CM adds
  * recipients. The list shows the device copy at once, then the server's answer;
- * saving needs a connection.
+ * saving and deleting need a connection. A delete asks first, then offers Undo
+ * through the workspace's Undo toast, which re-creates the template.
  */
 export function MyTemplates({
   contest,
@@ -31,7 +34,10 @@ export function MyTemplates({
   const [templates, setTemplates] = useState<EmailTemplate[]>(() => client?.saved() ?? []);
   /** True when the last list came from the device copy because the server could not be reached. */
   const [fromDevice, setFromDevice] = useState(false);
-  const [editing, setEditing] = useState(false);
+  /** The editor: closed, a new template, or the template being edited. */
+  const [editing, setEditing] = useState<null | 'new' | EmailTemplate>(null);
+  /** Why the last delete failed, shown under the row. */
+  const [rowError, setRowError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!client) return;
@@ -48,11 +54,40 @@ export function MyTemplates({
   }, [client]);
 
   if (!client) return null;
+  const templatesClient = client;
 
   function load(t: EmailTemplate) {
     const filled = renderTemplate(t, contest);
     onLoad({ subject: filled.subject, body: filled.body });
   }
+
+  async function remove(t: EmailTemplate) {
+    if (!window.confirm(`Delete your template "${t.name}"?`)) return;
+    setRowError(null);
+    const result = await templatesClient.remove(t.id);
+    if (result.kind !== 'deleted') {
+      setRowError(
+        result.kind === 'offline'
+          ? 'You’re offline, so the template was not deleted. Try again when you’re connected.'
+          : 'The template could not be deleted. Try again.',
+      );
+      return;
+    }
+    setTemplates((prev) => prev.filter((p) => p.id !== t.id));
+    setEditing((e) => (e !== null && e !== 'new' && e.id === t.id ? null : e));
+    offerUndo({
+      message: `Template “${t.name}” deleted`,
+      contestId: contest.id,
+      failMessage: `Couldn’t bring back “${t.name}”. Check your connection.`,
+      undo: async () => {
+        const back = await templatesClient.create({ name: t.name, subject: t.subject, body: t.body });
+        if (back.kind !== 'saved') throw new Error(`Undo failed: ${back.kind}`);
+        setTemplates((prev) => [...prev, back.template]);
+      },
+    });
+  }
+
+  const editingTemplate = editing !== null && editing !== 'new' ? editing : null;
 
   return (
     <div className="my-templates">
@@ -62,12 +97,32 @@ export function MyTemplates({
       </div>
       <div className="email-template-row">
         {templates.map((t) => (
-          <button key={t.id} type="button" className="email-template-btn my-template-btn" onClick={() => load(t)}>
-            {t.name}
-          </button>
+          <span key={t.id} className="my-template">
+            <button type="button" className="email-template-btn my-template-btn" onClick={() => load(t)}>
+              {t.name}
+            </button>
+            <button
+              type="button"
+              className="my-template-icon"
+              aria-label={`Edit ${t.name}`}
+              title="Edit"
+              onClick={() => setEditing(t)}
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              className="my-template-icon"
+              aria-label={`Delete ${t.name}`}
+              title="Delete"
+              onClick={() => void remove(t)}
+            >
+              ✕
+            </button>
+          </span>
         ))}
-        {!editing && (
-          <button type="button" className="btn-util" onClick={() => setEditing(true)}>
+        {editing === null && (
+          <button type="button" className="btn-util" onClick={() => setEditing('new')}>
             + New template
           </button>
         )}
@@ -77,16 +132,21 @@ export function MyTemplates({
           Couldn’t reach the server, so these are the templates saved on this device.
         </p>
       )}
-      {editing && (
+      {rowError && <p className="tab-status-error">{rowError}</p>}
+      {editing !== null && (
         <TemplateEditor
-          client={client}
+          // A fresh editor per template, so switching templates resets the boxes.
+          key={editingTemplate?.id ?? 'new'}
+          client={templatesClient}
           contest={contest}
-          others={templates}
-          onCancel={() => setEditing(false)}
+          editing={editingTemplate}
+          others={templates.filter((t) => t.id !== editingTemplate?.id)}
+          onCancel={() => setEditing(null)}
+          onGone={(id) => setTemplates((prev) => prev.filter((p) => p.id !== id))}
           onSaved={(t) => {
-            setTemplates((prev) => [...prev.filter((p) => p.id !== t.id), t]);
+            setTemplates((prev) => (prev.some((p) => p.id === t.id) ? prev.map((p) => (p.id === t.id ? t : p)) : [...prev, t]));
             setFromDevice(false);
-            setEditing(false);
+            setEditing(null);
           }}
         />
       )}
@@ -97,20 +157,28 @@ export function MyTemplates({
 function TemplateEditor({
   client,
   contest,
+  editing,
   others,
   onCancel,
+  onGone,
   onSaved,
 }: {
   client: TemplatesClient;
   contest: Contest;
+  /** The template being edited, or null for a new one. */
+  editing: EmailTemplate | null;
   /** The account's other templates (for the name and count checks). */
   others: EmailTemplate[];
   onCancel: () => void;
+  /** The edited template no longer exists on the server (deleted on another device). */
+  onGone: (id: string) => void;
   onSaved: (t: EmailTemplate) => void;
 }) {
-  const [name, setName] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [name, setName] = useState(editing?.name ?? '');
+  const [subject, setSubject] = useState(editing?.subject ?? '');
+  const [body, setBody] = useState(editing?.body ?? '');
+  /** What Save writes to: the edited template, or null to create a new one. */
+  const [target, setTarget] = useState<EmailTemplate | null>(editing);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const subjectRef = useRef<HTMLInputElement>(null);
@@ -148,9 +216,15 @@ function TemplateEditor({
     }
     setSaving(true);
     setError(null);
-    const result = await client.create(input);
+    const result = target ? await client.update(target.id, input) : await client.create(input);
     setSaving(false);
     if (result.kind === 'saved') onSaved(result.template);
+    else if (result.kind === 'not_found') {
+      // Deleted on another device: keep the CM's text and save it as a new one next time.
+      if (target) onGone(target.id);
+      setTarget(null);
+      setError('This template was deleted on another device. Save again to keep it as a new template.');
+    }
     else if (result.kind === 'offline')
       setError('You’re offline, so the template was not saved. Try again when you’re connected.');
     else if (result.kind === 'invalid') setError(templateProblemMessage(result.problem));
@@ -221,7 +295,7 @@ function TemplateEditor({
       {error && <p className="tab-status-error">{error}</p>}
       <div className="template-editor-actions">
         <button type="button" className="btn-primary" disabled={saving} onClick={() => void save()}>
-          {saving ? 'Saving…' : 'Save template'}
+          {saving ? 'Saving…' : target ? 'Save changes' : 'Save template'}
         </button>
         <button type="button" className="btn-ghost" disabled={saving} onClick={onCancel}>
           Cancel

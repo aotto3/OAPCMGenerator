@@ -24,11 +24,25 @@ export interface EmailTemplate {
 
 export type CreateTemplateResult = { kind: 'created'; template: EmailTemplate } | { kind: 'invalid'; problem: TemplateProblem };
 
+export type UpdateTemplateResult =
+  | { kind: 'updated'; template: EmailTemplate }
+  | { kind: 'not_found' }
+  | { kind: 'invalid'; problem: TemplateProblem };
+
+export type DeleteTemplateResult = { kind: 'deleted'; template: EmailTemplate } | { kind: 'not_found' };
+
 export interface EmailTemplateStore {
   /** The owner's templates, oldest first (the order their buttons appear in). */
   list(ownerId: string): Promise<EmailTemplate[]>;
   /** Creates a template after checking the rules against the owner's others. */
   create(ownerId: string, input: TemplateInput, at: string): Promise<CreateTemplateResult>;
+  /**
+   * Replaces one of the owner's templates (last write wins), checking the rules
+   * against the owner's OTHER templates. Another owner's id is not_found.
+   */
+  update(ownerId: string, id: string, input: TemplateInput, at: string): Promise<UpdateTemplateResult>;
+  /** Deletes one of the owner's templates; returns what was deleted. Another owner's id is not_found. */
+  remove(ownerId: string, id: string): Promise<DeleteTemplateResult>;
 }
 
 interface Row {
@@ -84,6 +98,39 @@ export function createEmailTemplateStore(pool: Pool, newId: () => string = rando
         [template.id, ownerId, template.name, template.subject, template.body, at, at],
       );
       return { kind: 'created', template };
+    },
+
+    async update(ownerId, id, input, at) {
+      const existing = await list(ownerId);
+      const current = existing.find((t) => t.id === id);
+      if (!current) return { kind: 'not_found' };
+      const others = existing.filter((t) => t.id !== id);
+      const problem = templateProblem(
+        input,
+        others.map((t) => t.name),
+        others.length,
+      );
+      if (problem) return { kind: 'invalid', problem };
+      const template: EmailTemplate = {
+        ...current,
+        name: input.name.trim(),
+        subject: input.subject,
+        body: input.body,
+        updatedAt: at,
+      };
+      await pool.query(
+        `update email_templates set name = $3, subject = $4, body = $5, updated_at = $6
+         where owner_id = $1 and id = $2`,
+        [ownerId, id, template.name, template.subject, template.body, at],
+      );
+      return { kind: 'updated', template };
+    },
+
+    async remove(ownerId, id) {
+      const current = (await list(ownerId)).find((t) => t.id === id);
+      if (!current) return { kind: 'not_found' };
+      await pool.query('delete from email_templates where owner_id = $1 and id = $2', [ownerId, id]);
+      return { kind: 'deleted', template: current };
     },
   };
 }

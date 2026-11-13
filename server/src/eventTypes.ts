@@ -51,6 +51,8 @@ export const QUESTIONNAIRE_EVENTS = {
  */
 export const TEMPLATE_EVENTS = {
   created: 'template.created',
+  updated: 'template.updated',
+  deleted: 'template.deleted',
 } as const;
 
 export type QuestionnaireEventType =(typeof QUESTIONNAIRE_EVENTS)[keyof typeof QUESTIONNAIRE_EVENTS];
