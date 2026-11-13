@@ -200,3 +200,98 @@ describe('remove', () => {
     expect(client.saved()).toEqual([T1]);
   });
 });
+
+describe('sharing', () => {
+  const shared: EmailTemplate = { ...T1, shared: true, sharedAt: '2026-11-13T12:00:00.000Z' };
+
+  it('shares under an author name and keeps the shared copy on the device', async () => {
+    const storage = memoryStorage({ [deviceKey('alice')]: JSON.stringify([T1]) });
+    const { fn, calls } = recordingFetch(() => json(200, { template: shared }));
+    const client = createTemplatesClient({ userId: 'alice', fetchImpl: fn, storage });
+    expect(await client.setShared('t1', 'Dana')).toEqual({ kind: 'saved', template: shared });
+    expect(calls[0].url).toBe('/api/templates/t1/share');
+    expect(calls[0].init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ authorName: 'Dana' });
+    expect(client.saved()).toEqual([shared]);
+  });
+
+  it('null unshares', async () => {
+    const { fn, calls } = recordingFetch(() => json(200, { template: T1 }));
+    await createTemplatesClient({ userId: 'a', fetchImpl: fn, storage: memoryStorage() }).setShared('t1', null);
+    expect(calls[0].url).toBe('/api/templates/t1/share');
+    expect(calls[0].init?.method).toBe('DELETE');
+  });
+
+  it('maps failures', async () => {
+    const at = (res: Response | 'offline') =>
+      createTemplatesClient({
+        userId: 'a',
+        fetchImpl: res === 'offline' ? offline : async () => res,
+        storage: memoryStorage(),
+      }).setShared('t1', 'Dana');
+    expect(await at('offline')).toEqual({ kind: 'offline' });
+    expect(await at(json(400, { error: 'author_name_required' }))).toEqual({ kind: 'no_author' });
+    expect(await at(json(404))).toEqual({ kind: 'not_found' });
+    expect(await at(json(500))).toEqual({ kind: 'error' });
+  });
+
+  it('an update of a shared template carries the author name', async () => {
+    const { fn, calls } = recordingFetch(() => json(200, { template: shared }));
+    const client = createTemplatesClient({ userId: 'a', fetchImpl: fn, storage: memoryStorage() });
+    await client.update('t1', { name: 'n', subject: 's', body: 'b' }, 'Dana');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ name: 'n', subject: 's', body: 'b', authorName: 'Dana' });
+    await client.update('t1', { name: 'n', subject: 's', body: 'b' });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ name: 'n', subject: 's', body: 'b' });
+  });
+});
+
+describe('gallery', () => {
+  const card = {
+    id: 'g1',
+    name: 'Hotel info',
+    subject: 's',
+    body: 'b',
+    authorName: 'Dana',
+    sharedAt: '2026-11-13T12:00:00.000Z',
+    mine: false,
+  };
+
+  it('lists the shared templates, dropping malformed cards', async () => {
+    const { fn, calls } = recordingFetch(() => json(200, { templates: [card, { id: 'bad' }] }));
+    const result = await createTemplatesClient({ userId: 'a', fetchImpl: fn, storage: memoryStorage() }).gallery();
+    expect(result).toEqual({ kind: 'ok', templates: [card] });
+    expect(calls[0].url).toBe('/api/templates/gallery');
+  });
+
+  it('offline or failed', async () => {
+    expect(await createTemplatesClient({ userId: 'a', fetchImpl: offline, storage: null }).gallery()).toEqual({
+      kind: 'offline',
+    });
+    expect(
+      await createTemplatesClient({ userId: 'a', fetchImpl: async () => json(500), storage: null }).gallery(),
+    ).toEqual({ kind: 'error' });
+  });
+
+  it('adds a copy, with or without a new name, and keeps it on the device', async () => {
+    const storage = memoryStorage();
+    const { fn, calls } = recordingFetch(() => json(201, { template: T2 }));
+    const client = createTemplatesClient({ userId: 'a', fetchImpl: fn, storage });
+    expect(await client.addFromGallery('g1')).toEqual({ kind: 'saved', template: T2 });
+    expect(calls[0].url).toBe('/api/templates/gallery/g1/add');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({});
+    await client.addFromGallery('g1', 'Renamed');
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ name: 'Renamed' });
+    expect(client.saved()).toEqual([T2]);
+  });
+
+  it('a template no longer shared is not_found; a name clash is invalid', async () => {
+    const gone = createTemplatesClient({ userId: 'a', fetchImpl: async () => json(404), storage: null });
+    expect(await gone.addFromGallery('g1')).toEqual({ kind: 'not_found' });
+    const clash = createTemplatesClient({
+      userId: 'a',
+      fetchImpl: async () => json(400, { error: 'duplicate_name' }),
+      storage: null,
+    });
+    expect(await clash.addFromGallery('g1')).toEqual({ kind: 'invalid', problem: 'duplicate_name' });
+  });
+});

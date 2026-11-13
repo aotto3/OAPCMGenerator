@@ -16,6 +16,7 @@ import {
   templateProblemMessage,
   type TemplateInput,
 } from '../templates/templateRules';
+import { TemplateGallery } from './TemplateGallery';
 import { offerUndo } from './undoOffer';
 import { createTemplatesClient, type EmailTemplate, type TemplatesClient } from '../templates/templatesClient';
 
@@ -33,7 +34,9 @@ const BLANK = '__blank__';
  * The CM's own email templates in the Email Draft Composer (PRD #320): a "My
  * templates" button row under the built-ins, a "+ New template" chooser (blank,
  * or a copy of a built-in email written in merge fields), and edit and delete
- * on each template.
+ * on each template. A template can be shared with other CMs (under the CM name
+ * from the open contest's Setup), and "Browse shared templates" opens the
+ * gallery of everyone's shared templates.
  *
  * Templates belong to the account, not the contest, so the same row appears in
  * every contest. Clicking one fills the composer's subject and body from the
@@ -60,6 +63,7 @@ export function MyTemplates({
   const [fromDevice, setFromDevice] = useState(false);
   /** The editor: closed, a new template, or the template being edited. */
   const [editing, setEditing] = useState<null | NewTemplate | EmailTemplate>(null);
+  const [showGallery, setShowGallery] = useState(false);
   /** Why the last delete failed, shown under the row. */
   const [rowError, setRowError] = useState<string | null>(null);
 
@@ -163,6 +167,11 @@ export function MyTemplates({
           <span key={t.id} className="my-template">
             <button type="button" className="email-template-btn my-template-btn" onClick={() => void load(t)}>
               {t.name}
+              {t.shared && (
+                <span className="template-badge" title="Shared with other contest managers">
+                  Shared
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -204,6 +213,9 @@ export function MyTemplates({
             </optgroup>
           </select>
         )}
+        <button type="button" className="btn-util" onClick={() => setShowGallery((v) => !v)}>
+          {showGallery ? 'Hide shared templates' : 'Browse shared templates'}
+        </button>
       </div>
       {fromDevice && (
         <p className="hint my-templates-offline">
@@ -224,11 +236,21 @@ export function MyTemplates({
           onNeedQuestionnaireLink={() => void ensureQuestionnaireLink()}
           onCancel={() => setEditing(null)}
           onGone={(id) => setTemplates((prev) => prev.filter((p) => p.id !== id))}
+          onShareChanged={(t) => setTemplates((prev) => prev.map((p) => (p.id === t.id ? t : p)))}
           onSaved={(t) => {
             setTemplates((prev) => (prev.some((p) => p.id === t.id) ? prev.map((p) => (p.id === t.id ? t : p)) : [...prev, t]));
             setFromDevice(false);
             setEditing(null);
           }}
+        />
+      )}
+      {showGallery && (
+        <TemplateGallery
+          client={templatesClient}
+          contest={contest}
+          mine={templates}
+          onAdded={(t) => setTemplates((prev) => [...prev, t])}
+          onClose={() => setShowGallery(false)}
         />
       )}
     </div>
@@ -245,6 +267,7 @@ function TemplateEditor({
   onNeedQuestionnaireLink,
   onCancel,
   onGone,
+  onShareChanged,
   onSaved,
 }: {
   client: TemplatesClient;
@@ -262,6 +285,8 @@ function TemplateEditor({
   onCancel: () => void;
   /** The edited template no longer exists on the server (deleted on another device). */
   onGone: (id: string) => void;
+  /** The template was shared or unshared (saved at once, apart from Save). */
+  onShareChanged: (t: EmailTemplate) => void;
   onSaved: (t: EmailTemplate) => void;
 }) {
   const [name, setName] = useState(editing?.name ?? start?.name ?? '');
@@ -271,6 +296,10 @@ function TemplateEditor({
   const [target, setTarget] = useState<EmailTemplate | null>(editing);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  /** The name a shared template is shown under: the CM name from this contest's Setup. */
+  const authorName = contest.cmInfo.name.trim();
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   /** Where "Insert field" puts the tag: the subject or body box the CM last used. */
@@ -306,7 +335,9 @@ function TemplateEditor({
     }
     setSaving(true);
     setError(null);
-    const result = target ? await client.update(target.id, input) : await client.create(input);
+    const result = target
+      ? await client.update(target.id, input, target.shared && authorName ? authorName : undefined)
+      : await client.create(input);
     setSaving(false);
     if (result.kind === 'saved') onSaved(result.template);
     else if (result.kind === 'not_found') {
@@ -319,6 +350,21 @@ function TemplateEditor({
       setError('You’re offline, so the template was not saved. Try again when you’re connected.');
     else if (result.kind === 'invalid') setError(templateProblemMessage(result.problem));
     else setError('The template could not be saved. Try again.');
+  }
+
+  async function toggleShare(share: boolean) {
+    if (!target) return;
+    setSharing(true);
+    setShareError(null);
+    const result = await client.setShared(target.id, share ? authorName : null);
+    setSharing(false);
+    if (result.kind === 'saved') {
+      setTarget(result.template);
+      onShareChanged(result.template);
+    } else if (result.kind === 'offline') setShareError('You’re offline, so sharing did not change.');
+    else if (result.kind === 'no_author') setShareError('Add your name in Setup (CM Info) to share.');
+    else if (result.kind === 'not_found') setShareError('This template was deleted on another device.');
+    else setShareError('Sharing could not be changed. Try again.');
   }
 
   const preview = renderTemplate({ subject, body }, contest, { questionnaireLink });
@@ -405,6 +451,31 @@ function TemplateEditor({
           <pre className="template-preview-body">{preview.body}</pre>
         </div>
       )}
+      <div className="template-share">
+        {target ? (
+          <>
+            <label className="template-share-toggle">
+              <input
+                type="checkbox"
+                checked={target.shared === true}
+                disabled={sharing || (!target.shared && !authorName)}
+                onChange={(e) => void toggleShare(e.target.checked)}
+              />{' '}
+              Share with other contest managers
+            </label>
+            <span className="hint">
+              {!authorName && !target.shared
+                ? 'Add your name in Setup (CM Info) to share.'
+                : target.shared
+                  ? `Others can find this in the shared templates and add their own copy. Shown as ${authorName || 'you'}.`
+                  : `Others could add their own copy. You’d be shown as ${authorName}; your email is never shown.`}
+            </span>
+          </>
+        ) : (
+          <span className="hint">Save the template first; then you can share it with other contest managers.</span>
+        )}
+      </div>
+      {shareError && <p className="tab-status-error">{shareError}</p>}
       {error && <p className="tab-status-error">{error}</p>}
       <div className="template-editor-actions">
         <button type="button" className="btn-primary" disabled={saving} onClick={() => void save()}>

@@ -53,6 +53,9 @@ export const TEMPLATE_EVENTS = {
   created: 'template.created',
   updated: 'template.updated',
   deleted: 'template.deleted',
+  shared: 'template.shared',
+  unshared: 'template.unshared',
+  addedFromGallery: 'template.added_from_gallery',
 } as const;
 
 export type QuestionnaireEventType =(typeof QUESTIONNAIRE_EVENTS)[keyof typeof QUESTIONNAIRE_EVENTS];

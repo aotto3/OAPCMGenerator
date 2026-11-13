@@ -9,11 +9,17 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as server from '../../../server/src/emailTemplateRules';
-import { TEMPLATE_LIMITS, templateNameKey, templateProblem, type TemplateInput } from './templateRules';
+import { cleanAuthorName, TEMPLATE_LIMITS, templateNameKey, templateProblem, type TemplateInput } from './templateRules';
 
 describe('template rules match the server', () => {
   it('limits are equal', () => {
     expect(TEMPLATE_LIMITS).toEqual(server.TEMPLATE_LIMITS);
+  });
+
+  it('author names are cleaned the same way', () => {
+    for (const n of ['Dana', '  Dana  ', '', '   ', 'x'.repeat(80), 'x'.repeat(81), 7, null]) {
+      expect(cleanAuthorName(n)).toBe(server.cleanAuthorName(n));
+    }
   });
 
   it('names compare the same way', () => {
