@@ -3,7 +3,9 @@
  * sign-in. The judge sees only an email box until their email matches a judge in
  * the CM's upcoming contests; then the questionnaire opens: per-contest questions
  * (hotel nights, flying; a back-to-back Zone pair is asked about as one) and
- * general questions, pre-filled from their last submission. Submitting stores the
+ * general questions, pre-filled from their last submission except the cell phone
+ * and mailing address, which the server never shows back (#261): a saved one is
+ * shown as "on file" and a blank field keeps it. Submitting stores the
  * answers for the CM's app to apply; the judge can come back and update them.
  * A link the CM has reset says so up front, so a judge holding the old one asks
  * for the new link instead of thinking they are not on file.
@@ -141,6 +143,8 @@ function initialAnswers(judge: JudgeLookup): SubmissionAnswers {
   };
 }
 
+const ON_FILE = 'On file. Leave blank to keep it.';
+
 const SUBMIT_MESSAGES = {
   not_found: "We couldn't find your contests anymore. Please contact your contest manager.",
   rate_limited: 'Too many tries. Please wait a few minutes and try again.',
@@ -160,6 +164,7 @@ function QuestionnaireForm({
   judge: JudgeLookup;
 }) {
   const groups = groupContests(judge.contests);
+  const onFile = judge.contactOnFile ?? { cellPhone: false, mailingAddress: false };
   const [answers, setAnswers] = useState<SubmissionAnswers>(() => initialAnswers(judge));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -214,11 +219,18 @@ function QuestionnaireForm({
             Name on file: <strong>{judge.judgeName}</strong>. If it's wrong, contact your contest manager.
           </p>
         )}
+        {(onFile.cellPhone || onFile.mailingAddress) && (
+          <p className="hint">
+            For your privacy, a saved cell number or mailing address isn't shown here. Leave it blank to keep the one
+            on file, or type a new one to replace it.
+          </p>
+        )}
         <Field label="Cell number">
           <input
             type="tel"
             autoComplete="tel"
             maxLength={ANSWER_LIMITS.cellPhone}
+            placeholder={onFile.cellPhone ? ON_FILE : undefined}
             value={answers.cellPhone}
             onChange={(e) => set({ cellPhone: e.target.value })}
           />
@@ -228,6 +240,7 @@ function QuestionnaireForm({
             autoComplete="street-address"
             maxLength={ANSWER_LIMITS.mailingAddress}
             rows={2}
+            placeholder={onFile.mailingAddress ? ON_FILE : undefined}
             value={answers.mailingAddress}
             onChange={(e) => set({ mailingAddress: e.target.value })}
           />

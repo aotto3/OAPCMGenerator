@@ -11,8 +11,16 @@ import { ApiHttpError, createApi } from '../api/http';
 export interface JudgeLookup {
   judgeName: string;
   contests: RosterContest[];
-  /** The judge's previous answers, to pre-fill the form; null on a first visit. */
+  /**
+   * The judge's previous answers, to pre-fill the form; null on a first visit.
+   * The server blanks the saved cell phone and mailing address (#261).
+   */
   lastSubmission: SubmissionAnswers | null;
+  /**
+   * Whether a hidden phone or address is on file; leaving that field blank
+   * keeps it. Absent from an older API, which still pre-filled them.
+   */
+  contactOnFile?: { cellPhone: boolean; mailingAddress: boolean };
 }
 
 export type SubmitResult =

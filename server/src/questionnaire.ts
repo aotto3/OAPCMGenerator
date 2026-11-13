@@ -24,10 +24,23 @@ import type { QuestionnaireStore, StoredSubmission } from './questionnaireStore'
 /** One judge's current answers, as the owner lists them. */
 export type JudgeSubmission = StoredSubmission;
 
+/**
+ * The contact answers the public page never shows back (#261). Anyone holding the
+ * link can type a judge's email, so a lookup returns them blank and only says
+ * whether one is on file; a submit that leaves one blank keeps the saved value.
+ */
+export const HIDDEN_CONTACT_FIELDS = ['cellPhone', 'mailingAddress'] as const;
+export type HiddenContactField = (typeof HIDDEN_CONTACT_FIELDS)[number];
+
 /** What the public page gets for a matched judge. */
 export interface JudgeLookupResult extends JudgeLookup {
-  /** The judge's current answers, or null before the first submit. */
+  /**
+   * The judge's current answers, or null before the first submit. The hidden
+   * contact fields are always '' here; see `contactOnFile`.
+   */
   lastSubmission: SubmissionAnswers | null;
+  /** Whether a saved (hidden) contact answer exists, so the page can say so. */
+  contactOnFile: Record<HiddenContactField, boolean>;
 }
 
 export interface QuestionnaireService {
@@ -54,7 +67,8 @@ export interface QuestionnaireService {
   lookup(token: string, email: string): Promise<JudgeLookupResult | null>;
   /**
    * Public. Stores the answers and notifies each CM involved (best-effort: a
-   * mail failure never fails the submit).
+   * mail failure never fails the submit). A blank hidden contact field keeps
+   * the judge's saved value.
    */
   submit(
     token: string,
@@ -158,18 +172,27 @@ export function createQuestionnaireService(deps: QuestionnaireServiceDeps): Ques
       const m = await match(token, email);
       if (!m) return null;
       const last = await store.getSubmission(m.owner, m.email);
-      return { ...m.judge, lastSubmission: last ? last.answers : null };
+      const saved = last?.answers;
+      const contactOnFile = Object.fromEntries(
+        HIDDEN_CONTACT_FIELDS.map((f) => [f, Boolean(saved && saved[f].trim() !== '')]),
+      ) as Record<HiddenContactField, boolean>;
+      const shown = saved ? { ...saved, ...Object.fromEntries(HIDDEN_CONTACT_FIELDS.map((f) => [f, ''])) } : null;
+      return { ...m.judge, lastSubmission: shown, contactOnFile };
     },
 
     async submit(token, email, input) {
       const m = await match(token, email);
       if (!m) return { error: 'not_found' };
-      const answers = parseAnswers(
+      const parsed = parseAnswers(
         input,
         m.judge.contests.map((c) => c.id),
       );
-      if (!answers) return { error: 'invalid_answers' };
+      if (!parsed) return { error: 'invalid_answers' };
       const previous = await store.getSubmission(m.owner, m.email);
+      const answers = { ...parsed };
+      for (const f of HIDDEN_CONTACT_FIELDS) {
+        if (answers[f].trim() === '' && previous) answers[f] = previous.answers[f];
+      }
       const submittedAt = stamp();
       await store.putSubmission(m.owner, { email: m.email, submittedAt, answers });
       await notifyCms(m, answers, previous !== undefined);

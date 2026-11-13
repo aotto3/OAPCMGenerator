@@ -109,11 +109,16 @@ describe('owner routes', () => {
 });
 
 describe('public lookup', () => {
-  it('answers a match as { judgeName, contests, lastSubmission }', async () => {
+  it('answers a match as { judgeName, contests, lastSubmission, contactOnFile }', async () => {
     const token = await ready();
     const res = await lookup(h, { token, email: 'jane@x.org', website: '' }).expect(200);
-    expect(res.body).toEqual({ judgeName: 'Jane Judge', contests: [ZONE1], lastSubmission: null });
-    expect(Object.keys(res.body)).toEqual(['judgeName', 'contests', 'lastSubmission']);
+    expect(res.body).toEqual({
+      judgeName: 'Jane Judge',
+      contests: [ZONE1],
+      lastSubmission: null,
+      contactOnFile: { cellPhone: false, mailingAddress: false },
+    });
+    expect(Object.keys(res.body)).toEqual(['judgeName', 'contests', 'lastSubmission', 'contactOnFile']);
   });
 
   it('answers the same 404 for unknown email, unknown token, honeypot, and junk', async () => {

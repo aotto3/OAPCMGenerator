@@ -151,7 +151,7 @@ describe('publishRoster', () => {
   it('accepts a valid roster and normalizes judge emails', async () => {
     const token = await ready();
     const found = await r.service.lookup(token, 'jane@x.org');
-    expect(found).toEqual({ judgeName: 'Jane Judge', contests: [ZONE1, ZONE2], lastSubmission: null });
+    expect(found).toEqual({ judgeName: 'Jane Judge', contests: [ZONE1, ZONE2], lastSubmission: null, contactOnFile: { cellPhone: false, mailingAddress: false } });
   });
 
   it('refuses malformed rosters', async () => {
@@ -233,6 +233,7 @@ describe('lookup', () => {
       judgeName: 'Sam Lee',
       contests: [DISTRICT],
       lastSubmission: null,
+      contactOnFile: { cellPhone: false, mailingAddress: false },
     });
   });
 
@@ -257,7 +258,11 @@ describe('submit', () => {
     const token = await ready();
     r.setNow('2026-10-05T08:30:00.000Z');
     expect(await r.service.submit(token, 'JANE@x.org', ANSWERS)).toEqual({ submittedAt: '2026-10-05T08:30:00.000Z' });
-    expect((await r.service.lookup(token, 'jane@x.org'))?.lastSubmission).toEqual(ANSWERS);
+    expect((await r.service.lookup(token, 'jane@x.org'))?.lastSubmission).toEqual({
+      ...ANSWERS,
+      cellPhone: '',
+      mailingAddress: '',
+    });
     expect(await r.service.submissionsFor('alice')).toEqual([
       { email: 'jane@x.org', submittedAt: '2026-10-05T08:30:00.000Z', answers: ANSWERS },
     ]);
@@ -272,6 +277,32 @@ describe('submit', () => {
     const list = await r.service.submissionsFor('alice');
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ submittedAt: '2026-09-02T00:00:00.000Z', answers: { dietary: 'vegan' } });
+  });
+
+  it('never shows saved phone or address back, only that they are on file (#261)', async () => {
+    const token = await ready();
+    await r.service.submit(token, 'jane@x.org', { ...ANSWERS, mailingAddress: '' });
+    const found = await r.service.lookup(token, 'jane@x.org');
+    expect(found?.lastSubmission).toMatchObject({ cellPhone: '', mailingAddress: '', dietary: ANSWERS.dietary });
+    expect(found?.contactOnFile).toEqual({ cellPhone: true, mailingAddress: false });
+  });
+
+  it('a blank phone or address on resubmit keeps the saved one; a typed one replaces it', async () => {
+    const token = await ready();
+    await r.service.submit(token, 'jane@x.org', ANSWERS);
+    r.sent.length = 0;
+    await r.service.submit(token, 'jane@x.org', { ...ANSWERS, cellPhone: '  ', mailingAddress: '2 Elm St' });
+    const [stored] = await r.service.submissionsFor('alice');
+    expect(stored.answers).toMatchObject({ cellPhone: ANSWERS.cellPhone, mailingAddress: '2 Elm St' });
+    // The CM notice carries the kept phone, not the blank.
+    expect(r.sent[0].text).toContain(ANSWERS.cellPhone);
+  });
+
+  it('a first submit with blank contact stores blanks', async () => {
+    const token = await ready();
+    await r.service.submit(token, 'jane@x.org', { ...ANSWERS, cellPhone: '', mailingAddress: '' });
+    const [stored] = await r.service.submissionsFor('alice');
+    expect(stored.answers).toMatchObject({ cellPhone: '', mailingAddress: '' });
   });
 
   it('lists submissions oldest first', async () => {
