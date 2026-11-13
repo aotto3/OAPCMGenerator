@@ -3,7 +3,7 @@
  * understated: a small dot and a few words in the account bar. The app never
  * blocks on the network, so this only ever informs — it never demands action.
  */
-import type { SyncStatus as Status } from '../storage/syncEngine';
+import type { SyncStatus as Status } from '../storage/contestLibrary';
 
 const LABELS: Record<Status, string> = {
   synced: 'All changes synced',

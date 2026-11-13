@@ -8,10 +8,14 @@
  * `summarize()`, assigns the record's version with the one version rule, and
  * then emits a `ContestEvent`. Callers never see the record shape.
  *
- * In this slice the existing sync engine still runs underneath: it subscribes
- * to `device` events to push, and writes pulls back through `applyRemote`,
- * which emits `remote` events (so a pull never bounces back up as a push, and
- * every listener, including the dashboard list, hears about it).
+ * Convergence with the server (slice A5 #281) lives behind `library.sync`
+ * (the loop itself is the private librarySync.ts): every `device` write marks
+ * the contest for a push, pulls are written through the same commit path as
+ * `remote` events (so a pull never bounces back up as a push, and every
+ * listener, including the dashboard list, hears about it), and a delete is a
+ * durable tombstone, removed in the same transaction as the contest and its
+ * checkpoints, that the next server pass sends even after a reload. A server
+ * delete that wins removes the local copy and puts an open session in `removed`.
  *
  * Open-contest sessions (slice A2 #278): `open(id)` hands the workspace a live
  * in-memory copy that owns the debounced write, the "unedited draft is not
@@ -29,8 +33,9 @@
  * writes kept out of its next batch, and a failed run retried at the next
  * event or wake.
  *
- * No React, no `window`, no `fetch`: IndexedDB, the clock and the timers are
- * injected, so tests run against fake-indexeddb with a manual clock and timers.
+ * No React, no `window`, no `fetch`: IndexedDB, the server port, the clock, the
+ * timers, connectivity and wake are injected, so tests run against
+ * fake-indexeddb and the in-memory server with a manual clock and timers.
  */
 import { wrap, type DBSchema, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import { makeCheckpoint, planRestore, type Checkpoint } from '../model/checkpoint';
@@ -46,6 +51,10 @@ import {
   type SpeechwireCredentials,
 } from '../model/contest';
 import { bundleFromEnvelope, parseSyncBundle } from '../model/syncBundle';
+import type { ContestServer, RemoteContest } from './contestServer';
+import { createSyncLoop, type LocalSide, type Online, type SyncLoop, type SyncStatus } from './librarySync';
+
+export type { Online, SyncStatus };
 
 /** What the dashboard (and the zone controls) list without parsing payloads. */
 export interface ContestSummary {
@@ -68,7 +77,7 @@ export interface ContestSummary {
   zone: string;
 }
 
-/** `device` = a write made on this device; `remote` = a pull from the server. */
+/** `device` = a write made on this device; `remote` = a pull or a delete from the server. */
 export type Origin = 'device' | 'remote';
 
 export type ContestEvent =
@@ -94,14 +103,6 @@ export interface FollowBatch {
   all(): Promise<Contest[]>;
   /** The library's transform, tagged with the follower's name so its writes skip its next batch. */
   transform: ContestLibrary['transform'];
-}
-
-/** A pulled contest as the sync engine hands it over (the server's record). */
-export interface RemoteBundle {
-  /** The server's version clock for the contest (the LWW winner). */
-  updatedAt: string;
-  /** Opaque sync bundle: { schemaVersion, contest, checkpoints }. */
-  payload: string;
 }
 
 /** What an open session holds. `getState()` returns a stable snapshot (for useSyncExternalStore). */
@@ -155,7 +156,11 @@ export interface ContestLibrary {
   add(contest: Contest): Promise<void>;
   /** Stores the whole contest as this device's copy (the workspace autosave). */
   save(contest: Contest): Promise<void>;
-  /** Deletes the contest and its checkpoints in one transaction. */
+  /**
+   * Deletes the contest and its checkpoints and writes a durable tombstone
+   * stamped by the injected clock, in one transaction. The tombstone is the
+   * delete queue: the next server pass sends it, even after a reload.
+   */
   remove(id: string): Promise<void>;
   subscribe(listener: (event: ContestEvent) => void): () => void;
   /**
@@ -181,13 +186,20 @@ export interface ContestLibrary {
     setNote(checkpointId: string, note: string): Promise<void>;
     remove(checkpointId: string): Promise<void>;
   };
-  /** Sync engine seam (until A5 folds the engine in): the upload bundle for one contest. */
-  bundleFor(id: string): Promise<{ name: string; updatedAt: string; payload: string } | undefined>;
-  /** Sync engine seam: writes a pulled contest and its checkpoints; emits a `remote` event. */
-  applyRemote(remote: RemoteBundle): Promise<void>;
-  /** Sync engine seam (until A5): a full server pass completed; emits `reconciled`. */
-  noteReconciled(): void;
-  /** Closes the database handle (tests; a reload in production). */
+  /**
+   * Convergence with the server, last-write-wins per contest with delete
+   * tombstones. Inert (always `synced`) when the library has no server.
+   */
+  sync: {
+    /** Starts the reconcile loop (a pass now, pushes, retries, wake, connectivity); returns disconnect. */
+    connect(): () => void;
+    status(): SyncStatus;
+    /** Calls `listener` with the current status, then on every change. */
+    onStatus(listener: (status: SyncStatus) => void): () => void;
+    /** One full server pass now; emits `reconciled` when it completes. */
+    reconcileNow(): Promise<void>;
+  };
+  /** Disconnects sync and closes the database handle (tests; a reload in production). */
   close(): Promise<void>;
 }
 
@@ -205,9 +217,16 @@ export interface LibraryDeps {
   timers?: Timers;
   /**
    * Production: tab focus/visibility and a periodic tick (storage/browserWake.ts).
-   * A wake reruns any follower whose last run failed.
+   * A wake reruns any follower whose last run failed, and asks a connected sync
+   * for a (throttled) server pass.
    */
   wake?: (listener: () => void) => () => void;
+  /** Production: the HTTP adapter (contestServer.ts); tests: the in-memory fake. Omitted: no sync. */
+  server?: ContestServer;
+  /** Production: navigator.onLine and the window events. Defaults to always online. */
+  online?: Online;
+  /** Retry delay for attempt n (0-based). Defaults to syncBackoff's backoffDelay. */
+  backoff?: (attempt: number) => number;
 }
 
 /** How long an open session waits after the last edit before writing it. */
@@ -238,13 +257,20 @@ type ContestRecord = { id: string; name: string; updatedAt: string } & Partial<C
     deviceOnly?: SpeechwireCredentials;
   };
 
+/** A contest deleted on this device; kept until the server holds the delete. */
+interface TombstoneRecord {
+  id: string;
+  deletedAt: string;
+}
+
 interface OapDB extends DBSchema {
   contests: { key: string; value: ContestRecord };
   checkpoints: { key: string; value: Checkpoint; indexes: { byContest: string } };
+  tombstones: { key: string; value: TombstoneRecord };
 }
 
 const DB_NAME = 'oap-contest-manager';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 function openDatabase(factory: IDBFactory): Promise<IDBPDatabase<OapDB>> {
   const request = factory.open(DB_NAME, DB_VERSION);
@@ -255,6 +281,7 @@ function openDatabase(factory: IDBFactory): Promise<IDBPDatabase<OapDB>> {
     if (event.oldVersion < 2) {
       database.createObjectStore('checkpoints', { keyPath: 'id' }).createIndex('byContest', 'contestId');
     }
+    if (event.oldVersion < 3) database.createObjectStore('tombstones', { keyPath: 'id' });
   });
   return wrap(request) as Promise<IDBPDatabase<OapDB>>;
 }
@@ -323,6 +350,10 @@ export function nextVersion(contestUpdatedAt: string, storedVersion: string | un
   return !Number.isNaN(own) && own >= floor ? contestUpdatedAt : new Date(floor).toISOString();
 }
 
+const alwaysOnline: Online = { isOnline: () => true, onChange: () => () => {} };
+
+const laterThan = (a: string, b: string) => Date.parse(a) > Date.parse(b);
+
 /* ────────────────────────── the library ────────────────────────── */
 
 export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
@@ -332,12 +363,14 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
   const listeners = new Set<(event: ContestEvent) => void>();
 
   function emit(event: ContestEvent): void {
-    for (const listener of listeners) listener(event);
+    // Every device write (a save or a delete) is pushed; pulls never bounce back.
+    if (event.type !== 'reconciled' && event.origin === 'device') sync?.markDirty(event.id);
+    for (const listener of [...listeners]) listener(event);
   }
 
-  type Tx = IDBPTransaction<OapDB, ['contests', 'checkpoints'], 'readwrite'>;
+  type Tx = IDBPTransaction<OapDB, ['contests', 'checkpoints', 'tombstones'], 'readwrite'>;
   async function readWrite(): Promise<Tx> {
-    return (await db()).transaction(['contests', 'checkpoints'], 'readwrite');
+    return (await db()).transaction(['contests', 'checkpoints', 'tombstones'], 'readwrite');
   }
 
   /**
@@ -348,7 +381,11 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
   async function commitDevice(tx: Tx, contest: Contest, by?: string): Promise<ContestEvent> {
     const store = tx.objectStore('contests');
     const stored = await store.get(contest.id);
-    const record = toRecord(contest, nextVersion(contest.updatedAt, stored?.updatedAt), contest.speechwire);
+    // Re-adding a deleted id must outrank its own delete, and replaces it.
+    const tombstone = stored ? undefined : await tx.objectStore('tombstones').get(contest.id);
+    if (tombstone) await tx.objectStore('tombstones').delete(contest.id);
+    const floor = stored?.updatedAt ?? tombstone?.deletedAt;
+    const record = toRecord(contest, nextVersion(contest.updatedAt, floor), contest.speechwire);
     await store.put(record);
     return { type: 'changed', id: contest.id, origin: 'device', by, contest, summary: summaryFromRecord(record) };
   }
@@ -530,6 +567,136 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
     adoptStored(contest.id, contest);
   }
 
+  /* ────────────────────────── the server side (slice A5 #281) ────────────────────────── */
+
+  /** Removes a stored contest and its checkpoints inside the caller's transaction. */
+  async function deleteContestIn(tx: Tx, id: string): Promise<void> {
+    await tx.objectStore('contests').delete(id);
+    const checkpoints = tx.objectStore('checkpoints');
+    for (const key of await checkpoints.index('byContest').getAllKeys(id)) await checkpoints.delete(key);
+  }
+
+  /**
+   * An open session's pending edit is resolved before an outside write to its
+   * contest, in that write's transaction: if it is newer than `than`, it is
+   * stored (and so pushed) and true is returned; otherwise it is dropped.
+   */
+  async function keepNewerPending(tx: Tx, id: string, stored: ContestRecord | undefined, than: string): Promise<boolean> {
+    const session = readySession(id);
+    if (!session?.dirty || !session.live) return false;
+    const pending = session.live;
+    cancelTimer(session);
+    session.dirty = false;
+    if (!laterThan(nextVersion(pending.updatedAt, stored?.updatedAt), than)) return false;
+    const event = await commitDevice(tx, pending);
+    await finish(tx, event);
+    session.stored = true;
+    return true;
+  }
+
+  /** Writes a pulled contest and its checkpoints; emits a `remote` event. */
+  async function applyRemote(remote: RemoteContest): Promise<void> {
+    const { contest, checkpoints } = parseSyncBundle(remote.payload);
+    const tx = await readWrite();
+    const contests = tx.objectStore('contests');
+    const existing = await contests.get(contest.id);
+    if (await keepNewerPending(tx, contest.id, existing, remote.updatedAt)) return;
+    // A local write or delete that landed after this pull was planned, and is
+    // at least as new, wins (a delete wins a tie).
+    const tombstone = existing ? undefined : await tx.objectStore('tombstones').get(contest.id);
+    const local = existing?.updatedAt ?? tombstone?.deletedAt;
+    if (local !== undefined && !laterThan(remote.updatedAt, local)) {
+      await tx.done;
+      return;
+    }
+    if (tombstone) await tx.objectStore('tombstones').delete(contest.id);
+
+    // The server's clock is stored as the version; this device's credentials are kept.
+    const deviceOnly = existing?.deviceOnly ?? contest.speechwire;
+    const record = toRecord(contest, remote.updatedAt, deviceOnly);
+    await contests.put(record);
+    // Checkpoints are replaced wholesale, so they ride the same LWW resolution.
+    const store = tx.objectStore('checkpoints');
+    for (const key of await store.index('byContest').getAllKeys(contest.id)) await store.delete(key);
+    for (const checkpoint of checkpoints) await store.put(checkpoint);
+    const pulled = contestFromRecord(record);
+    await finish(tx, {
+      type: 'changed',
+      id: contest.id,
+      origin: 'remote',
+      contest: pulled,
+      summary: summaryFromRecord(record),
+    });
+    adoptStored(contest.id, pulled, { origin: 'remote', at: deps.clock() });
+  }
+
+  /** A server delete at `deletedAt` reached this device: removes the copy unless it is newer. */
+  async function applyRemoteDelete(id: string, deletedAt: string): Promise<void> {
+    const tx = await readWrite();
+    const existing = await tx.objectStore('contests').get(id);
+    if (await keepNewerPending(tx, id, existing, deletedAt)) return;
+    if (!existing || laterThan(existing.updatedAt, deletedAt)) {
+      await tx.done;
+      return;
+    }
+    await deleteContestIn(tx, id);
+    await finish(tx, { type: 'removed', id, origin: 'remote' });
+    markRemoved(id, 'remote');
+  }
+
+  const local: LocalSide = {
+    async state() {
+      const tx = (await db()).transaction(['contests', 'tombstones'], 'readonly');
+      const contests = (await tx.objectStore('contests').getAll()).map(({ id, updatedAt }) => ({ id, updatedAt }));
+      const tombstones = await tx.objectStore('tombstones').getAll();
+      await tx.done;
+      return { contests, tombstones };
+    },
+    async bundle(id) {
+      const tx = (await db()).transaction(['contests', 'checkpoints'], 'readonly');
+      const record = await tx.objectStore('contests').get(id);
+      const checkpoints = record ? await tx.objectStore('checkpoints').index('byContest').getAll(id) : [];
+      await tx.done;
+      if (!record) return undefined;
+      checkpoints.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return {
+        id,
+        name: record.name,
+        updatedAt: record.updatedAt,
+        // The envelope already lacks device-only fields, so no credential reaches the server.
+        payload: bundleFromEnvelope(record.payload, checkpoints),
+      };
+    },
+    async tombstone(id) {
+      return (await (await db()).get('tombstones', id))?.deletedAt;
+    },
+    applyRemote,
+    applyRemoteDelete,
+    async clearTombstone(id, deletedAt) {
+      const tx = await readWrite();
+      const tombstone = await tx.objectStore('tombstones').get(id);
+      if (tombstone?.deletedAt === deletedAt) await tx.objectStore('tombstones').delete(id);
+      await tx.done;
+    },
+    reconciled() {
+      emit({ type: 'reconciled' });
+    },
+  };
+
+  const sync: SyncLoop | undefined = deps.server
+    ? createSyncLoop({
+        server: deps.server,
+        local,
+        timers,
+        online: deps.online ?? alwaysOnline,
+        wake: deps.wake,
+        now: () => Date.parse(deps.clock()),
+        backoff: deps.backoff,
+      })
+    : undefined;
+  /** Live sync connections, disconnected by close(). */
+  const connections = new Set<() => void>();
+
   /* ────────────────────────── followers (slice A3 #279) ────────────────────────── */
 
   interface Accumulated {
@@ -650,10 +817,6 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
   const library: ContestLibrary = {
     follow,
 
-    noteReconciled() {
-      emit({ type: 'reconciled' });
-    },
-
     open(id, opts) {
       let session = sessions.get(id);
       if (!session) {
@@ -757,9 +920,12 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
 
     async remove(id) {
       const tx = await readWrite();
-      await tx.objectStore('contests').delete(id);
-      const checkpoints = tx.objectStore('checkpoints');
-      for (const key of await checkpoints.index('byContest').getAllKeys(id)) await checkpoints.delete(key);
+      const stored = await tx.objectStore('contests').get(id);
+      await deleteContestIn(tx, id);
+      if (stored) {
+        // The version rule again: a clock running behind cannot stamp the delete older than the copy it deletes.
+        await tx.objectStore('tombstones').put({ id, deletedAt: nextVersion(deps.clock(), stored.updatedAt) });
+      }
       await finish(tx, { type: 'removed', id, origin: 'device' });
       markRemoved(id, 'device');
     },
@@ -832,72 +998,31 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
       },
     },
 
-    async bundleFor(id) {
-      const tx = (await db()).transaction(['contests', 'checkpoints'], 'readonly');
-      const record = await tx.objectStore('contests').get(id);
-      const checkpoints = record ? await tx.objectStore('checkpoints').index('byContest').getAll(id) : [];
-      await tx.done;
-      if (!record) return undefined;
-      checkpoints.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      return {
-        name: record.name,
-        updatedAt: record.updatedAt,
-        // The envelope already lacks device-only fields, so no credential reaches the wire.
-        payload: bundleFromEnvelope(record.payload, checkpoints),
-      };
-    },
-
-    async applyRemote(remote) {
-      const { contest, checkpoints } = parseSyncBundle(remote.payload);
-      const tx = await readWrite();
-      const contests = tx.objectStore('contests');
-      const existing = await contests.get(contest.id);
-      const localVersion = existing?.updatedAt;
-
-      // An open session's pending edit is resolved first, in this same
-      // transaction: the two versions are compared and the newer one wins.
-      const session = readySession(contest.id);
-      if (session?.dirty && session.live) {
-        const pending = session.live;
-        cancelTimer(session);
-        session.dirty = false;
-        const pendingVersion = nextVersion(pending.updatedAt, existing?.updatedAt);
-        if (pendingVersion > remote.updatedAt) {
-          // The session's edit is newer: it is stored (and so pushed); the pull is dropped.
-          const event = await commitDevice(tx, pending);
-          await finish(tx, event);
-          session.stored = true;
-          return;
-        }
-        // Otherwise the pending edit is older than the pulled copy and loses (last write wins).
-      }
-      // A local write that landed after the engine planned this pull is newer: keep it.
-      if (localVersion !== undefined && localVersion >= remote.updatedAt) {
-        await tx.done;
-        return;
-      }
-
-      // The server's clock is stored as the version; this device's credentials are kept.
-      const deviceOnly = existing?.deviceOnly ?? contest.speechwire;
-      const record = toRecord(contest, remote.updatedAt, deviceOnly);
-      await contests.put(record);
-      // Checkpoints are replaced wholesale, so they ride the same LWW resolution.
-      const store = tx.objectStore('checkpoints');
-      for (const key of await store.index('byContest').getAllKeys(contest.id)) await store.delete(key);
-      for (const checkpoint of checkpoints) await store.put(checkpoint);
-      const pulled = contestFromRecord(record);
-      await finish(tx, {
-        type: 'changed',
-        id: contest.id,
-        origin: 'remote',
-        contest: pulled,
-        summary: summaryFromRecord(record),
-      });
-      adoptStored(contest.id, pulled, { origin: 'remote', at: deps.clock() });
+    sync: {
+      connect() {
+        if (!sync) return () => {};
+        const disconnect = sync.connect();
+        const off = () => {
+          connections.delete(off);
+          disconnect();
+        };
+        connections.add(off);
+        return off;
+      },
+      status: () => (sync ? sync.status() : 'synced'),
+      onStatus(listener) {
+        if (sync) return sync.onStatus(listener);
+        listener('synced');
+        return () => {};
+      },
+      reconcileNow: async () => {
+        await sync?.reconcileNow();
+      },
     },
 
     async close() {
       offWake?.();
+      for (const disconnect of [...connections]) disconnect();
       if (dbPromise) (await dbPromise).close();
       dbPromise = undefined;
     },

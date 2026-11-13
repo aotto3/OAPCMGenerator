@@ -1,6 +1,6 @@
 /**
  * The production `wake` port (RFC #276, slice A3 #279): the tab coming back
- * into view or focus, and a periodic tick while it is visible. The sync engine
+ * into view or focus, and a periodic tick while it is visible. The library's sync
  * turns a wake into a throttled reconcile, which is what brings judges'
  * questionnaire answers into an open tab without any edit; the contest library
  * turns it into a retry of any follower whose last run failed.

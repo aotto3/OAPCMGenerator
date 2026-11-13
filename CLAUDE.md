@@ -88,14 +88,26 @@ verbatim everywhere:
    judge-scored fields stay blank. Filenames match v12's ZIP exactly.
 
 3. **Local-first storage + sync** (`app/src/storage/`) — IndexedDB is the working
-   copy. `contestLibrary.ts` is the only file that touches it (RFC #276): one
-   commit path for every write, and open-contest sessions (`useOpenContest` in
-   `ui/contestHooks.ts`) that own the debounced save and swap in a newer pulled
-   copy with an "Updated from another device" notice. The sync layer (`syncEngine`/`syncClient`/
-   `syncStore`/`syncReconcile`/`syncBackoff`/`browserSync`) pushes/pulls to the
-   server with **last-write-wins per contest** by `updatedAt`, off the edit path.
-   Device-only fields (Speechwire creds) are marked in the model and excluded from
-   sync and contest-file export by construction.
+   copy, and the **contest library** (`contestLibrary.ts`, RFC #276) owns it: it is
+   the only file that touches IndexedDB, and everything else goes through it (the
+   hooks in `ui/contestHooks.ts`, or the `contestLibrary()` singleton in
+   `browserLibrary.ts`, the browser composition root). It gives one commit path for
+   every write (`transform`/`add`/`remove`/checkpoints, one transaction each, one
+   `summarize`, one version rule); open-contest sessions (`useOpenContest`) that own
+   the debounced save and swap in a newer pulled copy with an "Updated from another
+   device" notice (or go `removed` when a delete wins); and **followers**
+   (`library.follow`: the roster publisher and questionnaire answers) that run on
+   data events and completed server passes. Sync lives behind `library.sync`
+   (`useContestSync`): the private loop in `librarySync.ts` reconciles with the
+   server through the `ContestServer` port (`contestServer.ts`, HTTP over
+   `syncClient.ts`; tests use `memoryContestServer.ts`) with **last-write-wins per
+   contest** by version, off the edit path, with backoff, a 401 pause and status.
+   **Deletes are durable tombstones** on both sides (the IndexedDB `tombstones`
+   store and the server's `contest_tombstones`): newer action wins, ties go to the
+   delete, and the table in `librarySync.ts` mirrors the server's rules (shared
+   cases: `server/test/tombstoneScenarios.json`). Device-only fields (Speechwire
+   creds) are marked in the model and excluded from sync and contest-file export by
+   construction; a pull keeps the device's copy.
 
 4. **Server API** (`server/`) — `app.ts` is a dependency-injected Express factory;
    the seams **are** the constructor args (tests inject in-memory `repo` /
@@ -172,6 +184,11 @@ same-origin ⇒ the Better Auth session cookie is first-party `SameSite=Lax`.
 - Tests assert **observable behavior at module boundaries** (inputs → outputs),
   never internals, so they survive refactors. No automated browser/UI tests — the
   admin panel and theme UI are untested by convention; their server seams are not.
+- **Only `contestLibrary.ts` touches IndexedDB**, and every contest write goes
+  through the library (never a store of your own). Bumping its database version is
+  additive (existing stores untouched); the `Contest` schema version is separate.
+  Sync is tested at the library boundary against the in-memory server, two library
+  instances on one fake modelling two devices.
 - The **activity log is append-only and best-effort**: contest routes record
   create/update/delete inline, but a logging failure must never fail or delay the
   user's request; delete events keep the contest name so the trail outlives the row.

@@ -9,7 +9,7 @@ export const BACKOFF_CAP_MS = 30000;
 
 /**
  * Delay before retry `attempt` (0-based): base · 2^attempt, capped. Deterministic
- * by design; the engine may add jitter when it schedules, so the pure schedule
+ * by design; the sync loop may add jitter when it schedules, so the pure schedule
  * stays easy to assert against.
  */
 export function backoffDelay(attempt: number, base = BACKOFF_BASE_MS, cap = BACKOFF_CAP_MS): number {

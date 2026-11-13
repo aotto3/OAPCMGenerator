@@ -1,8 +1,9 @@
 /**
  * The roster publisher as a contest-library follower (slice A3 #279), on a real
- * library over fake-indexeddb. `pass()` is a completed server pass (the event
- * the sync engine reports); `setContests` writes through the library. The
- * publish-status cases are #275's, ported to this boundary.
+ * library over fake-indexeddb. `pass()` is a completed server pass (a real
+ * `library.sync.reconcileNow()` against the in-memory server); `setContests`
+ * writes through the library. The publish-status cases are #275's, ported to
+ * this boundary.
  */
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
@@ -50,10 +51,7 @@ async function harness(initial: Contest[], failPublish = false) {
     stop: () => publisher.stop(),
     setClock: (iso: string) => (clock = new Date(iso)),
     /** A completed server pass, then everything settles. */
-    async pass() {
-      library.noteReconciled();
-      await kit.settle();
-    },
+    pass: () => kit.pass(),
     async setContests(contests: Contest[]) {
       for (const contest of contests) await library.save(contest);
       await kit.settle();

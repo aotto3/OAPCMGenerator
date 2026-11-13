@@ -4,8 +4,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Contest } from '../model/contest';
-import { contestLibrary } from '../storage/browserLibrary';
-import type { ContestSummary, OpenContest, OpenState } from '../storage/contestLibrary';
+import { connectBrowserSync, contestLibrary } from '../storage/browserLibrary';
+import type { ContestSummary, OpenContest, OpenState, SyncStatus } from '../storage/contestLibrary';
 
 const LOADING: OpenState = { status: 'loading' };
 const noSubscribe = () => () => {};
@@ -120,4 +120,25 @@ export function useContestAction(): {
   const clearError = useCallback(() => setError(null), []);
 
   return { run, busy, error, clearError };
+}
+
+/**
+ * Runs the library's sync (and its followers) while `enabled` (signed in) and
+ * returns its status for the indicator. The UI never drives reconciliation; it
+ * only reflects it.
+ */
+export function useContestSync(enabled: boolean): SyncStatus {
+  const [status, setStatus] = useState<SyncStatus>(() => contestLibrary().sync.status());
+
+  useEffect(() => {
+    if (!enabled) return;
+    const off = contestLibrary().sync.onStatus(setStatus);
+    const disconnect = connectBrowserSync();
+    return () => {
+      off();
+      disconnect();
+    };
+  }, [enabled]);
+
+  return status;
 }
