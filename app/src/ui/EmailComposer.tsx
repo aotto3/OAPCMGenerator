@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { allDirectorEmails, allJudgeEmails, type Contest } from '../model/contest';
 import {
   advancingEmail,
   EMAIL_TEMPLATES,
   gmailComposeUrl,
+  questionnaireEmail,
   tabulationEmail,
   type EmailTemplateId,
 } from '../documents/emailTemplates';
+import { createQuestionnaireClient, questionnaireUrl } from '../questionnaire/questionnaireClient';
+
+const questionnaireClient = createQuestionnaireClient();
 import { CopyButton } from './sections/fields';
 import { Section } from './sections/Section';
 
@@ -70,6 +74,26 @@ export function EmailComposer({ contest }: { contest: Contest }) {
     }
   }
 
+  /**
+   * Judge Questionnaire: goes to the active judges and carries the account's
+   * standing questionnaire link, fetched on click (it needs the network). If the
+   * fetch fails the draft still loads, with a placeholder where the link goes.
+   */
+  async function loadQuestionnaire() {
+    let link: string | null = null;
+    try {
+      link = questionnaireUrl(window.location.origin, await questionnaireClient.getLinkToken());
+    } catch {
+      link = null;
+    }
+    const draft = questionnaireEmail(contest, link);
+    setSubject(draft.subject);
+    setBody(draft.body);
+    setToList(allJudgeEmails(contest));
+    setToEmptyText('No judge emails found. Add them in the Judges section.');
+    setShowPicker(false);
+  }
+
   // Offered only once every ballot is valid (PRD #236); null hides it as disabled.
   const tabulationDraft = tabulationEmail(contest);
 
@@ -124,15 +148,21 @@ export function EmailComposer({ contest }: { contest: Contest }) {
 
       <div className="email-template-row">
         {TEMPLATE_BUTTONS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="email-template-btn"
-            data-template={t.id}
-            onClick={() => loadTemplate(t.id)}
-          >
-            {t.label}
-          </button>
+          <Fragment key={t.id}>
+            {t.id === 'judges' && (
+              <button
+                type="button"
+                className="email-template-btn"
+                data-template="questionnaire"
+                onClick={() => void loadQuestionnaire()}
+              >
+                📋 Judge Questionnaire
+              </button>
+            )}
+            <button type="button" className="email-template-btn" data-template={t.id} onClick={() => loadTemplate(t.id)}>
+              {t.label}
+            </button>
+          </Fragment>
         ))}
         <button
           type="button"

@@ -196,6 +196,41 @@ export function judgeNeedsEmail(contest: Contest): EmailDraft {
   };
 }
 
+/** Shown in place of the questionnaire link when the composer could not load it. */
+export const QUESTIONNAIRE_LINK_PLACEHOLDER = '[Paste the questionnaire link from the Judges pane]';
+
+/**
+ * Judge Questionnaire: the first contact with the judges, reminding them of the
+ * contest and asking them to fill out the standing questionnaire (PRD #252).
+ * Plain text like every other template, so the link is written out after its
+ * label. The link is account-level and needs the network, so the composer
+ * fetches it and passes it in; null (offline, or still loading) leaves a
+ * placeholder the CM can paste over.
+ */
+export function questionnaireEmail(contest: Contest, link: string | null): EmailDraft {
+  const cn = contestFullName(contest.identity) || '[Contest Name]';
+  const dt = fmtDate(contest.details.contestDate) || '[Contest Date TBD]';
+  const ven = contest.identity.hostVenueName || '[Venue TBD]';
+  const adr = contest.identity.hostAddress || '[Address TBD]';
+  const cmn = contest.cmInfo.name || '[CM Name]';
+  const cme = contest.cmInfo.email || '[CM Email]';
+  const cmp = contest.cmInfo.phone || '';
+  return {
+    subject: cn + ' - Adjudicator Questionnaire',
+    body:
+      'Dear Judges,\n\n' +
+      'Thank you for agreeing to adjudicate the ' + cn + ' on ' + dt + '. The contest will be held at ' + ven +
+      ', ' + adr + '.\n\n' +
+      'To help me plan for contest day, please take a few minutes to fill out the adjudicator questionnaire. ' +
+      'It asks for your contact information, a mailing address for scripts, hotel nights, dietary needs, and ' +
+      'anything else that would make the day easier for you. When it asks for your email, use the address this ' +
+      'message was sent to.\n\n' +
+      'Adjudicator Questionnaire: ' + (link || QUESTIONNAIRE_LINK_PLACEHOLDER) + '\n\n' +
+      'I will send a full schedule and show order closer to the contest. Please reach out with any questions.\n\n' +
+      cmn + '\nContest Manager\n' + cme + (cmp ? '\n' + cmp : ''),
+  };
+}
+
 /** The one-click templates, keyed for the composer's button row. */
 export const EMAIL_TEMPLATES: Record<EmailTemplateId, (contest: Contest) => EmailDraft> = {
   announcement: announcementEmail,
