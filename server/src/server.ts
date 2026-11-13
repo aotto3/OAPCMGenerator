@@ -12,7 +12,7 @@ import { createQuestionnaireStore } from './questionnaireStore';
 import { auth, mailer } from './auth';
 import { createUserDirectory } from './userDirectory';
 import { getPool, migrate } from './db';
-import { adminEmails, port, requireEnv } from './env';
+import { adminEmails, optionalEnv, port, requireEnv } from './env';
 
 async function main(): Promise<void> {
   const pool = getPool();
@@ -37,6 +37,8 @@ async function main(): Promise<void> {
     now: () => new Date(),
     corsOrigin: requireEnv('WEB_ORIGIN'),
     webOrigin: requireEnv('WEB_ORIGIN'),
+    // Same value as the frontend's PROXY_SECRET; unset leaves the gate off (#261).
+    proxySecret: optionalEnv('PROXY_SECRET') || undefined,
     // Mount Better Auth at /api/auth (before the JSON body parser — see app.ts).
     mountAuth: (a) => a.all('/api/auth/*splat', toNodeHandler(auth)),
     // A request is authenticated iff Better Auth resolves a session from its

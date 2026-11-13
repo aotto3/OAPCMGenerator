@@ -5,6 +5,7 @@
  * real Better Auth session (they pass a fake `resolveUser`). There is no
  * test-only branch in this file — the seams are the constructor arguments.
  */
+import { timingSafeEqual } from 'node:crypto';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import { createAdminRoutes } from './adminRoutes';
@@ -60,6 +61,23 @@ export interface AppDeps {
    * Auth reads the raw request body itself. Omitted in tests (no real auth).
    */
   mountAuth?: (app: Express) => void;
+  /**
+   * The shared secret the frontend proxy stamps on every request it forwards
+   * (#261). When set, any /api/* request without it gets a flat 404, so the
+   * API's public URL only answers the proxy and the forwarded IP chain can be
+   * trusted. Unset (dev, tests, or mid-rollout) leaves the gate off.
+   */
+  proxySecret?: string;
+}
+
+/** The header the frontend proxy carries the shared secret in. Mirrored in app/serve.mjs. */
+export const PROXY_SECRET_HEADER = 'x-oap-proxy-secret';
+
+function secretMatches(given: string | undefined, secret: string): boolean {
+  if (typeof given !== 'string') return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -68,6 +86,19 @@ export function createApp(deps: AppDeps): Express {
   // Behind Railway's TLS-terminating edge and the frontend reverse proxy, trust
   // X-Forwarded-* so req.protocol/secure reflect the original https origin.
   app.set('trust proxy', 1);
+
+  // The proxy gate runs first, ahead of auth, so nothing under /api answers a
+  // caller that skipped the frontend proxy. /health and / stay open.
+  if (deps.proxySecret) {
+    const secret = deps.proxySecret;
+    app.use('/api', (req, res, next) => {
+      if (secretMatches(req.header(PROXY_SECRET_HEADER), secret)) {
+        next();
+        return;
+      }
+      res.status(404).json({ error: 'Not found' });
+    });
+  }
 
   if (deps.corsOrigin) {
     app.use(cors({ origin: deps.corsOrigin, credentials: true }));
@@ -111,6 +142,7 @@ export function createApp(deps: AppDeps): Express {
       }),
       resolveUser: deps.resolveUser,
       limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(() => deps.now().getTime()),
+      eventLog: deps.eventLog,
       now: deps.now,
     }),
   );

@@ -7,8 +7,9 @@
  *  - TELEMETRY_EVENTS are the ONLY types the browser may report; the telemetry
  *    endpoint validates against TELEMETRY_EVENT_TYPES and 400s anything else, so a
  *    client can't inject a server-authored 'contest.created' (PRD user story 21).
- *  - CONTEST_EVENTS and ADMIN_EVENTS are recorded by the server itself (contest
- *    writes, the admin resend action) and are never accepted from a client.
+ *  - CONTEST_EVENTS, ADMIN_EVENTS and QUESTIONNAIRE_EVENTS are recorded by the
+ *    server itself (contest writes, the admin resend action, the public judge
+ *    questionnaire) and are never accepted from a client.
  */
 
 /** Events the browser may report via the telemetry endpoint (the client allowlist). */
@@ -30,6 +31,20 @@ export const CONTEST_EVENTS = {
 export const ADMIN_EVENTS = {
   signInLinkResent: 'admin.signin_link_resent',
 } as const;
+
+/**
+ * Events the server records on the public judge questionnaire (#261), filed
+ * under the CM whose link was used — never client-reportable.
+ */
+export const QUESTIONNAIRE_EVENTS = {
+  judgeFound: 'questionnaire.judge_found',
+  submitted: 'questionnaire.submitted',
+  notOnRoster: 'questionnaire.not_on_roster',
+  rateLimited: 'questionnaire.rate_limited',
+  honeypot: 'questionnaire.honeypot',
+} as const;
+
+export type QuestionnaireEventType = (typeof QUESTIONNAIRE_EVENTS)[keyof typeof QUESTIONNAIRE_EVENTS];
 
 export type TelemetryEventType = (typeof TELEMETRY_EVENTS)[keyof typeof TELEMETRY_EVENTS];
 

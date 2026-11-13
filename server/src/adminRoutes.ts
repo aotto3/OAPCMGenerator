@@ -138,6 +138,23 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
     }),
   );
 
+  // What this request looks like to the API through the proxy chain (#261): the
+  // address Express derives under the current `trust proxy`, the full forwarded
+  // list, the raw headers and the socket peer. Read once to pick the hop count
+  // that makes `ip` the real client.
+  router.get(
+    '/request-ip',
+    adminOnly(async (req, res) => {
+      res.json({
+        ip: req.ip ?? null,
+        ips: req.ips,
+        forwardedFor: req.header('x-forwarded-for') ?? null,
+        realIp: req.header('x-real-ip') ?? null,
+        remoteAddress: req.socket.remoteAddress ?? null,
+      });
+    }),
+  );
+
   // Summary stats strip.
   router.get(
     '/stats',
