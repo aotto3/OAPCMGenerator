@@ -18,6 +18,8 @@ import {
   type QuestionnaireLimiters,
 } from './questionnaireRoutes';
 import type { QuestionnaireStore } from './questionnaireStore';
+import { createEmailTemplateRoutes } from './emailTemplateRoutes';
+import type { EmailTemplateStore } from './emailTemplateStore';
 import { createQuestionnaireService } from './questionnaire';
 import type { Mailer } from './mailer';
 import type { ContestRepo } from './contestRepo';
@@ -43,6 +45,8 @@ export interface AppDeps {
   now: () => Date;
   /** Judge questionnaire link tokens, published rosters and submissions (PRD #252). */
   questionnaireStore: QuestionnaireStore;
+  /** Each account's custom email templates (PRD #320). */
+  emailTemplateStore: EmailTemplateStore;
   /** The one mail sender (the questionnaire CM notice here). Tests pass a recording fake. */
   mailer: Mailer;
   /** Public questionnaire rate limits; tests pass tight ones. Defaults per questionnaireRoutes. */
@@ -151,6 +155,16 @@ export function createApp(deps: AppDeps): Express {
       resolveUser: deps.resolveUser,
       limiters: deps.questionnaireLimiters ?? defaultQuestionnaireLimiters(() => deps.now().getTime()),
       eventLog: deps.eventLog,
+      now: deps.now,
+    }),
+  );
+
+  app.use(
+    '/api/templates',
+    createEmailTemplateRoutes({
+      store: deps.emailTemplateStore,
+      eventLog: deps.eventLog,
+      resolveUser: deps.resolveUser,
       now: deps.now,
     }),
   );

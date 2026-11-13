@@ -13,6 +13,7 @@ const questionnaireClient = createQuestionnaireClient();
 import { CopyButton } from './sections/fields';
 import { MailAppPicker, mailAppName, openDraft, openInLabel, usePreferredMailApp, type OpenDraftResult } from './mailApp';
 import { Section } from './sections/Section';
+import { MyTemplates } from './MyTemplates';
 
 /**
  * Email Draft Composer (v12 sec-email-composer). Four one-click templates and a
@@ -27,6 +28,9 @@ import { Section } from './sections/Section';
  * The draft is local editable state (v12 let the CM edit before copying) — it is
  * intentionally NOT persisted to the contest; regenerating from a button is the
  * source of truth.
+ *
+ * Under the built-ins sits the CM's own account-level templates row
+ * (MyTemplates, PRD #320); those fill subject and body only.
  */
 
 /** The four one-click template buttons, in v12's row order. */
@@ -181,6 +185,17 @@ export function EmailComposer({ contest }: { contest: Contest }) {
           🧮 Tabulation to State Office
         </button>
       </div>
+
+      <MyTemplates
+        contest={contest}
+        onLoad={(draft) => {
+          // Custom templates never fill the To: line (PRD #320); the CM adds recipients.
+          setSubject(draft.subject);
+          setBody(draft.body);
+          setToList(null);
+          setShowPicker(false);
+        }}
+      />
 
       {showPicker && (
         <div className="advancing-picker">

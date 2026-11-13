@@ -21,6 +21,7 @@ import { migrate, type Pool } from '../src/db';
 import { createEventLog } from '../src/eventLog';
 import type { OutgoingMail } from '../src/mailer';
 import { createQuestionnaireStore } from '../src/questionnaireStore';
+import { createEmailTemplateStore } from '../src/emailTemplateStore';
 import { createRateLimiter } from '../src/rateLimiter';
 import { createInMemoryUserDirectory } from '../src/userDirectory';
 
@@ -110,6 +111,7 @@ export async function buildTestApp(
     },
     now: () => clock.now,
     questionnaireStore: createQuestionnaireStore(pool),
+    emailTemplateStore: createEmailTemplateStore(pool),
     mailer: {
       send: async (mail) => {
         if (harness.mailFails) throw new Error('MailerSend is down');
