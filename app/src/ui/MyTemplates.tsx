@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '../auth/authClient';
 import type { Contest } from '../model/contest';
-import { MERGE_FIELDS, mergeTag, renderTemplate } from '../templates/templateRender';
+import { createQuestionnaireClient, questionnaireUrl } from '../questionnaire/questionnaireClient';
+import {
+  MERGE_FIELDS,
+  mergeTag,
+  QUESTIONNAIRE_LINK_FIELD,
+  renderTemplate,
+  usesField,
+} from '../templates/templateRender';
 import { TEMPLATE_LIMITS, templateProblem, templateProblemMessage } from '../templates/templateRules';
 import { offerUndo } from './undoOffer';
 import { createTemplatesClient, type EmailTemplate, type TemplatesClient } from '../templates/templatesClient';
+
+const questionnaireClient = createQuestionnaireClient();
 
 /**
  * The CM's own email templates in the Email Draft Composer (PRD #320): a "My
@@ -53,11 +62,36 @@ export function MyTemplates({
     };
   }, [client]);
 
+  /**
+   * The account's questionnaire link, fetched the first time a template uses
+   * {{questionnaireLink}}: undefined until asked, null when it could not be
+   * loaded (offline), so the field shows its paste-here placeholder.
+   */
+  const [questionnaireLink, setQuestionnaireLink] = useState<string | null | undefined>(undefined);
+  const linkRequest = useRef<Promise<string | null> | null>(null);
+
+  function ensureQuestionnaireLink(): Promise<string | null> {
+    linkRequest.current ??= questionnaireClient
+      .getLinkToken()
+      .then((token) => questionnaireUrl(window.location.origin, token))
+      .catch(() => {
+        // Let a later use try again (the CM may be back online).
+        linkRequest.current = null;
+        return null;
+      })
+      .then((link) => {
+        setQuestionnaireLink(link);
+        return link;
+      });
+    return linkRequest.current;
+  }
+
   if (!client) return null;
   const templatesClient = client;
 
-  function load(t: EmailTemplate) {
-    const filled = renderTemplate(t, contest);
+  async function load(t: EmailTemplate) {
+    const link = usesField(t, QUESTIONNAIRE_LINK_FIELD) ? await ensureQuestionnaireLink() : null;
+    const filled = renderTemplate(t, contest, { questionnaireLink: link });
     onLoad({ subject: filled.subject, body: filled.body });
   }
 
@@ -98,7 +132,7 @@ export function MyTemplates({
       <div className="email-template-row">
         {templates.map((t) => (
           <span key={t.id} className="my-template">
-            <button type="button" className="email-template-btn my-template-btn" onClick={() => load(t)}>
+            <button type="button" className="email-template-btn my-template-btn" onClick={() => void load(t)}>
               {t.name}
             </button>
             <button
@@ -141,6 +175,8 @@ export function MyTemplates({
           contest={contest}
           editing={editingTemplate}
           others={templates.filter((t) => t.id !== editingTemplate?.id)}
+          questionnaireLink={questionnaireLink ?? null}
+          onNeedQuestionnaireLink={() => void ensureQuestionnaireLink()}
           onCancel={() => setEditing(null)}
           onGone={(id) => setTemplates((prev) => prev.filter((p) => p.id !== id))}
           onSaved={(t) => {
@@ -159,6 +195,8 @@ function TemplateEditor({
   contest,
   editing,
   others,
+  questionnaireLink,
+  onNeedQuestionnaireLink,
   onCancel,
   onGone,
   onSaved,
@@ -169,6 +207,10 @@ function TemplateEditor({
   editing: EmailTemplate | null;
   /** The account's other templates (for the name and count checks). */
   others: EmailTemplate[];
+  /** For the preview; null until loaded (or when it cannot be). */
+  questionnaireLink: string | null;
+  /** Asks for the link once the text uses {{questionnaireLink}}. */
+  onNeedQuestionnaireLink: () => void;
   onCancel: () => void;
   /** The edited template no longer exists on the server (deleted on another device). */
   onGone: (id: string) => void;
@@ -231,7 +273,13 @@ function TemplateEditor({
     else setError('The template could not be saved. Try again.');
   }
 
-  const preview = renderTemplate({ subject, body }, contest);
+  const preview = renderTemplate({ subject, body }, contest, { questionnaireLink });
+  const needsLink = usesField({ subject, body }, QUESTIONNAIRE_LINK_FIELD);
+
+  useEffect(() => {
+    if (needsLink && questionnaireLink === null) onNeedQuestionnaireLink();
+    // Ask once each time the text starts using the field; the parent dedupes.
+  }, [needsLink]);
 
   return (
     <div className="template-editor">
@@ -277,14 +325,31 @@ function TemplateEditor({
           }}
         >
           <option value="">Insert a contest field…</option>
-          {MERGE_FIELDS.map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
+          <optgroup label="Contest details">
+            {MERGE_FIELDS.filter((f) => f.kind === 'value').map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Lists and links">
+            {MERGE_FIELDS.filter((f) => f.kind === 'block').map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
         <span className="hint">Fields fill in from whichever contest is open when you use the template.</span>
       </div>
+      {preview.unknownFields.length > 0 && (
+        <p className="template-unknown-warning" role="alert">
+          {preview.unknownFields.length === 1 ? 'This field isn’t recognized' : 'These fields aren’t recognized'}
+          {': '}
+          {preview.unknownFields.map((k) => mergeTag(k)).join(', ')}. They will appear exactly as typed. Check the
+          spelling or pick from the list.
+        </p>
+      )}
       {(subject || body) && (
         <div className="template-preview">
           <span className="hint">Preview with this contest:</span>

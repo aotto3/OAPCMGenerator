@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureContest } from '../documents/__fixtures__/fixtureContest';
 import { createContest, withCmInfo, withDetails, withIdentity } from '../model/contest';
-import { MERGE_FIELDS, mergeTag, renderTemplate } from './templateRender';
+import {
+  judgeNeedsEmail,
+  judgesEmail,
+  QUESTIONNAIRE_LINK_PLACEHOLDER,
+} from '../documents/emailTemplates';
+import { MERGE_FIELDS, mergeTag, renderTemplate, usesField } from './templateRender';
 
 const body = (text: string) => renderTemplate({ subject: '', body: text }, fixtureContest()).body;
 
@@ -110,5 +115,66 @@ describe('plain text', () => {
     const text = 'Dear judges,\n\n{ not a field } {{}} {{ two words }}\n\nThanks!';
     const out = renderTemplate({ subject: 'Hello', body: text }, fixtureContest());
     expect(out).toEqual({ subject: 'Hello', body: text, unknownFields: [] });
+  });
+});
+
+describe('block fields', () => {
+  it('the show order matches the Judge Reminder’s list', () => {
+    const list = body('{{showOrder}}');
+    expect(list.split('\n')[0]).toMatch(/^1\. /);
+    expect(judgesEmail(fixtureContest()).body).toContain(list);
+  });
+
+  it('the judges’ arrival time is the meeting minus 20 minutes', () => {
+    expect(body('{{judgeArrivalTime}}')).toBe('8:40 AM');
+  });
+
+  it('an unreadable meeting time gives the built-in’s prose', () => {
+    const c = withDetails(fixtureContest(), { directorsMeetingTime: '' });
+    expect(renderTemplate({ subject: '', body: '{{judgeArrivalTime}}' }, c).body).toBe(
+      '[at least 20 minutes before the Directors’ Meeting]',
+    );
+  });
+
+  it('the judges’ needs match the Judge Needs email’s list', () => {
+    const list = body('{{judgeNeeds}}');
+    expect(list).toContain('  • Hotel: ');
+    expect(judgeNeedsEmail(fixtureContest()).body.endsWith(list)).toBe(true);
+  });
+
+  it('no schools or no judges give a placeholder', () => {
+    const c = { ...fixtureContest(), schools: [], adjudicators: [] };
+    const out = renderTemplate({ subject: '', body: '{{showOrder}}|{{judgeNeeds}}' }, c);
+    expect(out.body).toBe('[Show Order TBD]|[No judges entered yet]');
+  });
+
+  it('the questionnaire link comes from the context, else the paste-here placeholder', () => {
+    const t = { subject: '', body: 'Fill it out: {{questionnaireLink}}' };
+    expect(renderTemplate(t, fixtureContest(), { questionnaireLink: 'https://x.test/q/abc' }).body).toBe(
+      'Fill it out: https://x.test/q/abc',
+    );
+    expect(renderTemplate(t, fixtureContest()).body).toBe('Fill it out: ' + QUESTIONNAIRE_LINK_PLACEHOLDER);
+    expect(renderTemplate(t, fixtureContest(), { questionnaireLink: null }).body).toBe(
+      'Fill it out: ' + QUESTIONNAIRE_LINK_PLACEHOLDER,
+    );
+  });
+
+  it('every field has a kind; the blocks are listed after the values', () => {
+    const kinds = MERGE_FIELDS.map((f) => f.kind);
+    expect(kinds.lastIndexOf('value')).toBeLessThan(kinds.indexOf('block'));
+    expect(MERGE_FIELDS.filter((f) => f.kind === 'block').map((f) => f.key)).toEqual([
+      'showOrder',
+      'judgeArrivalTime',
+      'judgeNeeds',
+      'questionnaireLink',
+    ]);
+  });
+});
+
+describe('usesField', () => {
+  it('finds a field in the subject or body, spaces allowed, exact name only', () => {
+    expect(usesField({ subject: '{{ questionnaireLink }}', body: '' }, 'questionnaireLink')).toBe(true);
+    expect(usesField({ subject: '', body: 'x {{questionnaireLink}}' }, 'questionnaireLink')).toBe(true);
+    expect(usesField({ subject: 'questionnaireLink', body: '{{questionnaireLinks}}' }, 'questionnaireLink')).toBe(false);
   });
 });
