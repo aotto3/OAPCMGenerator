@@ -1,27 +1,28 @@
 /**
- * Keeps the server's judge roster in step with this device (PRD #252). It rides
- * the sync engine's status instead of adding work to the edit path: whenever sync
- * settles ('synced') after a pass has actually run, it rebuilds the roster from the
- * local contests and publishes it if it changed since the last successful publish.
+ * Keeps the server's judge roster in step with this device (PRD #252), as a
+ * contest-library follower (RFC #276, slice A3 #279). It keeps a per-id cache of
+ * the contests (filled from the whole store on its first batch, then updated
+ * from each batch's changed and removed contests), rebuilds the roster, and
+ * publishes it only when the roster text changed since the last successful
+ * publish.
  *
- * Waiting for a real sync pass matters: the engine reports 'synced' before its
- * first reconcile, and a fresh device's empty store would otherwise wipe the
- * account's roster until the pull finished. A failed publish is retried at the
- * next settle.
+ * The library never runs a follower before a completed server pass, so a fresh
+ * device's empty store cannot wipe the account's roster before its first pull
+ * lands. A burst of edits is one coalesced batch. A failed publish throws after
+ * recording its outcome, so the library retries it at the next event or wake.
  *
  * It records its last outcome (#275): published at a time, or failed with a
  * plain reason, so the questionnaire link control can show it instead of a
- * failure passing silently. Package A's rewrite of this as a sync follower must
- * keep that status. All inputs, the clock included, are injected.
+ * failure passing silently. All inputs, the clock included, are injected.
  */
 import { ApiHttpError, ApiNetworkError } from '../api/http';
 import type { Contest } from '../model/contest';
-import type { SyncStatus } from '../storage/syncEngine';
+import type { FollowBatch } from '../storage/contestLibrary';
 import { buildJudgeRoster, type JudgeRoster } from './roster';
 
 export interface RosterPublisherDeps {
-  subscribe(listener: (status: SyncStatus) => void): () => void;
-  loadContests(): Promise<Contest[]>;
+  /** The library's `follow`. */
+  follow(name: string, handler: (batch: FollowBatch) => Promise<void>): () => void;
   publish(roster: JudgeRoster): Promise<void>;
   /** Local date, YYYY-MM-DD. */
   today(): string;
@@ -56,53 +57,46 @@ export function publishFailureReason(error: unknown): string {
 }
 
 export function startRosterPublisher(deps: RosterPublisherDeps): RosterPublisher {
-  let sawSyncPass = false;
-  let running = false;
-  let rerun = false;
+  const cache = new Map<string, Contest>();
   let lastPublished: string | null = null;
   let lastPublishedAt = '';
   let status: RosterPublishStatus = { kind: 'idle' };
+  let stopped = false;
   const listeners = new Set<(status: RosterPublishStatus) => void>();
 
   function report(next: RosterPublishStatus): void {
+    if (stopped) return;
     status = next;
     for (const listener of listeners) listener(next);
   }
 
-  async function publishIfChanged(): Promise<void> {
-    if (running) {
-      rerun = true;
+  const unfollow = deps.follow('roster', async (batch) => {
+    if (batch.first) {
+      cache.clear();
+      for (const contest of await batch.all()) cache.set(contest.id, contest);
+    } else {
+      for (const contest of batch.changed) cache.set(contest.id, contest);
+      for (const id of batch.removed) cache.delete(id);
+    }
+    // In id order, so the text depends only on the contests, not on arrival order.
+    const contests = [...cache.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const roster = buildJudgeRoster(contests, deps.today());
+    const text = JSON.stringify(roster);
+    if (text === lastPublished) {
+      // The server already holds this roster, even if a newer one failed since.
+      if (status.kind === 'failed') report({ kind: 'published', at: lastPublishedAt });
       return;
     }
-    running = true;
     try {
-      do {
-        rerun = false;
-        const roster = buildJudgeRoster(await deps.loadContests(), deps.today());
-        const text = JSON.stringify(roster);
-        if (text === lastPublished) {
-          // The server already holds this roster, even if a newer one failed since.
-          if (status.kind === 'failed') report({ kind: 'published', at: lastPublishedAt });
-          continue;
-        }
-        try {
-          await deps.publish(roster);
-          lastPublished = text;
-          lastPublishedAt = deps.now().toISOString();
-          report({ kind: 'published', at: lastPublishedAt });
-        } catch (error) {
-          // Offline, signed out, or a server hiccup: shown, and the next settle retries.
-          report({ kind: 'failed', at: deps.now().toISOString(), reason: publishFailureReason(error) });
-        }
-      } while (rerun);
-    } finally {
-      running = false;
+      await deps.publish(roster);
+    } catch (error) {
+      // Offline, signed out, or a server hiccup: shown, and retried at the next event or wake.
+      report({ kind: 'failed', at: deps.now().toISOString(), reason: publishFailureReason(error) });
+      throw error;
     }
-  }
-
-  const unsubscribe = deps.subscribe((syncStatus) => {
-    if (syncStatus === 'syncing') sawSyncPass = true;
-    else if (syncStatus === 'synced' && sawSyncPass) void publishIfChanged();
+    lastPublished = text;
+    lastPublishedAt = deps.now().toISOString();
+    report({ kind: 'published', at: lastPublishedAt });
   });
 
   return {
@@ -112,7 +106,8 @@ export function startRosterPublisher(deps: RosterPublisherDeps): RosterPublisher
       return () => listeners.delete(listener);
     },
     stop() {
-      unsubscribe();
+      stopped = true;
+      unfollow();
       listeners.clear();
     },
   };

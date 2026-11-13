@@ -315,3 +315,87 @@ describe('device-only credentials never reach the wire', () => {
     expect(sent).not.toContain('sw-pass-SECRET');
   });
 });
+
+describe('completed passes and the wake port (#279)', () => {
+  /** An engine whose store counts completed passes, with a manual wake and clock. */
+  function wakeHarness() {
+    let reconciled = 0;
+    let wakeListener: (() => void) | undefined;
+    const clock = { ms: 1_000_000 };
+    const engine = createSyncEngine({
+      client: client.client,
+      store: { ...store.store, reconciled: () => void (reconciled += 1) },
+      isOnline: () => online.value,
+      schedule: scheduler.schedule,
+      flushDelayMs: 0,
+      now: () => clock.ms,
+      wakeThrottleMs: 60_000,
+      wake: (listener) => {
+        wakeListener = listener;
+        return () => (wakeListener = undefined);
+      },
+    });
+    return {
+      engine,
+      clock,
+      reconciled: () => reconciled,
+      wake: () => wakeListener?.(),
+      subscribed: () => wakeListener !== undefined,
+    };
+  }
+
+  it('reports a completed pass once the pulls and pushes are done', async () => {
+    const h = wakeHarness();
+    h.engine.start();
+    await scheduler.drain();
+    expect(h.reconciled()).toBe(1);
+  });
+
+  it('does not report a pass whose server list failed', async () => {
+    const h = wakeHarness();
+    client.hooks.list = () => {
+      throw new SyncNetworkError();
+    };
+    h.engine.start();
+    await scheduler.drain(1);
+    expect(h.reconciled()).toBe(0);
+  });
+
+  it('a wake triggers a reconcile, throttled', async () => {
+    const h = wakeHarness();
+    h.engine.start();
+    await scheduler.drain();
+    expect(client.countOf('list')).toBe(1);
+
+    // Too soon after the start-up pass: ignored.
+    h.clock.ms += 10_000;
+    h.wake();
+    await scheduler.drain();
+    expect(client.countOf('list')).toBe(1);
+
+    // Past the throttle window: a new pass, reported to the store.
+    h.clock.ms += 60_000;
+    h.wake();
+    await scheduler.drain();
+    expect(client.countOf('list')).toBe(2);
+    expect(h.reconciled()).toBe(2);
+  });
+
+  it('a wake does nothing while offline or once stopped, and stop detaches the port', async () => {
+    const h = wakeHarness();
+    h.engine.start();
+    await scheduler.drain();
+    h.clock.ms += 120_000;
+    online.value = false;
+    h.wake();
+    await scheduler.drain();
+    expect(client.countOf('list')).toBe(1);
+
+    online.value = true;
+    h.engine.stop();
+    expect(h.subscribed()).toBe(false);
+    h.wake();
+    await scheduler.drain();
+    expect(client.countOf('list')).toBe(1);
+  });
+});

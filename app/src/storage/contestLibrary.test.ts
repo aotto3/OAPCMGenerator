@@ -124,7 +124,7 @@ describe('add', () => {
     await library.add(contest);
     expect(await library.read('new')).toEqual(contest);
     await expectListMatchesSummarize();
-    expect(events.map((e) => [e.type, e.id, 'origin' in e && e.origin])).toEqual([['changed', 'new', 'device']]);
+    expect(events.map((e) => [e.type, 'id' in e && e.id, 'origin' in e && e.origin])).toEqual([['changed', 'new', 'device']]);
   });
 });
 

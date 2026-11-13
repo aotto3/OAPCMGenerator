@@ -39,6 +39,9 @@ export interface SyncStore {
   /** Writes a pulled contest bundle into local storage WITHOUT re-notifying the
    * engine (a pull must never re-trigger a push). */
   applyRemote(id: string, remote: { name: string; updatedAt: string; payload: string }): Promise<void>;
+  /** A full server pass completed (the list, every pull, and the push flush). The
+   * library turns this into its `reconciled` event, which followers run on (#279). */
+  reconciled?(): void;
 }
 
 export type ChangeType = 'save' | 'delete';
@@ -56,6 +59,13 @@ export interface SyncEngineDeps {
   schedule?: (fn: () => void | Promise<void>, ms: number) => void;
   /** Debounce before a dirty mark turns into a push cycle. */
   flushDelayMs?: number;
+  /** Production: tab focus/visibility and a periodic tick (browserWake.ts). Each
+   * wake asks for a reconcile, throttled by `wakeThrottleMs`. This is what keeps
+   * questionnaire answers fresh in an open tab without any edit (#279). */
+  wake?: (listener: () => void) => () => void;
+  /** Milliseconds clock for the wake throttle. Defaults to Date.now. */
+  now?: () => number;
+  wakeThrottleMs?: number;
 }
 
 export interface SyncEngine {
@@ -73,12 +83,16 @@ export interface SyncEngine {
 }
 
 const DEFAULT_FLUSH_DELAY_MS = 600;
+/** A wake within this long of the last reconcile's start is ignored. */
+export const WAKE_THROTTLE_MS = 60_000;
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   const { client, store, isOnline } = deps;
   const backoff = deps.backoff ?? backoffDelay;
   const schedule = deps.schedule ?? ((fn, ms) => void setTimeout(() => void fn(), ms));
   const flushDelayMs = deps.flushDelayMs ?? DEFAULT_FLUSH_DELAY_MS;
+  const now = deps.now ?? Date.now;
+  const wakeThrottleMs = deps.wakeThrottleMs ?? WAKE_THROTTLE_MS;
 
   /** Latest intent per contest; a later mark supersedes an earlier one. */
   const pending = new Map<string, ChangeType>();
@@ -89,6 +103,9 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   let flushScheduled = false;
   let cycleRunning = false;
   let failCount = 0;
+  let reconciling = false;
+  let lastReconcileAt: number | undefined;
+  let offWake: (() => void) | undefined;
 
   function setStatus(next: SyncStatus): void {
     if (next === status) return;
@@ -203,6 +220,23 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       setStatus(restingStatus());
       return;
     }
+    reconciling = true;
+    lastReconcileAt = now();
+    try {
+      await reconcilePass();
+    } finally {
+      reconciling = false;
+    }
+  }
+
+  /** A wake (focus, visibility, periodic tick) asks for a reconcile; throttled. */
+  function wake(): void {
+    if (stopped || reconciling || !isOnline()) return;
+    if (lastReconcileAt !== undefined && now() - lastReconcileAt < wakeThrottleMs) return;
+    schedule(() => reconcile(), 0);
+  }
+
+  async function reconcilePass(): Promise<void> {
     setStatus('syncing');
     let remote;
     try {
@@ -233,6 +267,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
 
     for (const id of plan.push) pending.set(id, 'save');
     await flush();
+    // Every pull landed (or was skipped as unreadable): this device now reflects the server.
+    if (!stopped) store.reconciled?.();
   }
 
   return {
@@ -240,11 +276,14 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       if (!stopped) return;
       stopped = false;
       failCount = 0;
+      offWake = deps.wake?.(wake);
       // Through the scheduler like all other async work, so it is one seam.
       schedule(() => reconcile(), 0);
     },
     stop() {
       stopped = true;
+      offWake?.();
+      offWake = undefined;
     },
     markDirty(id, type) {
       pending.set(id, type);

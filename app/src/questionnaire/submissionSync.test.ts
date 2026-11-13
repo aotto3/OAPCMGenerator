@@ -1,89 +1,101 @@
+/**
+ * The questionnaire answer follower (slice A3 #279) on a real library over
+ * fake-indexeddb. `pass()` is a completed server pass; edits go through the
+ * library and settle without one.
+ */
+import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { createContest, type Contest } from '../model/contest';
 import { setJudge } from '../model/judgePanel';
-import type { SyncStatus } from '../storage/syncEngine';
+import { followerKit } from '../storage/followerTestKit';
 import { blankAnswers, type JudgeSubmission } from './submission';
 import { startSubmissionSync } from './submissionSync';
 
 const NOW = '2026-11-01T12:00:00.000Z';
 
-const judged = (id: string): Contest =>
-  setJudge(createContest({ id, now: NOW }), 0, { name: 'Jane', email: 'jane@x.org' }, NOW);
+const judged = (id: string): Contest => setJudge(createContest({ id, now: NOW }), 0, { name: 'Jane', email: 'jane@x.org' }, NOW);
 
 const SUB: JudgeSubmission = {
   email: 'jane@x.org',
   submittedAt: '2026-11-10T00:00:00.000Z',
-  answers: { ...blankAnswers(['c1']), dietary: 'vegan' },
+  answers: { ...blankAnswers(['c1', 'c3']), dietary: 'vegan' },
 };
 
-function harness(contests: Contest[], submissions: JudgeSubmission[] | Error) {
-  let listener: (s: SyncStatus) => void = () => {};
-  const store = new Map(contests.map((c) => [c.id, c]));
-  const saved: Contest[] = [];
+async function harness(contests: Contest[], submissions: JudgeSubmission[] | Error) {
+  const kit = followerKit();
+  const { library } = kit;
+  for (const contest of contests) await library.add(contest);
+  const saved: string[] = [];
+  library.subscribe((e) => {
+    if (e.type === 'changed' && e.by === 'submissions') saved.push(e.id);
+  });
   let result = submissions;
+  let fetches = 0;
   const stop = startSubmissionSync({
-    subscribe: (l) => {
-      listener = l;
-      l('synced');
-      return () => (listener = () => {});
-    },
+    follow: (name, handler) => library.follow(name, handler),
     fetchSubmissions: async () => {
+      fetches += 1;
       if (result instanceof Error) throw result;
       return result;
     },
-    contestIds: async () => [...store.keys()],
-    // The library's transform: an identical result is a no-op.
-    transform: async (id, fn) => {
-      const fresh = store.get(id);
-      if (!fresh) return undefined;
-      const next = fn(fresh);
-      if (next !== fresh) {
-        saved.push(next);
-        store.set(id, next);
-      }
-      return next;
-    },
+    contestIds: async () => (await library.list()).map((s) => s.id),
     now: () => '2026-11-20T00:00:00.000Z',
   });
   return {
+    kit,
+    library,
     saved,
     stop,
+    fetches: () => fetches,
     setResult: (r: JudgeSubmission[] | Error) => (result = r),
-    async settle() {
-      listener('syncing');
-      listener('synced');
-      await new Promise((r) => setTimeout(r, 0));
+    async pass() {
+      library.noteReconciled();
+      await kit.settle();
     },
   };
 }
 
 describe('startSubmissionSync', () => {
-  it('applies submissions to matching contests after a sync pass and saves only those', async () => {
-    const h = harness([judged('c1'), judged('c2')], [SUB]);
-    await h.settle();
-    expect(h.saved.map((c) => c.id)).toEqual(['c1']);
-    expect(h.saved[0].adjudicators[0].dietary).toBe('vegan');
+  it('applies submissions to matching contests after a server pass and saves only those', async () => {
+    const h = await harness([judged('c1'), judged('c2')], [SUB]);
+    await h.pass();
+    expect(h.saved).toEqual(['c1']);
+    expect((await h.library.read('c1'))?.adjudicators[0].dietary).toBe('vegan');
   });
 
-  it('does nothing before a sync pass has run', async () => {
-    const h = harness([judged('c1')], [SUB]);
-    await new Promise((r) => setTimeout(r, 0));
+  it('does nothing before a server pass has completed', async () => {
+    const h = await harness([judged('c1')], [SUB]);
+    await h.library.save(setJudge(judged('c1'), 0, { name: 'Jane B' }, '2026-11-02T00:00:00.000Z'));
+    await h.kit.settle();
+    expect(h.fetches()).toBe(0);
     expect(h.saved).toEqual([]);
   });
 
   it('does not save again once a submission is applied', async () => {
-    const h = harness([judged('c1')], [SUB]);
-    await h.settle();
-    await h.settle();
+    const h = await harness([judged('c1')], [SUB]);
+    await h.pass();
+    await h.pass();
     expect(h.saved).toHaveLength(1);
   });
 
-  it('survives a failed fetch and retries at the next settle', async () => {
-    const h = harness([judged('c1')], new Error('offline'));
-    await h.settle();
+  it('fetches only on a server pass; an edit applies the answers already fetched', async () => {
+    const h = await harness([judged('c1')], [SUB]);
+    await h.pass();
+    expect(h.fetches()).toBe(1);
+    // A new contest naming the same judge arrives on this device.
+    await h.library.add(judged('c3'));
+    await h.kit.settle();
+    expect(h.fetches()).toBe(1);
+    expect((await h.library.read('c3'))?.adjudicators[0].dietary).toBe('vegan');
+  });
+
+  it('retries a failed fetch at the next wake', async () => {
+    const h = await harness([judged('c1')], new Error('offline'));
+    await h.pass();
     expect(h.saved).toEqual([]);
     h.setResult([SUB]);
-    await h.settle();
-    expect(h.saved).toHaveLength(1);
+    h.kit.wake();
+    await h.kit.settle();
+    expect(h.saved).toEqual(['c1']);
   });
 });

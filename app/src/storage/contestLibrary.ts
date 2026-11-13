@@ -21,6 +21,14 @@
  * over it: a newer pull swaps the session and sets `notice`; a newer session
  * edit survives the pull and is pushed.
  *
+ * Followers (slice A3 #279): `follow(name, handler)` runs background work (the
+ * judge roster publisher, the questionnaire answer follower) on data events
+ * and on `reconciled`, the event for a completed server pass, instead of on the
+ * UI's sync status. The library owns the timing: nothing before the first
+ * server pass, bursts coalesced, single-flight with rerun, a follower's own
+ * writes kept out of its next batch, and a failed run retried at the next
+ * event or wake.
+ *
  * No React, no `window`, no `fetch`: IndexedDB, the clock and the timers are
  * injected, so tests run against fake-indexeddb with a manual clock and timers.
  */
@@ -65,7 +73,28 @@ export type Origin = 'device' | 'remote';
 
 export type ContestEvent =
   | { type: 'changed'; id: string; origin: Origin; by?: string; contest: Contest; summary: ContestSummary }
-  | { type: 'removed'; id: string; origin: Origin };
+  | { type: 'removed'; id: string; origin: Origin }
+  /** A full server pass completed: this device's copy reflects the server. */
+  | { type: 'reconciled' };
+
+/**
+ * What a follower is handed (slice A3 #279): everything that happened since its
+ * last successful run, coalesced. A failed run's batch is folded into the next one.
+ */
+export interface FollowBatch {
+  /** The follower's first batch (true until a run succeeds). */
+  first: boolean;
+  /** The batch includes a completed server pass. */
+  reconciled: boolean;
+  /** Changed contests, latest copy of each; excludes this follower's own writes. */
+  changed: Contest[];
+  /** Ids removed since the last run. */
+  removed: string[];
+  /** Every stored contest, parsed. */
+  all(): Promise<Contest[]>;
+  /** The library's transform, tagged with the follower's name so its writes skip its next batch. */
+  transform: ContestLibrary['transform'];
+}
 
 /** A pulled contest as the sync engine hands it over (the server's record). */
 export interface RemoteBundle {
@@ -129,6 +158,14 @@ export interface ContestLibrary {
   /** Deletes the contest and its checkpoints in one transaction. */
   remove(id: string): Promise<void>;
   subscribe(listener: (event: ContestEvent) => void): () => void;
+  /**
+   * Runs `handler` on data events instead of UI status. The library owns when:
+   * never before the first completed server pass after registering; bursts are
+   * coalesced (FOLLOW_DEBOUNCE_MS); one run at a time, with a rerun if events
+   * arrive meanwhile; the follower's own writes are left out of its next batch.
+   * A run that throws keeps its batch for the next event or wake. Returns a stop.
+   */
+  follow(name: string, handler: (batch: FollowBatch) => Promise<void>): () => void;
   checkpoints: {
     /** A contest's checkpoints, newest first. */
     list(contestId: string): Promise<Checkpoint[]>;
@@ -148,6 +185,8 @@ export interface ContestLibrary {
   bundleFor(id: string): Promise<{ name: string; updatedAt: string; payload: string } | undefined>;
   /** Sync engine seam: writes a pulled contest and its checkpoints; emits a `remote` event. */
   applyRemote(remote: RemoteBundle): Promise<void>;
+  /** Sync engine seam (until A5): a full server pass completed; emits `reconciled`. */
+  noteReconciled(): void;
   /** Closes the database handle (tests; a reload in production). */
   close(): Promise<void>;
 }
@@ -164,10 +203,18 @@ export interface LibraryDeps {
   clock: () => string;
   /** The session debounce's timers. Defaults to the global setTimeout/clearTimeout. */
   timers?: Timers;
+  /**
+   * Production: tab focus/visibility and a periodic tick (storage/browserWake.ts).
+   * A wake reruns any follower whose last run failed.
+   */
+  wake?: (listener: () => void) => () => void;
 }
 
 /** How long an open session waits after the last edit before writing it. */
 export const SAVE_DEBOUNCE_MS = 300;
+
+/** How long a follower waits after the last event before running, so a burst is one run. */
+export const FOLLOW_DEBOUNCE_MS = 1000;
 
 const globalTimers: Timers = {
   set: (fn, ms) => setTimeout(fn, ms),
@@ -483,7 +530,130 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
     adoptStored(contest.id, contest);
   }
 
+  /* ────────────────────────── followers (slice A3 #279) ────────────────────────── */
+
+  interface Accumulated {
+    first: boolean;
+    reconciled: boolean;
+    changed: Map<string, Contest>;
+    removed: Set<string>;
+  }
+
+  const emptyBatch = (first: boolean): Accumulated => ({
+    first,
+    reconciled: false,
+    changed: new Map(),
+    removed: new Set(),
+  });
+  const isEmptyBatch = (b: Accumulated) => !b.reconciled && b.changed.size === 0 && b.removed.size === 0;
+
+  /** A failed batch folded under whatever arrived since (the newer news wins). */
+  function foldFailed(failed: Accumulated, since: Accumulated): Accumulated {
+    const changed = new Map(failed.changed);
+    const removed = new Set(failed.removed);
+    for (const [id, contest] of since.changed) {
+      changed.set(id, contest);
+      removed.delete(id);
+    }
+    for (const id of since.removed) {
+      changed.delete(id);
+      removed.add(id);
+    }
+    return { first: failed.first || since.first, reconciled: failed.reconciled || since.reconciled, changed, removed };
+  }
+
+  /** Retry kicks for followers whose last run failed; a wake fires them. */
+  const failedFollowers = new Set<() => void>();
+  const offWake = deps.wake?.(() => {
+    for (const retry of [...failedFollowers]) retry();
+  });
+
+  function follow(name: string, handler: (batch: FollowBatch) => Promise<void>): () => void {
+    let pending = emptyBatch(true);
+    /** No run before a completed server pass seen since registering (a fresh device's empty store). */
+    let sawReconcile = false;
+    let timer: unknown;
+    let running = false;
+    let stopped = false;
+
+    function arm(): void {
+      if (stopped || !sawReconcile) return;
+      if (timer !== undefined) timers.clear(timer);
+      timer = timers.set(() => {
+        timer = undefined;
+        void drain();
+      }, FOLLOW_DEBOUNCE_MS);
+    }
+
+    const retry = () => {
+      if (!isEmptyBatch(pending)) arm();
+    };
+
+    async function drain(): Promise<void> {
+      if (running || stopped) return;
+      running = true;
+      try {
+        // A burst that arrives mid-run re-arms the debounce; the timer then takes over.
+        while (!stopped && timer === undefined && !isEmptyBatch(pending)) {
+          const taken = pending;
+          pending = emptyBatch(false);
+          try {
+            await handler({
+              first: taken.first,
+              reconciled: taken.reconciled,
+              changed: [...taken.changed.values()],
+              removed: [...taken.removed],
+              all: () => library.readAll(),
+              transform: (id, fn) => library.transform(id, fn, { by: name }),
+            });
+            failedFollowers.delete(retry);
+          } catch {
+            // Kept for the next event or wake.
+            pending = foldFailed(taken, pending);
+            failedFollowers.add(retry);
+            break;
+          }
+        }
+      } finally {
+        running = false;
+      }
+    }
+
+    const off = library.subscribe((event) => {
+      if (event.type === 'reconciled') {
+        sawReconcile = true;
+        pending.reconciled = true;
+      } else if (event.type === 'changed') {
+        if (event.by === name) {
+          // Its own write: not news, but a stale copy already queued is replaced.
+          if (pending.changed.has(event.id)) pending.changed.set(event.id, event.contest);
+          return;
+        }
+        pending.changed.set(event.id, event.contest);
+        pending.removed.delete(event.id);
+      } else {
+        pending.changed.delete(event.id);
+        pending.removed.add(event.id);
+      }
+      arm();
+    });
+
+    return () => {
+      stopped = true;
+      off();
+      if (timer !== undefined) timers.clear(timer);
+      timer = undefined;
+      failedFollowers.delete(retry);
+    };
+  }
+
   const library: ContestLibrary = {
+    follow,
+
+    noteReconciled() {
+      emit({ type: 'reconciled' });
+    },
+
     open(id, opts) {
       let session = sessions.get(id);
       if (!session) {
@@ -727,6 +897,7 @@ export function createContestLibrary(deps: LibraryDeps): ContestLibrary {
     },
 
     async close() {
+      offWake?.();
       if (dbPromise) (await dbPromise).close();
       dbPromise = undefined;
     },

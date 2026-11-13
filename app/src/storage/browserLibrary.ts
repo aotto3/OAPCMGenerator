@@ -7,13 +7,18 @@
  * Leaving the page (pagehide) writes every open contest's pending edit, so
  * closing the tab mid-burst loses nothing.
  */
+import { browserWake } from './browserWake';
 import { createContestLibrary, type ContestLibrary } from './contestLibrary';
 
 let library: ContestLibrary | undefined;
 
 export function contestLibrary(): ContestLibrary {
   if (!library) {
-    const created = createContestLibrary({ idb: indexedDB, clock: () => new Date().toISOString() });
+    const created = createContestLibrary({
+      idb: indexedDB,
+      clock: () => new Date().toISOString(),
+      wake: browserWake,
+    });
     window.addEventListener('pagehide', () => void created.flush());
     library = created;
   }

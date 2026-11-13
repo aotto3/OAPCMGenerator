@@ -72,7 +72,9 @@ export function useContestList(): ContestSummary[] | null {
       });
     };
     refresh();
-    const off = library.subscribe(refresh);
+    const off = library.subscribe((event) => {
+      if (event.type !== 'reconciled') refresh();
+    });
     return () => {
       active = false;
       off();
