@@ -20,6 +20,12 @@ describe('value fields', () => {
     expect(body('{{contestName}}')).toBe('UIL 5A District 20 One-Act Play Contest');
     expect(body('{{contestLevel}}')).toBe('District');
     expect(body('{{contestDate}}')).toBe('Saturday, March 21, 2026');
+    expect(body('{{contestDateShort}}')).toBe('March 21, 2026');
+    expect(body('{{critiqueTiming}}')).toBe('after all shows');
+    expect(
+      renderTemplate({ subject: '', body: '{{critiqueTiming}}' }, withDetails(fixtureContest(), { critiqueFormat: 'after_each' }))
+        .body,
+    ).toBe('after each show');
     expect(body('{{venueName}}')).toBe('Performing Arts Center');
     expect(body('{{venueAddress}}')).toBe('7504 Bissonnet St, Houston, TX 77074');
     expect(body('{{directorsMeetingTime}}')).toBe('9:00 AM');

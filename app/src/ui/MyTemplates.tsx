@@ -9,16 +9,31 @@ import {
   renderTemplate,
   usesField,
 } from '../templates/templateRender';
-import { TEMPLATE_LIMITS, templateProblem, templateProblemMessage } from '../templates/templateRules';
+import { STARTERS, starterInput } from '../templates/starters';
+import {
+  TEMPLATE_LIMITS,
+  templateProblem,
+  templateProblemMessage,
+  type TemplateInput,
+} from '../templates/templateRules';
 import { offerUndo } from './undoOffer';
 import { createTemplatesClient, type EmailTemplate, type TemplatesClient } from '../templates/templatesClient';
 
 const questionnaireClient = createQuestionnaireClient();
 
+/** The editor for a template not saved yet, with the text it starts from. */
+interface NewTemplate {
+  start: TemplateInput;
+}
+
+/** The "Blank template" option's value (the placeholder option is ''). */
+const BLANK = '__blank__';
+
 /**
  * The CM's own email templates in the Email Draft Composer (PRD #320): a "My
- * templates" button row under the built-ins, a "+ New template" editor, and
- * edit and delete on each template.
+ * templates" button row under the built-ins, a "+ New template" chooser (blank,
+ * or a copy of a built-in email written in merge fields), and edit and delete
+ * on each template.
  *
  * Templates belong to the account, not the contest, so the same row appears in
  * every contest. Clicking one fills the composer's subject and body from the
@@ -44,7 +59,7 @@ export function MyTemplates({
   /** True when the last list came from the device copy because the server could not be reached. */
   const [fromDevice, setFromDevice] = useState(false);
   /** The editor: closed, a new template, or the template being edited. */
-  const [editing, setEditing] = useState<null | 'new' | EmailTemplate>(null);
+  const [editing, setEditing] = useState<null | NewTemplate | EmailTemplate>(null);
   /** Why the last delete failed, shown under the row. */
   const [rowError, setRowError] = useState<string | null>(null);
 
@@ -108,7 +123,7 @@ export function MyTemplates({
       return;
     }
     setTemplates((prev) => prev.filter((p) => p.id !== t.id));
-    setEditing((e) => (e !== null && e !== 'new' && e.id === t.id ? null : e));
+    setEditing((e) => (e !== null && 'id' in e && e.id === t.id ? null : e));
     offerUndo({
       message: `Template “${t.name}” deleted`,
       contestId: contest.id,
@@ -121,7 +136,21 @@ export function MyTemplates({
     });
   }
 
-  const editingTemplate = editing !== null && editing !== 'new' ? editing : null;
+  const editingTemplate = editing !== null && 'id' in editing ? editing : null;
+  const newStart = editing !== null && !('id' in editing) ? editing.start : null;
+
+  /** Opens the editor for a new template: '' for blank, else a built-in starter's id. */
+  function startNew(choice: string) {
+    const starter = STARTERS.find((st) => st.id === choice);
+    setEditing({
+      start: starter
+        ? starterInput(
+            starter,
+            templates.map((t) => t.name),
+          )
+        : { name: '', subject: '', body: '' },
+    });
+  }
 
   return (
     <div className="my-templates">
@@ -156,9 +185,24 @@ export function MyTemplates({
           </span>
         ))}
         {editing === null && (
-          <button type="button" className="btn-util" onClick={() => setEditing('new')}>
-            + New template
-          </button>
+          <select
+            className="template-new-picker"
+            aria-label="New template"
+            value=""
+            onChange={(e) => startNew(e.target.value === BLANK ? '' : e.target.value)}
+          >
+            <option value="" disabled hidden>
+              + New template…
+            </option>
+            <option value={BLANK}>Blank template</option>
+            <optgroup label="Copy a built-in email">
+              {STARTERS.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.label}
+                </option>
+              ))}
+            </optgroup>
+          </select>
         )}
       </div>
       {fromDevice && (
@@ -174,6 +218,7 @@ export function MyTemplates({
           client={templatesClient}
           contest={contest}
           editing={editingTemplate}
+          start={newStart}
           others={templates.filter((t) => t.id !== editingTemplate?.id)}
           questionnaireLink={questionnaireLink ?? null}
           onNeedQuestionnaireLink={() => void ensureQuestionnaireLink()}
@@ -194,6 +239,7 @@ function TemplateEditor({
   client,
   contest,
   editing,
+  start,
   others,
   questionnaireLink,
   onNeedQuestionnaireLink,
@@ -205,6 +251,8 @@ function TemplateEditor({
   contest: Contest;
   /** The template being edited, or null for a new one. */
   editing: EmailTemplate | null;
+  /** A new template's starting text (blank or a built-in starter); null when editing. */
+  start: TemplateInput | null;
   /** The account's other templates (for the name and count checks). */
   others: EmailTemplate[];
   /** For the preview; null until loaded (or when it cannot be). */
@@ -216,9 +264,9 @@ function TemplateEditor({
   onGone: (id: string) => void;
   onSaved: (t: EmailTemplate) => void;
 }) {
-  const [name, setName] = useState(editing?.name ?? '');
-  const [subject, setSubject] = useState(editing?.subject ?? '');
-  const [body, setBody] = useState(editing?.body ?? '');
+  const [name, setName] = useState(editing?.name ?? start?.name ?? '');
+  const [subject, setSubject] = useState(editing?.subject ?? start?.subject ?? '');
+  const [body, setBody] = useState(editing?.body ?? start?.body ?? '');
   /** What Save writes to: the edited template, or null to create a new one. */
   const [target, setTarget] = useState<EmailTemplate | null>(editing);
   const [error, setError] = useState<string | null>(null);
