@@ -74,6 +74,12 @@ export const MERGE_FIELDS: readonly MergeField[] = [
   field('contestName', 'Contest name', (c) => contestFullName(c.identity), '[Contest Name]'),
   field('contestLevel', 'Contest level', (c) => c.identity.contestLevel, '[Contest Level TBD]'),
   field('contestDate', 'Contest date', (c) => fmtDate(c.details.contestDate), '[Contest Date TBD]'),
+  field(
+    'contestDateShort',
+    'Contest date (no weekday)',
+    (c) => fmtDateShort(c.details.contestDate),
+    '[Contest Date TBD]',
+  ),
   field('venueName', 'Venue name', (c) => c.identity.hostVenueName, '[Venue TBD]'),
   field('venueAddress', 'Venue address', (c) => c.identity.hostAddress, '[Address TBD]'),
   field(
@@ -83,6 +89,13 @@ export const MERGE_FIELDS: readonly MergeField[] = [
     '[Directors’ Meeting Time TBD]',
   ),
   field('firstShowTime', 'First show time', (c) => c.details.firstShowTime, '[First Show Time TBD]'),
+  field(
+    'critiqueTiming',
+    'Critique timing (after each / all shows)',
+    // The Judge Reminder's wording; the format always has a value.
+    (c) => (c.details.critiqueFormat === 'after_each' ? 'after each show' : 'after all shows'),
+    '',
+  ),
   field('entryDeadline', 'Entry deadline', (c) => fmtDateShort(c.details.entrySystemDeadline), '[Entry Deadline TBD]'),
   field(
     'lightCueDeadline',
