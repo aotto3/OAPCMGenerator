@@ -3,7 +3,9 @@
  *
  * Imports the server's pure validator module by relative path. Test-only: no
  * production code on either side may import across workspaces, since each
- * Railway service builds only its own.
+ * Railway service builds only its own. For the same reason this file is
+ * excluded from app/tsconfig.json, so the frontend's deploy typecheck (which
+ * has no server/ folder) passes.
  */
 import { describe, expect, it } from 'vitest';
 import * as server from '../../../server/src/judgeRoster';
