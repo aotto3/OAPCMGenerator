@@ -28,13 +28,16 @@ import {
  * `Contest` value, every change goes through the model's update helpers (sections
  * receive the contest and hand back the next one), and the open-contest session
  * (useOpenContest) persists it; components never talk to IndexedDB directly. A
- * newer copy from another device swaps in through the session with a notice. The current pane is ordinary
- * component state (router-ready, but no URL routing in v1); switching panes only
+ * newer copy from another device swaps in through the session with a notice. The current pane comes
+ * from the URL (#305; App owns history); switching panes only
  * unmounts/mounts modules, so autosave keeps unsaved work safe across a switch.
  */
 export function Workspace({
   contestId,
   draft,
+  cmCarried = false,
+  pane,
+  onPane,
   onBack,
   onOpenSaved,
   onOpenContest,
@@ -42,6 +45,12 @@ export function Workspace({
   contestId: string;
   /** Fresh unsaved contest from "+ New Contest" — not in storage yet. */
   draft?: Contest;
+  /** The draft's CM info was carried from an earlier contest (#307): show the note. */
+  cmCarried?: boolean;
+  /** The pane named in the URL; absent ⇒ the landing rule picks one (#305). */
+  pane?: PaneId;
+  /** Navigate to a pane: pushes a history entry, or replaces it with `replace`. */
+  onPane: (pane: PaneId, opts?: { replace?: boolean }) => void;
   onBack: () => void;
   /** Persist a brand-new contest (e.g. the advance-clone) and open it. */
   onOpenSaved: (contest: Contest) => void | Promise<void>;
@@ -56,9 +65,17 @@ export function Workspace({
   const [openSignal, setOpenSignal] = useState<SectionOpenSignal | null>(null);
   const setAllSections = (open: boolean) =>
     setOpenSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
-  // The current destination: the Readiness hub or one of the panes. A fresh draft
-  // lands on Setup (start typing); a saved contest lands on Readiness (status).
-  const [view, setView] = useState<PaneId>(() => landingPane(isDraft));
+  // The current destination lives in the URL (#305). With no pane named, a fresh
+  // draft lands on Setup (start typing) and a saved contest on Readiness (status),
+  // and the landing pane is written back into the URL without a history step.
+  const [landing] = useState<PaneId>(() => landingPane(isDraft));
+  const view: PaneId = pane ?? landing;
+  useEffect(() => {
+    if (!pane) onPane(landing, { replace: true });
+  }, [pane, landing, onPane]);
+  const setView = (next: PaneId) => onPane(next);
+  // The "Filled from your last contest" note (#307), dismissible for this session.
+  const [cmNoteDismissed, setCmNoteDismissed] = useState(false);
   // Mobile: the off-canvas sidebar drawer's open state (the desktop rail ignores it).
   const [drawerOpen, setDrawerOpen] = useState(false);
   // A module anchor to scroll to once its pane's content mounts — set when a
@@ -103,9 +120,9 @@ export function Workspace({
   const setContest = open.set;
 
   /** Navigate to a pane from the sidebar (a plain switch, no pending scroll). */
-  const selectPane = (pane: PaneId) => {
+  const selectPane = (next: PaneId) => {
     setPendingScroll(null);
-    setView(pane);
+    setView(next);
   };
 
   /** Readiness jump: open a module's canonical pane, then scroll to its anchor. */
@@ -175,6 +192,20 @@ export function Workspace({
                       <li key={issue.field}>⚠️ {issue.message}</li>
                     ))}
                   </ul>
+                )}
+
+                {view === 'setup' && cmCarried && !cmNoteDismissed && (
+                  <div className="update-notice" role="status">
+                    <span>CM Info was filled from your last contest. Change anything that's different this time.</span>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      aria-label="Dismiss"
+                      onClick={() => setCmNoteDismissed(true)}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 )}
 
                 {showToggleAll && (

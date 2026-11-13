@@ -1,5 +1,13 @@
 import { useRef, useState } from 'react';
-import { contestDisplayName, createContest, duplicateContest, importContest, withArchived } from '../model/contest';
+import {
+  contestDisplayName,
+  createContest,
+  duplicateContest,
+  importContest,
+  latestCmInfo,
+  startNextYear,
+  withArchived,
+} from '../model/contest';
 import type { Contest } from '../model/contest';
 import { triggerContestFileDownload } from '../documents/generate';
 import { reportContestExported, reportContestImported } from '../telemetry/telemetryClient';
@@ -85,7 +93,8 @@ export function Dashboard({
   onOpenSaved,
 }: {
   onOpen: (id: string) => void;
-  onCreate: (draft: Contest) => void;
+  /** Open a new in-memory draft; `cmCarried` = its CM info came from an earlier contest. */
+  onCreate: (draft: Contest, cmCarried: boolean) => void;
   /** Persist a fully-formed new contest (import/duplicate), then open it. */
   onOpenSaved: (contest: Contest) => void | Promise<void>;
 }) {
@@ -102,9 +111,15 @@ export function Dashboard({
     saveSortPref(next);
   }
 
-  // Opens an in-memory draft; nothing is stored until the first edit.
+  // Opens an in-memory draft; nothing is stored until the first edit. The CM
+  // info carries over from the most recently edited contest that has any (#307),
+  // so a returning CM doesn't retype it. A failed read just starts from defaults.
   function handleCreate() {
-    onCreate(createContest());
+    action.run("Couldn't start a new contest", async () => {
+      const draft = createContest();
+      const carried = latestCmInfo(await contestLibrary().readAll().catch(() => []));
+      onCreate(carried ? { ...draft, cmInfo: carried } : draft, carried !== null);
+    });
   }
 
   // Import a contest file (the JSON bundled in every generated ZIP) as a NEW
@@ -125,6 +140,16 @@ export function Dashboard({
       const source = await contestLibrary().read(summary.id);
       if (!source) return; // deleted out from under us
       await onOpenSaved(duplicateContest(source));
+    });
+  }
+
+  // Next season's contest from this one (#306): year + 1, auto-named, same
+  // carry-forward and clearing rules as Duplicate. Persisted, then opened.
+  function handleStartNextYear(summary: ContestSummary) {
+    action.run(`Couldn't start next year from "${summary.name}"`, async () => {
+      const source = await contestLibrary().read(summary.id);
+      if (!source) return; // deleted out from under us
+      await onOpenSaved(startNextYear(source));
     });
   }
 
@@ -259,6 +284,14 @@ export function Dashboard({
                   )}
                 </span>
                 {rowMetaSecondary(c) && <span className="contest-row-line muted">{rowMetaSecondary(c)}</span>}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => handleStartNextYear(c)}
+                aria-label={`Start next year from ${c.name}`}
+                title="New contest for next year: same schools, directors and host; dates, judges and plays cleared"
+              >
+                Next year
               </button>
               <button
                 className="btn-secondary"
