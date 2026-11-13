@@ -42,6 +42,49 @@ export interface AdvancingDraft extends EmailDraft {
   to: string[];
 }
 
+/**
+ * The running order as a numbered list (number, school, then play title), one show per line,
+ * in performance order with docSchools()' "School N" fallback for a blank name.
+ * '' when the contest has no schools. Shared by the Judge Reminder and the
+ * custom templates' {{showOrder}} field (PRD #320).
+ */
+export function showOrderList(contest: Contest): string {
+  return docSchools(contest)
+    .map((s, i) => i + 1 + '. ' + s.name + (s.play ? ' — ' + s.play : ''))
+    .join('\n');
+}
+
+/** Shown in place of the judges' arrival time when the meeting time is blank or unreadable. */
+export const JUDGE_ARRIVAL_FALLBACK = '[at least 20 minutes before the Directors’ Meeting]';
+
+/**
+ * When judges should arrive: the directors' meeting time minus 20 minutes, or
+ * '' when the meeting time is blank or unreadable (callers show
+ * JUDGE_ARRIVAL_FALLBACK). Shared by the Judge Reminder and {{judgeArrivalTime}}.
+ */
+export function judgeArrivalTime(contest: Contest): string {
+  const dmtMin = parseTime(contest.details.directorsMeetingTime);
+  return dmtMin != null && !isNaN(dmtMin) ? fmtTime(dmtMin - 20) : '';
+}
+
+/**
+ * Each active judge's hotel, food/dietary and power needs, one block per judge
+ * separated by a blank line, every category named ("none" where it does not
+ * apply). Blank names fall back to "Judge N". '' when there are no active
+ * judges. Shared by the Judge Needs email and {{judgeNeeds}}.
+ */
+export function judgeNeedsList(contest: Contest): string {
+  return activeJudges(contest)
+    .map((j, i) => {
+      const name = j.name.trim() || `Judge ${i + 1}`;
+      const hotel = hotelNightsSummary(j);
+      const food = j.dietary.trim() || 'none';
+      const power = j.needsPower ? 'yes — power needed at the judge table' : 'none';
+      return name + ':\n' + '  • Hotel: ' + hotel + '\n' + '  • Food/Dietary: ' + food + '\n' + '  • Power: ' + power;
+    })
+    .join('\n\n');
+}
+
 /** Identifiers for the one-click templates (the advancing picker is separate). */
 export type EmailTemplateId = 'announcement' | 'deadline' | 'daybefore' | 'judges' | 'judgeneeds';
 
@@ -144,15 +187,9 @@ export function judgesEmail(contest: Contest): EmailDraft {
   const ven = contest.identity.hostVenueName || '[Venue TBD]';
   const adr = contest.identity.hostAddress || '[Address TBD]';
   const dmtDisplay = contest.details.directorsMeetingTime || '[TBD]';
-  const dmtMin = parseTime(contest.details.directorsMeetingTime);
-  const arrDisplay =
-    dmtMin != null && !isNaN(dmtMin)
-      ? fmtTime(dmtMin - 20)
-      : '[at least 20 minutes before the Directors’ Meeting]';
+  const arrDisplay = judgeArrivalTime(contest) || JUDGE_ARRIVAL_FALLBACK;
   const cfText = contest.details.critiqueFormat === 'after_each' ? 'after each show' : 'after all shows';
-  const showList = docSchools(contest)
-    .map((s, i) => i + 1 + '. ' + s.name + (s.play ? ' — ' + s.play : ''))
-    .join('\n');
+  const showList = showOrderList(contest);
   const cmn = contest.cmInfo.name || '[CM Name]';
   const cme = contest.cmInfo.email || '[CM Email]';
   const cmp = contest.cmInfo.phone || '';
@@ -183,16 +220,9 @@ export function judgesEmail(contest: Contest): EmailDraft {
  */
 export function judgeNeedsEmail(contest: Contest): EmailDraft {
   const cn = contestFullName(contest.identity) || '[Contest Name]';
-  const blocks = activeJudges(contest).map((j, i) => {
-    const name = j.name.trim() || `Judge ${i + 1}`;
-    const hotel = hotelNightsSummary(j);
-    const food = j.dietary.trim() || 'none';
-    const power = j.needsPower ? 'yes — power needed at the judge table' : 'none';
-    return name + ':\n' + '  • Hotel: ' + hotel + '\n' + '  • Food/Dietary: ' + food + '\n' + '  • Power: ' + power;
-  });
   return {
     subject: cn + ' — Judge Needs',
-    body: 'For the ' + cn + ", the judges' needs are as follows:\n\n" + blocks.join('\n\n'),
+    body: 'For the ' + cn + ", the judges' needs are as follows:\n\n" + judgeNeedsList(contest),
   };
 }
 

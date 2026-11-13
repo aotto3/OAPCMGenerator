@@ -645,6 +645,11 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
   font: inherit; font-size: var(--fs-sm); padding: 5px var(--space-2); max-width: 100%;
   border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-input-bg); color: var(--c-text);
 }
+.template-unknown-warning {
+  margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--c-warn);
+  background: var(--c-warn-bg); border: 1px solid var(--c-warn-border); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); overflow-wrap: anywhere;
+}
 .template-preview {
   border: 1px dashed var(--c-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3);
 }
