@@ -226,7 +226,7 @@ export function TabulationSection({ contest, onChange }: { contest: Contest; onC
             ) {
               return;
             }
-            if (fillWouldOverwrite(contest)) autoCheckpoint(contest, 'Before replacing results from tabulation');
+            if (fillWouldOverwrite(contest)) autoCheckpoint(contest, 'Before replacing results from tabulation', 'Results replaced from tabulation');
             onChange(fillResultsFromTabulation(contest));
             const name = (i: number) => view.rows.find((r) => r.schoolIndex === i)?.label ?? `School ${i + 1}`;
             setFilledNote(

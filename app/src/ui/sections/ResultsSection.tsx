@@ -457,7 +457,7 @@ export function ResultsSection({
             className="btn-util"
             onClick={() => {
               if (window.confirm('Clear all recorded results? The Awards Script returns to its blank fill-in template.')) {
-                autoCheckpoint(contest, 'Before clearing results');
+                autoCheckpoint(contest, 'Before clearing results', 'Results cleared');
                 onChange(clearResults(contest));
               }
             }}
