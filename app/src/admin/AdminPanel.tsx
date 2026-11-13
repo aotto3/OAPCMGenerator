@@ -15,6 +15,7 @@ import {
 } from './adminClient';
 import { AnalyticsTab } from './AnalyticsTab';
 import { ErrorsTab } from './ErrorsTab';
+import { SharedTemplatesTab } from './SharedTemplatesTab';
 
 /**
  * The admin panel (PRD #54, extended by Group F). A read-only window on accounts
@@ -34,12 +35,13 @@ import { ErrorsTab } from './ErrorsTab';
 
 const PAGE_SIZE = 25;
 
-type Tab = 'overview' | 'activity' | 'errors' | 'users';
+type Tab = 'overview' | 'activity' | 'errors' | 'users' | 'templates';
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'activity', label: 'Activity' },
   { id: 'errors', label: 'Errors' },
   { id: 'users', label: 'Users' },
+  { id: 'templates', label: 'Shared templates' },
 ];
 
 function fmtDateTime(iso: string): string {
@@ -69,6 +71,13 @@ const EVENT_LABELS: Record<string, string> = {
   'questionnaire.not_on_roster': 'Questionnaire: email not on roster',
   'questionnaire.rate_limited': 'Questionnaire: rate limited',
   'questionnaire.honeypot': 'Questionnaire: bot blocked',
+  'template.created': 'Template: created',
+  'template.updated': 'Template: edited',
+  'template.deleted': 'Template: deleted',
+  'template.shared': 'Template: shared',
+  'template.unshared': 'Template: unshared',
+  'template.added_from_gallery': 'Template: added from gallery',
+  'admin.template_removed_from_gallery': 'Removed template from gallery',
 };
 const EVENT_TYPES = Object.keys(EVENT_LABELS);
 const eventLabel = (type: string): string => EVENT_LABELS[type] ?? type;
@@ -80,6 +89,11 @@ const eventLabel = (type: string): string => EVENT_LABELS[type] ?? type;
  */
 function eventContext(e: { type: string; contestName?: string; detail?: unknown }): string | null {
   if (e.contestName) return e.contestName;
+  // Email template events (PRD #320) carry the template name only.
+  if (typeof e.detail === 'object' && e.detail !== null) {
+    const name = (e.detail as Record<string, unknown>).templateName;
+    if (typeof name === 'string' && name !== '') return name;
+  }
   if (!e.type.startsWith('questionnaire.') || typeof e.detail !== 'object' || e.detail === null) return null;
   const d = e.detail as Record<string, unknown>;
   const parts = [d.email, d.ip].filter((v): v is string => typeof v === 'string' && v !== '');
@@ -398,6 +412,8 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
       )}
 
       {tab === 'errors' && <ErrorsTab onDrilldown={viewClientErrors} />}
+
+      {tab === 'templates' && <SharedTemplatesTab />}
 
       {tab === 'users' && (
         <>

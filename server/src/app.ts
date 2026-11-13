@@ -176,6 +176,7 @@ export function createApp(deps: AppDeps): Express {
       eventLog: deps.eventLog,
       userDirectory: deps.userDirectory,
       authAdmin: deps.authAdmin,
+      emailTemplateStore: deps.emailTemplateStore,
       resolveUser: deps.resolveUser,
       adminEmails: deps.adminEmails,
       now: deps.now,

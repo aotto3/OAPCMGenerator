@@ -1425,3 +1425,12 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 }
 .undo-toast-close { background: none; border: none; color: inherit; cursor: pointer; opacity: 0.75; font: inherit; }
 @media print { .undo-toast { display: none; } }
+
+/* Admin: shared email templates (PRD #320). */
+.admin-shared-template { border-top: 1px solid var(--c-border); padding: var(--space-3) 0; }
+.admin-shared-template-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.admin-shared-template-subject { margin: var(--space-1) 0; font-weight: 700; overflow-wrap: anywhere; }
+.admin-shared-template-body {
+  margin: 0 0 var(--space-2); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 220px; overflow-y: auto; border: 1px dashed var(--c-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3);
+}

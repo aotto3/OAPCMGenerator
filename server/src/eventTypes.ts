@@ -31,6 +31,8 @@ export const CONTEST_EVENTS = {
 /** Events the server records for owner/admin actions — never client-reportable. */
 export const ADMIN_EVENTS = {
   signInLinkResent: 'admin.signin_link_resent',
+  /** The admin took a shared email template out of the gallery (PRD #320). */
+  templateRemovedFromGallery: 'admin.template_removed_from_gallery',
 } as const;
 
 /**

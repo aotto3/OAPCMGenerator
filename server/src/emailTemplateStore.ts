@@ -15,6 +15,10 @@
  * or email; whether a card is the viewer's own is computed here as a boolean.
  * Adding from the gallery copies a shared row into the adder's account as a new
  * private template with no link back to the original.
+ *
+ * Moderation (slice #326) is the admin's: `listSharedForAdmin` adds the owner id
+ * to each gallery card, and `adminUnshare` takes any template out of the gallery
+ * without touching the author's template. Only the admin routes call these.
  */
 import { randomUUID } from 'node:crypto';
 import type { Pool } from './db';
@@ -58,6 +62,11 @@ export type DeleteTemplateResult = { kind: 'deleted'; template: EmailTemplate } 
 
 export type ShareTemplateResult = { kind: 'updated'; template: EmailTemplate } | { kind: 'not_found' };
 
+/** A gallery entry as the admin sees it: the card plus who owns it. */
+export interface AdminSharedTemplate extends Omit<GalleryTemplate, 'mine'> {
+  ownerId: string;
+}
+
 export interface EmailTemplateStore {
   /** The owner's templates, oldest first (the order their buttons appear in). */
   list(ownerId: string): Promise<EmailTemplate[]>;
@@ -84,6 +93,14 @@ export interface EmailTemplateStore {
   unshare(ownerId: string, id: string): Promise<ShareTemplateResult>;
   /** Every shared template, newest share first, as gallery cards for `viewerId`. */
   listShared(viewerId: string): Promise<GalleryTemplate[]>;
+  /** Admin only: every shared template with its owner id, newest share first. */
+  listSharedForAdmin(): Promise<AdminSharedTemplate[]>;
+  /**
+   * Admin only: takes a shared template out of the gallery, whoever owns it.
+   * The author keeps the template (now private). not_found when it is missing
+   * or not shared.
+   */
+  adminUnshare(id: string): Promise<{ kind: 'removed'; name: string; ownerId: string } | { kind: 'not_found' }>;
   /**
    * Copies a SHARED template into `ownerId`'s account as a new private template
    * named `name` (default: the original's name), under the usual rules. A
@@ -239,6 +256,31 @@ export function createEmailTemplateStore(pool: Pool, newId: () => string = rando
         sharedAt: r.shared_at ?? '',
         mine: r.owner_id === viewerId,
       }));
+    },
+
+    async listSharedForAdmin() {
+      const { rows: found } = await pool.query(
+        `select ${COLUMNS} from email_templates where shared = true order by shared_at desc, id`,
+      );
+      return (found as Row[]).map((r) => ({
+        id: r.id,
+        name: r.name,
+        subject: r.subject,
+        body: r.body,
+        authorName: r.author_name ?? '',
+        sharedAt: r.shared_at ?? '',
+        ownerId: r.owner_id,
+      }));
+    },
+
+    async adminUnshare(id) {
+      const { rows: found } = await pool.query(`select ${COLUMNS} from email_templates where id = $1 and shared = true`, [
+        id,
+      ]);
+      const current = (found as Row[])[0];
+      if (!current) return { kind: 'not_found' };
+      await pool.query(`update email_templates set shared = false, shared_at = null where id = $1`, [id]);
+      return { kind: 'removed', name: current.name, ownerId: current.owner_id };
     },
 
     async addFromGallery(ownerId, sourceId, name, at) {
