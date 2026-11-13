@@ -114,10 +114,15 @@ export interface GroupAnswers {
   needsPower: boolean;
 }
 
-function nextDay(iso: string): string {
+/** The ISO date `days` calendar days from `iso` (negative goes back). Clock-free. */
+export function shiftDays(iso: string, days: number): string {
   const d = new Date(iso + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function nextDay(iso: string): string {
+  return shiftDays(iso, 1);
 }
 
 /** Groups contests (already in date order) into singles and back-to-back Zone pairs. */

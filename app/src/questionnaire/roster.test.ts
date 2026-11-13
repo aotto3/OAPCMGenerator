@@ -7,6 +7,7 @@ import {
   type Contest,
 } from '../model/contest';
 import { setJudge } from '../model/judgePanel';
+import { MAX_ROSTER_FIELD_LENGTH } from './limits';
 import { buildJudgeRoster } from './roster';
 
 const NOW = '2026-11-01T12:00:00.000Z';
@@ -103,5 +104,35 @@ describe('buildJudgeRoster', () => {
     c = setJudge(c, 0, { mailingAddress: '1 Main', cellPhone: '555', bio: 'Bio', dietary: 'Vegan' }, NOW);
     const text = JSON.stringify(buildJudgeRoster([c], TODAY));
     for (const secret of ['1 Main', '555', 'Bio', 'Vegan']) expect(text).not.toContain(secret);
+  });
+
+  it('cuts an over-long title, host and judge name to the field cap', () => {
+    const long = 'x'.repeat(MAX_ROSTER_FIELD_LENGTH + 50);
+    let c = { ...contest('c1', '2027-03-25', [{ name: long, email: 'jane@x.org' }]), titleOverride: long };
+    c = { ...c, identity: { ...c.identity, hostSchoolName: long } };
+    const roster = buildJudgeRoster([c], TODAY);
+    expect(roster.contests[0].title).toBe('x'.repeat(MAX_ROSTER_FIELD_LENGTH));
+    expect(roster.contests[0].host).toBe('x'.repeat(MAX_ROSTER_FIELD_LENGTH));
+    expect(roster.judges[0].name).toBe('x'.repeat(MAX_ROSTER_FIELD_LENGTH));
+  });
+
+  it('leaves out a judge whose email is invalid or too long, and keeps the rest', () => {
+    const tooLong = 'a'.repeat(MAX_ROSTER_FIELD_LENGTH) + '@x.org';
+    const roster = buildJudgeRoster(
+      [
+        contest('c1', '2027-03-25', [
+          { name: 'Typo', email: 'jane at x.org' },
+          { name: 'Long', email: tooLong },
+          { name: 'Good', email: 'good@x.org' },
+        ]),
+      ],
+      TODAY,
+    );
+    expect(roster.judges).toEqual([{ email: 'good@x.org', name: 'Good', contestIds: ['c1'] }]);
+  });
+
+  it('drops a CM email that is not a plausible address', () => {
+    const c = withCmInfo(contest('c1', '2027-03-25'), { email: 'not an email' }, NOW);
+    expect(buildJudgeRoster([c], TODAY).contests[0].cmEmail).toBe('');
   });
 });
