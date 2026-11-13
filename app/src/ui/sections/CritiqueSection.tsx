@@ -43,13 +43,13 @@ export function CritiqueSection({
     } else if (contest.critique) {
       if (!window.confirm('Are you sure you want to regenerate critique assignments?')) return;
     }
-    if (contest.critique) autoCheckpoint(contest, 'Before re-randomizing critique');
+    if (contest.critique) autoCheckpoint(contest, 'Before re-randomizing critique', 'Critique re-randomized');
     onChange(setCritiqueAssignment(contest, generateCritiqueAssignments(contest)));
   }
 
   function handleUnlock() {
     if (!window.confirm('Unlock this assignment? It will no longer be frozen for the Directors Meeting Agenda.')) return;
-    autoCheckpoint(contest, 'Before unlocking critique');
+    autoCheckpoint(contest, 'Before unlocking critique', 'Critique unlocked');
     onChange(unlockCritique(contest));
   }
 

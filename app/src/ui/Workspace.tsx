@@ -15,6 +15,7 @@ import { contestLibrary } from '../storage/browserLibrary';
 import { SectionOpenContext, type SectionOpenSignal } from './sections/Section';
 import { ReadinessPage } from './ReadinessPage';
 import { ReadinessSummary } from './ReadinessSummary';
+import { UndoToast } from './UndoToast';
 import { WorkspacePane } from './WorkspacePane';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import {
@@ -243,6 +244,14 @@ export function Workspace({
             </div>
           )}
         </header>
+
+        <UndoToast
+          contestId={contestId}
+          onUndo={async (checkpointId) => {
+            if (!open.checkpoints) throw new Error('The contest is not open.');
+            await open.checkpoints.restore(checkpointId);
+          }}
+        />
 
         <div className="workspace-shell">
           <WorkspaceSidebar

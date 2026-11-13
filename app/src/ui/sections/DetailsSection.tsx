@@ -54,7 +54,7 @@ export function DetailsSection({
     const ok = window.confirm(
       `This will clear your ${breakCount} manual schedule break${breakCount === 1 ? '' : 's'}. Continue?`,
     );
-    if (ok) autoCheckpoint(contest, 'Before clearing schedule breaks');
+    if (ok) autoCheckpoint(contest, 'Before clearing schedule breaks', 'Schedule breaks cleared');
     return ok;
   };
 
