@@ -68,6 +68,18 @@ export function createQuestionnaireClient(fetchImpl?: typeof fetch) {
         return { kind: 'error' };
       }
     },
+    /**
+     * Whether a public link is current. Never throws; resolves 'unknown' when
+     * the check fails, so the page falls back to the email box.
+     */
+    async linkStatus(token: string): Promise<'active' | 'inactive' | 'unknown'> {
+      try {
+        const body = await api.send<{ active: boolean }>('POST', `${base}/public/link`, { token }, { anonymous: true });
+        return body?.active === true ? 'active' : body?.active === false ? 'inactive' : 'unknown';
+      } catch {
+        return 'unknown';
+      }
+    },
     /** Never throws: the public page only needs to know which message to show. */
     async lookup(token: string, email: string, website: string): Promise<LookupResult> {
       try {

@@ -1407,9 +1407,11 @@ describe('duplicateContest (roll-forward)', () => {
     expect(dup.archived).toBe(false);
   });
 
-  it('resets the custom title to the auto name', () => {
+  it('titles the copy as the source title plus " COPY"', () => {
     const dup = duplicateContest(withTitleOverride(filledContest(), 'Last Year Nickname'));
-    expect(dup.titleOverride).toBe('');
+    expect(dup.titleOverride).toBe('Last Year Nickname COPY');
+    const auto = filledContest();
+    expect(effectiveContestTitle(duplicateContest(auto))).toBe(`${contestDisplayName(auto.identity)} COPY`);
   });
 
   it('KEEPS stable, year-over-year data', () => {

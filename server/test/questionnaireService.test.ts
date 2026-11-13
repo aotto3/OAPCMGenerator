@@ -119,6 +119,15 @@ describe('link tokens', () => {
     expect(await r.service.lookup(fresh.token, 'jane@x.org')).not.toBeNull();
   });
 
+  it('reports a link active until it is reset, and an unknown one as inactive', async () => {
+    const old = await ready();
+    expect(await r.service.linkActive(old)).toBe(true);
+    const fresh = await r.service.resetLink('alice');
+    expect(await r.service.linkActive(old)).toBe(false);
+    expect(await r.service.linkActive(fresh.token)).toBe(true);
+    expect(await r.service.linkActive('never-issued')).toBe(false);
+  });
+
   it('the default generator makes long url-safe random tokens', async () => {
     const pool = new (newDb().adapters.createPg().Pool)() as unknown as Pool;
     await migrate(pool);

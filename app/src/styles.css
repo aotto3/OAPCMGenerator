@@ -964,7 +964,7 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-md); }
 .schedule-preview .schedule-actions .btn-util { padding: 1px 6px; font-size: 0.72rem; }
 .schedule-preview .schedule-break-label { width: 100%; min-width: 8ch; font-size: 0.82rem; padding: 1px 4px; }
 .schedule-preview .schedule-break-min { font-size: 0.78rem; white-space: nowrap; }
-.schedule-preview .schedule-break-min input { width: 4ch; font-size: 0.82rem; padding: 1px 4px; }
+.schedule-preview .schedule-break-min input { width: calc(3ch + 14px); box-sizing: content-box; font-size: 0.82rem; padding: 1px 4px; text-align: right; }
 .schedule-preview .schedule-start-input { width: 9ch; font-size: 0.82rem; padding: 1px 4px; }
 /* Click-to-edit start time: reads as plain text with a subtle "editable" hint. */
 .schedule-preview .schedule-time-btn {

@@ -80,6 +80,24 @@ describe('lookup', () => {
   });
 });
 
+describe('linkStatus', () => {
+  it('posts the token without cookies and maps the answer', async () => {
+    const { fn, calls } = recordingFetch(() => json(200, { active: false }));
+    expect(await createQuestionnaireClient(fn).linkStatus('tok')).toBe('inactive');
+    expect(calls[0].url).toBe('/api/questionnaire/public/link');
+    expect(calls[0].init?.credentials).toBe('omit');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ token: 'tok' });
+    const active = recordingFetch(() => json(200, { active: true }));
+    expect(await createQuestionnaireClient(active.fn).linkStatus('tok')).toBe('active');
+  });
+
+  it('is unknown on an error status, an odd body or no network, so the page still asks for an email', async () => {
+    expect(await createQuestionnaireClient(recordingFetch(() => json(429)).fn).linkStatus('t')).toBe('unknown');
+    expect(await createQuestionnaireClient(recordingFetch(() => json(200, {})).fn).linkStatus('t')).toBe('unknown');
+    expect(await createQuestionnaireClient(offline).linkStatus('t')).toBe('unknown');
+  });
+});
+
 describe('signed-in calls', () => {
   it('link, reset, roster and submissions hit their endpoints with the session', async () => {
     const replies = [

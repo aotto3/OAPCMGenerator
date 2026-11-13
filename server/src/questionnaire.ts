@@ -35,6 +35,12 @@ export interface QuestionnaireService {
   linkFor(ownerId: string): Promise<{ token: string }>;
   /** Replaces the token; the old link stops working at once. */
   resetLink(ownerId: string): Promise<{ token: string }>;
+  /**
+   * Public. Whether a link token is current. Says nothing about the account
+   * behind it; it lets the page tell a judge holding an old link to ask for the
+   * new one instead of thinking they are not on file.
+   */
+  linkActive(token: string): Promise<boolean>;
   /** Validates and replaces the account's roster. */
   publishRoster(ownerId: string, roster: unknown): Promise<{ ok: true } | { error: 'invalid' | 'too_large' }>;
   submissionsFor(ownerId: string): Promise<JudgeSubmission[]>;
@@ -121,6 +127,10 @@ export function createQuestionnaireService(deps: QuestionnaireServiceDeps): Ques
     },
 
     resetLink: issue,
+
+    async linkActive(token) {
+      return (await store.ownerForToken(token)) !== undefined;
+    },
 
     async publishRoster(ownerId, input) {
       const roster = parseRoster(input);

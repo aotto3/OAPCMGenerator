@@ -141,14 +141,9 @@ export function SchedulePreview({
                     <td>
                       {isBreak ? (
                         <span className="schedule-break-min">
-                          <input
-                            type="number"
-                            min={1}
-                            value={ev.dur}
-                            aria-label="Break minutes"
-                            onChange={(e) =>
-                              apply({ kind: 'resizeBreak', row: i, minutes: parseInt(e.target.value, 10) })
-                            }
+                          <BreakMinutesInput
+                            minutes={ev.dur}
+                            onCommit={(minutes) => apply({ kind: 'resizeBreak', row: i, minutes })}
                           />{' '}
                           min
                         </span>
@@ -218,5 +213,31 @@ export function SchedulePreview({
         </>
       )}
     </Section>
+  );
+}
+
+/**
+ * A break's length: a plain box for up to 3 digits (no spinner arrows). Typing
+ * keeps only digits and resizes the break on each valid value (1 or more); a box
+ * left empty or at 0 snaps back to the break's length when it loses focus.
+ */
+function BreakMinutesInput({ minutes, onCommit }: { minutes: number; onCommit: (minutes: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      maxLength={3}
+      value={draft ?? String(minutes)}
+      aria-label="Break minutes"
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, '').slice(0, 3);
+        setDraft(digits);
+        const n = parseInt(digits, 10);
+        if (n >= 1) onCommit(n);
+      }}
+      onBlur={() => setDraft(null)}
+    />
   );
 }

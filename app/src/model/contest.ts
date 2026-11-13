@@ -1000,9 +1000,10 @@ export function duplicateContest(contest: Contest, options: NewFromExistingOptio
     createdAt: now,
     updatedAt: now,
     // A roll-forward duplicate is a fresh, active contest even if its source was
-    // archived; its custom title resets to the auto name for the new occurrence.
+    // archived. Its title is the source's on-screen title plus " COPY", so the
+    // two are told apart until the CM renames it.
     archived: false,
-    titleOverride: '',
+    titleOverride: `${effectiveContestTitle(contest)} COPY`,
     // identity + cmInfo + documents carry forward untouched (stable data).
     details: { ...contest.details, ...CLEARED_DETAIL_FIELDS },
     // Judges change every contest — start fresh.

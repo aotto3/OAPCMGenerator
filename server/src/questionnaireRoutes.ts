@@ -10,6 +10,8 @@
  *   GET  /submissions  every judge's current answers, for the app to apply
  *
  * Public routes (no session):
+ *   POST /public/link    { token } -> { active }: whether the link is current, so
+ *                        the page can tell a judge an old link was replaced
  *   POST /public/lookup  { token, email, website } -> the judge's contests and
  *                        their last answers
  *   POST /public/submit  { token, email, website, answers } -> stores the answers
@@ -19,7 +21,8 @@
  * so it gives nothing away: an unknown token, an unknown email, a filled honeypot
  * (`website`, hidden from people, filled by bots) and a malformed body all get the
  * same 404 (a honeypot submit gets a fake success and is dropped). Nothing (no
- * judge names, no emails) is returned until an email matches. Token and email
+ * judge names, no emails) is returned until an email matches. The link check
+ * says only whether a 144-bit token is current, which helps no one guess one. Token and email
  * travel in the body, never the URL, so they stay out of access logs. Rate limits
  * per IP and per email return 429.
  */
@@ -154,6 +157,19 @@ export function createQuestionnaireRoutes(deps: QuestionnaireRoutesDeps): Router
     }
     return { token, email: key };
   }
+
+  router.post(
+    '/public/link',
+    guarded(async (req, res) => {
+      if (!limiters.perIp.tryAcquire(req.ip ?? 'unknown')) {
+        res.status(429).json({ error: 'rate_limited' });
+        return;
+      }
+      const { token } = bodyOf(req);
+      const active = typeof token === 'string' && token.length <= 64 && (await questionnaire.linkActive(token));
+      res.json({ active });
+    }),
+  );
 
   router.post(
     '/public/lookup',

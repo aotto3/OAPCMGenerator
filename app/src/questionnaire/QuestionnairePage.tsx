@@ -5,8 +5,10 @@
  * (hotel nights, flying; a back-to-back Zone pair is asked about as one) and
  * general questions, pre-filled from their last submission. Submitting stores the
  * answers for the CM's app to apply; the judge can come back and update them.
+ * A link the CM has reset says so up front, so a judge holding the old one asks
+ * for the new link instead of thinking they are not on file.
  */
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { fmtDate } from '../documents/format';
 import { createQuestionnaireClient, type JudgeLookup, type LookupResult } from './questionnaireClient';
 import type { RosterContest } from './roster';
@@ -38,6 +40,17 @@ export function QuestionnairePage({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [judge, setJudge] = useState<JudgeLookup | null>(null);
+  const [linkInactive, setLinkInactive] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void client.linkStatus(token).then((status) => {
+      if (live && status === 'inactive') setLinkInactive(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [token]);
 
   async function lookup(e: FormEvent) {
     e.preventDefault();
@@ -55,7 +68,17 @@ export function QuestionnairePage({ token }: { token: string }) {
       <header className="page-header">
         <h1>Adjudicator Questionnaire</h1>
       </header>
-      {judge ? (
+      {linkInactive ? (
+        <div className="questionnaire-lookup" role="alert">
+          <p>
+            <strong>This questionnaire link is no longer active.</strong>
+          </p>
+          <p>
+            Your contest manager has replaced it with a new link. Please ask them for the current one; your
+            information has not been lost.
+          </p>
+        </div>
+      ) : judge ? (
         <QuestionnaireForm token={token} email={email} website={website} judge={judge} />
       ) : (
         <form className="questionnaire-lookup" onSubmit={(e) => void lookup(e)} noValidate>
