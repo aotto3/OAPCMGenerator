@@ -53,7 +53,7 @@ busier panes) and shows a progress indicator. You fill the same information as
 always:
 
 1. **CM Info** — your name, contact details (pre-filled once and remembered). *(Setup)*
-2. **Contest Identity** — year, classification, level, host school/venue. *(Setup)*
+2. **Contest Identity** — year, classification, level, host school/venue. *(Setup)* Enter a district and the app fills in the Bi-District partner, Area, and Region from UIL's alignment (it never overwrites a number you typed). For a District contest it also fills in the district's schools; if UIL lists more than 8, tick the competing schools.
 3. **Contest Details** — contest date, meeting/first-show times, judging format,
    rehearsals, fees, deadlines, and your Speechwire login. *(Setup)*
 4. **Adjudicators** — your judges' names and mailing addresses. *(Judges)*

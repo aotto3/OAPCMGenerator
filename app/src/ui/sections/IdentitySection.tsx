@@ -9,7 +9,10 @@ import {
   type LevelFieldKey,
   type SectionCompletion,
 } from '../../model/contest';
+import { withAlignmentFill } from '../../model/uilAlignment';
+import { UIL_ALIGNMENT_SNAPSHOT } from '../../model/uilAlignmentSnapshot';
 import { CreateSiblingZoneControl } from './CreateSiblingZoneControl';
+import { DistrictSchoolsControl } from './DistrictSchoolsControl';
 import { Section } from './Section';
 import { CopyButton, SelectField, TextField } from './fields';
 
@@ -46,7 +49,8 @@ export function IdentitySection({
   defaultOpen?: boolean;
 }) {
   const { identity } = contest;
-  const edit = (patch: Partial<ContestIdentity>) => onChange(withIdentity(contest, patch));
+  const edit = (patch: Partial<ContestIdentity>) =>
+    onChange(withAlignmentFill(contest, withIdentity(contest, patch), UIL_ALIGNMENT_SNAPSHOT));
 
   return (
     <Section title="📋 Contest Identity" badge="Upon Appointment" completion={completion} defaultOpen={defaultOpen}>
@@ -101,6 +105,7 @@ export function IdentitySection({
           onChange={(v) => edit({ hostAddress: v })}
         />
       </div>
+      <DistrictSchoolsControl contest={contest} onChange={onChange} />
       <CreateSiblingZoneControl contest={contest} onOpenSaved={onOpenSaved} onOpenContest={onOpenContest} />
     </Section>
   );

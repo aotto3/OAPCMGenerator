@@ -16,6 +16,7 @@ import {
 import { AnalyticsTab } from './AnalyticsTab';
 import { ErrorsTab } from './ErrorsTab';
 import { SharedTemplatesTab } from './SharedTemplatesTab';
+import { SnapshotReminders } from './SnapshotReminders';
 
 /**
  * The admin panel (PRD #54, extended by Group F). A read-only window on accounts
@@ -297,6 +298,7 @@ export function AdminPanel({ onBack }: { onBack: () => void }) {
 
       {tab === 'overview' && (
         <>
+          <SnapshotReminders />
           <section className="admin-stats" aria-label="Summary stats">
             <StatCard label="Users" value={stats?.totalUsers ?? 0} />
             <StatCard label="Active this week" value={stats?.activeThisWeek ?? 0} />
