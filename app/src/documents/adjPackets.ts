@@ -57,14 +57,14 @@ export interface AdjPacketContext {
   contestDateShort: string;
 }
 
-/** Level checkbox map: contest_level → field name on the Evaluation form (v12). */
+/** Level checkbox map: contest_level → field name on the 2026–27 Evaluation form. */
 const LEVEL_CHECK_MAP: Record<string, string> = {
-  Zone: 'Check Box6',
-  District: 'Check Box7',
-  BiDistrict: 'Check Box8',
-  Area: 'Check Box9',
-  Region: 'Check Box10',
-  State: 'Check Box11',
+  Zone: 'Zone',
+  District: 'District',
+  BiDistrict: 'Bi-District',
+  Area: 'Area',
+  Region: 'Region',
+  State: 'State',
 };
 
 /** Level dropdown map: contest_level → option text on the Ranking Ballot (v12). */

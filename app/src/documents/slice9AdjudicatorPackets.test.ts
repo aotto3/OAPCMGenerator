@@ -120,7 +120,7 @@ describe('Adjudicator Packets — field values (read back before flatten)', () =
     expect(form.getTextField('Conference').getText()).toBe('5A');
     expect(form.getTextField('Contest Site').getText()).toBe('Performing Arts Center');
     expect(form.getTextField('Judge').getText()).toBe('Dr. Jane Judge');
-    expect(form.getCheckBox('Check Box7').isChecked()).toBe(true); // District
+    expect(form.getCheckBox('District').isChecked()).toBe(true);
   });
 
   it('leaves every judge-scored field on the Evaluation ballot blank', async () => {
@@ -130,9 +130,12 @@ describe('Adjudicator Packets — field values (read back before flatten)', () =
     fillEvaluationForm(form, evaluationValues('Dr. Jane Judge', docSchools(c)[0], adjPacketContext(c)));
 
     // Ratings are radio groups; none is selected. A representative comment field is empty.
-    expect(form.getRadioGroup('Radio Group 1').getSelected()).toBeUndefined();
-    expect(form.getTextField('COMMENT 1').getText()).toBeUndefined();
-    expect(form.getTextField('AREAS FOR GROWTH Comments 1').getText()).toBeUndefined();
+    expect(form.getRadioGroup('Character Objectives').getSelected()).toBeUndefined();
+    expect(form.getRadioGroup('Overall Effectiveness of the Production').getSelected()).toBeUndefined();
+    expect(form.getTextField('Acting Comment Line 1').getText()).toBeUndefined();
+    expect(form.getTextField('Top Strengths 1').getText()).toBeUndefined();
+    expect(form.getTextField('Areas of Growth 1').getText()).toBeUndefined();
+    expect(form.getTextField('Overall Impressions').getText()).toBeUndefined();
   });
 
   it('fills the Ranking ballot dropdowns and per-school Play/School for a judge', async () => {
@@ -175,12 +178,12 @@ describe('Adjudicator Packets — computed values (intent)', () => {
   it('maps contest level to the Evaluation checkbox and Ranking dropdown', () => {
     const zone = withIdentity(fixtureContest(), { contestLevel: 'Zone' }, FIXTURE_NOW);
     const zctx = adjPacketContext(zone);
-    expect(evaluationValues('J', docSchools(zone)[0], zctx).levelCheckbox).toBe('Check Box6');
+    expect(evaluationValues('J', docSchools(zone)[0], zctx).levelCheckbox).toBe('Zone');
     expect(rankingValues(0, docSchools(zone), zctx).dropdowns['Level/Zone']).toBe('Zone');
 
     const bidc = withIdentity(fixtureContest(), { contestLevel: 'BiDistrict' }, FIXTURE_NOW);
     const bctx = adjPacketContext(bidc);
-    expect(evaluationValues('J', docSchools(bidc)[0], bctx).levelCheckbox).toBe('Check Box8');
+    expect(evaluationValues('J', docSchools(bidc)[0], bctx).levelCheckbox).toBe('Bi-District');
     expect(rankingValues(0, docSchools(bidc), bctx).dropdowns['Level/Zone']).toBe('Bi District');
   });
 
@@ -209,7 +212,7 @@ describe('Adjudicator Packets — field errors accumulate, never throw', () => {
       'Eval Conference',
       'Eval Contest Site',
       'Eval Judge',
-      'Eval level checkbox (Check Box7)',
+      'Eval level checkbox (District)',
     ]);
   });
 });

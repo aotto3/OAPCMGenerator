@@ -70,7 +70,7 @@ Status: v12. All v11 features intact. Five user-facing changes: autocomplete cli
 
 ### PDF template files (source, already embedded as base64)
 `C:\Users\Allen\OneDrive\Documents\GitHub\OAPCMGenerator\Adjudicator Packet Templates\`
-- `Interactive_Play-Evaluation-20181.pdf` — Evaluation Ballot (multi-page per school)
+- `Play_Evaluation_Ballot_2026_2027.pdf` — Evaluation Ballot (6 pages per school). 2.0 only; v12 still embeds the older `Interactive_Play-Evaluation-20181.pdf`
 - `Adjudicator_Ballot_-_Ranking_Plays_for_Panel_use_Only_-_Writable_Form.pdf` — Panel Ranking Ballot
 - `Awards_Acting_Ballot_updated_05.18.2023.pdf` — Acting Awards Ballot (Judge 1 only, sent blank)
 
@@ -186,7 +186,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 - `Conference` = vars.classification only (e.g. "5A")
 - `Contest Site` = host_venue_name
 - `Judge` = judge name
-- Level checkbox: Check Box6=Zone / 7=District / 8=BiDistrict / 9=Area / 10=Region / 11=State
+- Level checkbox: Check Box6=Zone / 7=District / 8=BiDistrict / 9=Area / 10=Region / 11=State (v12). The 2026–27 ballot used by 2.0 names them `Zone` / `District` / `Bi-District` / `Area` / `Region` / `State`
 - All rating/comment fields left blank.
 
 **Ranking Ballot** fields filled: `Panelist` dropdown (A/B/C), `Conference` dropdown (classification e.g. "5A"), `Level/Zone` dropdown (Zone/District/Bi District/Area/Region/State), `Play 1`–`Play 8`=play titles, `School`/`School_2`–`School_8`=school names. Rank fields left blank.
