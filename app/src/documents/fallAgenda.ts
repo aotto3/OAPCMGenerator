@@ -62,7 +62,7 @@ export async function buildFallAgenda(contest: Contest): Promise<Uint8Array> {
     ooPEmpty(80),
 
     ooPHead('2. Confirm Contest Site'),
-    ooPBullet('Stage, dressing rooms, judge room, and hospitality room confirmed and reserved.'),
+    ooPBullet('Stage, company holding rooms, judge room, and hospitality room confirmed and reserved.'),
     ooTable2Col([
       ['Venue:', hv || '___________________________'],
       ['Host School:', hsName || '___________________________'],

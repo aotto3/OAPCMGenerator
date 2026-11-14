@@ -131,7 +131,7 @@ describe('Host School Checklist — content', () => {
     expect(xml).toContain('Sharpstown High School • Performing Arts Center • Saturday, March 21, 2026');
     expect(xml).toContain('Chris Technician');
     expect(xml).toContain('Admission: $10 per person');
-    // Six schools → "6 total" appears in the dressing-room / storage-box lines.
+    // Six schools → "6 total" appears in the company holding room / storage-box lines.
     expect(xml).toContain('6 total');
     expect(xml).toContain('(6 Classrooms)');
   });

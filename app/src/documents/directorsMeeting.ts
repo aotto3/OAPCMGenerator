@@ -4,7 +4,7 @@
  * Ported from v12 genDirectorsMeetingScript (_Templates/OAP Contest Setup.html,
  * lines ~2476–2553). The running order of the meeting is the spec: introductions
  * → judges address the group → critique order → evaluations → dismiss judges →
- * cue documentation (per school) → timing → dressing rooms → additional items.
+ * cue documentation (per school) → timing → company holding rooms → additional items.
  *
  * CRITIQUE ASSIGNMENTS (issue #23, was the #21 AC3 seam): the Critique Order
  * section lists the LOCKED critique assignment beneath the format sentence.
@@ -127,8 +127,8 @@ export async function buildDirectorsMeeting(contest: Contest): Promise<Uint8Arra
     ooPBullet('Reminder to stage managers: note the pre-show announcement timing cue.'),
     ooPEmpty(80),
 
-    ooPHead('Dressing Rooms'),
-    ooP('Only directors, actors, crew members, and alternates are permitted in dressing rooms.', { size: 20, sa: 80 }),
+    ooPHead('Company Holding Rooms'),
+    ooP('Only directors, actors, crew members, and alternates are permitted in company holding rooms.', { size: 20, sa: 80 }),
     ooPEmpty(80),
 
     ooPHead('Additional Items'),

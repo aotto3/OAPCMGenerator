@@ -3,7 +3,7 @@
  *
  * Ported from v12 genHostChecklist (_Templates/OAP Contest Setup.html, lines
  * ~2754–2838). A fixed checklist of the host school's responsibilities, keyed to
- * the number of schools (dressing rooms / storage boxes) and the admission fee.
+ * the number of schools (company holding rooms / storage boxes) and the admission fee.
  *
  * v12 FALLBACK FIDELITY: v12's `vars` bag pre-baked "[Venue TBD]" for a blank
  * venue and "[Host Technical Director]" for a blank tech contact, so this
@@ -49,7 +49,7 @@ export async function buildHostChecklist(contest: Contest): Promise<Uint8Array> 
 
     ooPHead('Facility Preparation (Before Contest Day)'),
     ooPBullet('Reserve stage, wings, and loading dock for all rehearsal and contest dates.'),
-    ooPBullet('Reserve one classroom per school as dressing room — ' + numSchools + ' total.'),
+    ooPBullet('Reserve one classroom per school as a company holding room — ' + numSchools + ' total.'),
     ooPBullet('Reserve a private, quiet room for the adjudicator panel (table, chairs, no traffic).'),
     ooPBullet('Reserve hospitality room for CM and staff.'),
     ooPBullet('Confirm parking plan for school buses and vans at loading dock.'),
@@ -72,7 +72,7 @@ export async function buildHostChecklist(contest: Contest): Promise<Uint8Array> 
     ooPBullet('All stage lighting instruments confirmed working.'),
     ooPEmpty(80),
 
-    ooPHead('Dressing Rooms (' + numSchools + ' Classrooms)'),
+    ooPHead('Company Holding Rooms (' + numSchools + ' Classrooms)'),
     ooPBullet('One classroom per school — confirm assignments with CM.'),
     ooPBullet('Rooms unlocked and accessible throughout the full contest day.'),
     ooPBullet('Trash cans in each room.'),
@@ -103,7 +103,7 @@ export async function buildHostChecklist(contest: Contest): Promise<Uint8Array> 
 
     ooPHead('Post-Contest'),
     ooPBullet('All companies must fully strike and clear the stage before awards ceremony.'),
-    ooPBullet('Confirm dressing rooms are cleared and returned to original condition.'),
+    ooPBullet('Confirm company holding rooms are cleared and returned to original condition.'),
     ooPBullet('Stage restored and facility secured after awards ceremony.'),
     ooPEmpty(80),
 

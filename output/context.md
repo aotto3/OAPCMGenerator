@@ -209,7 +209,7 @@ Snapshots→sec-snapshots, CM Info→sec-cm, Contest ID→sec-t1, Contest Detail
 
 **CM pre-fills**: name=Allen Otto, email=aotto3@gmail.com, phone=281-777-8672, addr=8010 Sharpcrest Street Houston TX 77036, website=www.allenotto.com
 
-**Directors Meeting sections** (order): Introductions → Judges Address Group (per-judge email blank) → Critique Order → Evaluations → DISMISS JUDGES → Opening/Closing Cues + Outstanding Technician (combined, per school) → Backstage Timekeeper Timing → Dressing Rooms → Additional Items → ANY OTHER QUESTIONS?
+**Directors Meeting sections** (order): Introductions → Judges Address Group (per-judge email blank) → Critique Order → Evaluations → DISMISS JUDGES → Opening/Closing Cues + Outstanding Technician (combined, per school) → Backstage Timekeeper Timing → Company Holding Rooms → Additional Items → ANY OTHER QUESTIONS?
 
 **Timer Doc**: Page 1=Instructions (Pre-Contest Duties, Contest Duties incl. "DO NOT CLEAR WATCHES…", Timekeeper Script, Time Warnings). Page 2=Form table cols: SHOW|SCHOOL|PERFORMANCE|SETUP|STRIKE (no MUSIC col).
 
